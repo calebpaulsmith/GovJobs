@@ -112,7 +112,7 @@ Task Scheduler skips runs when the laptop is asleep. The footer's "freshness per
 
 **No markers on the live site.** Check `manifest.json`: `job_count == 0` means the dashboard's USAJOBS Search hasn't run recently; `location_count` much smaller than `job_count` means most jobs failed to geocode (inspect `geocoding_misses`).
 
-**Bundle exceeds ~15 MB gzipped.** In priority order: confirm gzip is on, trim properties to codes with client-side label lookup, simplify polygon geometry further (Phase A.7 already simplifies to ~10% of TIGER detail), switch the polygon layers to PMTiles vector tiles.
+**Bundle exceeds ~15 MB gzipped.** In priority order: confirm gzip is on, trim properties to codes with client-side label lookup, simplify polygon geometry further (Phase A.7 simplifies to ~10% of TIGER detail), switch the polygon layers to PMTiles vector tiles.
 
 **Mapbox token leaked.** Bundle tokens are inherently public; mitigation is the URL referrer restriction. Rotate the token in Mapbox dashboard, update the Pages env var, trigger a rebuild.
 

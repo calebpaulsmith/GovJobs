@@ -225,7 +225,7 @@ Status: Accepted
 - Zoom 7â€“9: county and CBSA outlines plus emerging marker clusters.
 - Zoom 9 (cap): individual job markers at city centroid. The map never zooms past 9.
 
-Every marker carries a `geo_quality` flag (`city` or `state_centroid`) which the UI surfaces. The flagship choropleth metric is **pay-vs-cost-of-living ratio** = locality-adjusted pay Ã· BEA Regional Price Parity, expressed as a number where 100 = national average. State, locality, county, and marker layers are all clickable with their own popups.
+Every marker carries a `geo_quality` flag (`source`, `city`, or `state_centroid`, in priority order — `source` means lat/lon came directly from the USAJOBS Search payload via `job_locations.latitude/longitude`; the other two are SimpleMaps geocode fallbacks) which the UI surfaces. The flagship choropleth metric is **pay-vs-cost-of-living ratio** = locality-adjusted pay Ã· BEA Regional Price Parity, expressed as a number where 100 = national average. State, locality, county, and marker layers are all clickable with their own popups.
 
 **Consequences.** The map is honest about precision. The state/locality/county roundup popups become a primary feature, not an afterthought. The choropleth metric switcher requires a robust reference-data layer (pay tables, COL, polygons) â€” see ADR-0018. The 9-zoom cap also has a side benefit: the polygon GeoJSON files don't need high-resolution geometry, keeping the public bundle small.
 

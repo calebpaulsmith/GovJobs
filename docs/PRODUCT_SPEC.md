@@ -113,7 +113,7 @@ A federal job-search map that is honest about precision and surfaces the questio
 - **National / state zoom (3–5)**: choropleth of states. Metric is user-selectable: open postings, federal workforce density, accessions, separations, remote-eligible postings, and the flagship **pay-vs-cost-of-living ratio**. Click a state for a roundup popup.
 - **Regional zoom (5–7)**: locality pay area outlines fade in over the state choropleth. Click a locality for its pay adjustment, member counties, sample pay tables, and COL.
 - **Metro / county zoom (7–9)**: county and CBSA outlines plus emerging marker clusters. Click a county or metro for COL and stats.
-- **Maxzoom 9 (cap)**: individual job markers at city centroid. The map never goes to street level — USAJOBS does not publish duty-station addresses, and pretending we have street-level precision would be dishonest. Each marker carries a `geo_quality` flag (`city` or `state_centroid`) that the UI surfaces.
+- **Maxzoom 9 (cap)**: individual job markers placed by coordinate priority — `source` (authoritative USAJOBS Search lat/lon stored in `job_locations`), then `city` (SimpleMaps centroid), then `state_centroid` (last-resort). The `geo_quality` flag is surfaced in the UI so users can see how precise each marker is. The map never goes to street level — even when source coords exist, the maxzoom cap keeps the public surface uniform.
 
 ### Pay-table fidelity
 

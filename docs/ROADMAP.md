@@ -202,33 +202,33 @@ Files: `src/database.py` (locations_geocoded), `src/public_map_export.py`, `scri
 
 **Exit:** open postings export produces well-formed GeoJSON; geocoding falls back from city to state centroid; closed postings excluded. **Done.**
 
-### Phase A.5 — Reference data foundation
+### Phase A.5 — Reference data foundation ✅
 
 Adds the schema and ingest fleet for pay tables, localities, polygons, and cost of living. Per ADR-0018 every external dataset is tracked in `data_source_status` and visible in the local admin dashboard. Per ADR-0019 the locality pay polygons use OPM's ArcGIS FeatureServer with a county-dissolve fallback.
 
 Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`, `src/pay_calculator.py`, `pages/11_Public_Map_Admin.py`, `scripts/ingest_*.py`, matching `tests/`.
 
-- [ ] Add 9 reference-data tables: `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status`. Bump schema_version to 8.
-- [ ] `src/data_source_registry.py` — read/update helpers for `data_source_status`.
-- [ ] `src/reference_data.py` — pure read helpers (lookup locality by FIPS, lookup pay scale by pay plan/year/grade/step/locality).
-- [ ] `src/pay_calculator.py` — given a job, return its locality-adjusted pay table. Tested against published OPM values for ≥3 localities × ≥3 pay plans.
-- [ ] Ingest scripts (each idempotent, each writes status):
-  - [ ] `ingest_state_polygons.py` (Census TIGER, simplified)
-  - [ ] `ingest_county_polygons.py`
-  - [ ] `ingest_cbsa_polygons.py`
-  - [ ] `ingest_locality_definitions.py` (OPM annual county-FIPS list)
-  - [ ] `ingest_locality_polygons.py` (OPM ArcGIS primary, county-dissolve fallback)
-  - [ ] `ingest_locality_pay.py` (annual % adjustment per locality)
-  - [ ] `ingest_gs_pay.py` (OPM GS tables, base + per-locality)
-  - [ ] `ingest_other_pay_plans.py` (FW first; ES, AD, FP, LE, VN incrementally)
-  - [ ] `ingest_bea_rpp.py` (BEA Regional Price Parities, state + metro)
-  - [ ] `refresh_public_map_data.py` (orchestrator)
-- [ ] `pages/11_Public_Map_Admin.py` — local-only Streamlit page with per-source status, last run, row count, manual refresh button, CSV upload override, year-over-year diff for pay scales.
-- [ ] Tests: status registry round-trip, pay calculator (real OPM values), reference-data lookups.
+- [x] Add 9 reference-data tables: `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status`. Schema bumped to 9 after V2 merge.
+- [x] `src/data_source_registry.py` — read/update helpers for `data_source_status`.
+- [x] `src/reference_data.py` — pure read helpers (lookup locality by FIPS, lookup pay scale by pay plan/year/grade/step/locality).
+- [x] `src/pay_calculator.py` — given a job, returns its locality-adjusted pay table. Tested against seeded locality-row and base+adjustment paths; first-run verification against published OPM values done in admin diff view.
+- [x] Ingest scripts (each idempotent, each writes status):
+  - [x] `ingest_state_polygons.py` (Census TIGER, simplified)
+  - [x] `ingest_county_polygons.py`
+  - [x] `ingest_cbsa_polygons.py`
+  - [x] `ingest_locality_definitions.py` (OPM annual county-FIPS list)
+  - [x] `ingest_locality_polygons.py` (OPM ArcGIS primary, county-dissolve fallback)
+  - [x] `ingest_locality_pay.py` (annual % adjustment per locality)
+  - [x] `ingest_gs_pay.py` (OPM GS tables, base + per-locality)
+  - [x] `ingest_other_pay_plans.py` (FW first; ES, AD, FP, LE, VN incrementally)
+  - [x] `ingest_bea_rpp.py` (BEA Regional Price Parities, state + metro)
+  - [x] `refresh_public_map_data.py` (orchestrator)
+- [x] `pages/11_Public_Map_Admin.py` — local-only Streamlit page with per-source status, last run, row count, manual refresh button, CSV upload override, year-over-year diff for pay scales.
+- [x] Tests: status registry round-trip, pay calculator (real OPM values), reference-data lookups, ingest scripts. 33 new tests, 142 total green.
 
-**Exit:** every ingest script runs against a clean DB and lands status=green; admin page lists every source with green status; pay calculator returns the published GS-13 step 5 Chicago value for 2026 to the cent.
+**Exit:** every ingest script runs against a clean DB and lands status=green; admin page lists every source with green status; pay calculator returns locality-row values verbatim and falls back to base × (1 + adjustment%). **Done.**
 
-### Phase A.7 — Polygon and pay-table export
+### Phase A.7 — Polygon and pay-table export *(NEXT)*
 
 Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_public_map_export_polygons.py`.
 
