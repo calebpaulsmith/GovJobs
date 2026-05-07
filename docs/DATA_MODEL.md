@@ -103,7 +103,11 @@ PK: `(list_name, code)`.
 | state | TEXT | Two-letter postal code when parseable |
 | country | TEXT | |
 | location_code | TEXT | USAJOBS/SIF location code when provided |
+| latitude | REAL | Work-location latitude when provided by the API |
+| longitude | REAL | Work-location longitude when provided by the API |
 | remote_indicator | TEXT | remote / hybrid / onsite / unknown when derivable |
+
+USAJOBS Search can include coordinate-level location data. HistoricJoa commonly provides city/state/country without coordinates. The app stores coordinates when present and otherwise keeps city/state data for state-level maps and filters. Do not invent coordinates or geocode addresses silently. Current postings without mappable coordinates remain reviewable in a zoom-scoped table on the map page.
 
 #### `job_categories`
 
@@ -317,6 +321,58 @@ Long-form fields. Separated so we can lazy-import only for high-value jobs.
 | saved_at | TEXT NOT NULL | |
 | last_reviewed_at | TEXT | |
 
+### `applications`
+
+Local application tracker records. These are tracking-only; the app never submits applications or signs into USAJOBS.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| job_id | INTEGER FK -> jobs.id | Unique; one current tracker row per posting |
+| application_status | TEXT | Draft, Submitted, Referred, Interview, Selected, Not selected, Withdrawn, Archived |
+| resume_version | TEXT | User-entered resume/package version label |
+| usajobs_application_id | TEXT | USAJOBS or agency reference identifier |
+| application_url | TEXT | User-entered application/status URL |
+| submitted_at | TEXT | ISO date |
+| referred_at | TEXT | ISO date |
+| interview_at | TEXT | ISO date |
+| outcome | TEXT | Final or interim outcome text |
+| next_action | TEXT | User-entered next step |
+| next_action_due | TEXT | ISO date |
+| contact_name / contact_email | TEXT | Optional HR/contact details |
+| notes | TEXT | Local notes |
+| created_at / updated_at | TEXT | |
+
+### `application_events`
+
+Timestamped history for application activity.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| application_id | INTEGER FK -> applications.id | |
+| event_type | TEXT | e.g. Submitted, Referred, Interview, note |
+| event_date | TEXT | ISO date when known |
+| notes | TEXT | Local event note |
+| created_at | TEXT | |
+
+### `resume_versions`
+
+Local résumé-version library. Stores labels and file metadata only; no résumé contents are parsed or copied into the database.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| label | TEXT | Unique user-facing version label |
+| file_name | TEXT | Filename as stored locally |
+| file_path | TEXT | Optional local path reference |
+| version_date | TEXT | ISO date or user-entered date label |
+| target_series | TEXT | Optional target series/scope |
+| target_grade | TEXT | Optional target grade/scope |
+| notes | TEXT | Local notes about positioning/use |
+| active | INTEGER | 1 active, 0 archived |
+| created_at / updated_at | TEXT | |
+
 ### `job_feedback`
 
 Explicit user preference signals. Short explanations are first-class because they are useful for later review and recommendation tuning.
@@ -352,6 +408,48 @@ Explicit user preference signals. Short explanations are first-class because the
 | factors_json | TEXT | Exact shared fields/text signals/feedback patterns |
 | dismissed | INTEGER | 0/1 |
 | created_at | TEXT NOT NULL | |
+
+### `repost_runs`
+
+One row per manual repost-detection run.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| started_at / completed_at | TEXT | Run timing |
+| groups_created | INTEGER | Number of detected repost groups |
+| members_created | INTEGER | Number of group-member rows |
+| params_json | TEXT | Detector thresholds/algorithm metadata |
+| notes | TEXT | Run summary |
+
+### `repost_groups`
+
+Detected possible repost clusters. A group is evidence for review, not proof that the postings are administratively identical.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| run_id | INTEGER FK -> repost_runs.id | |
+| group_signature | TEXT | Stable-ish signature from agency/series/normalized titles |
+| group_title | TEXT | Representative title |
+| agency_key / series_key | TEXT | Blocking keys used by the detector |
+| member_count | INTEGER | Number of postings in group |
+| confidence_score | REAL | Average pairwise title similarity |
+| evidence_json | TEXT | Member IDs, controls, titles, text hashes, dates, algorithm evidence |
+| created_at | TEXT | |
+
+### `repost_group_members`
+
+Posting membership rows for repost groups.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| group_id | INTEGER FK -> repost_groups.id | |
+| job_id | INTEGER FK -> jobs.id | |
+| role | TEXT | `original` for earliest observed member, `possible_repost` for later members |
+| title_similarity | REAL | Similarity to the group's baseline/original title |
+| text_hash | TEXT | SHA-1 hash of normalized long-form text when enough text exists |
+| created_at | TEXT | |
 
 ### `job_notes`
 

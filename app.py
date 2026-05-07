@@ -18,13 +18,15 @@ def main() -> None:
     conn = app_connection()
     status = database_status(conn)
 
-    metric_cols = st.columns(6)
+    metric_cols = st.columns(8)
     metric_cols[0].metric("Jobs", f"{status['jobs']:,}")
     metric_cols[1].metric("Current", f"{status['current_jobs']:,}")
     metric_cols[2].metric("Historic", f"{status['historic_jobs']:,}")
     metric_cols[3].metric("Saved", f"{status['saved_jobs']:,}")
     metric_cols[4].metric("Job Text", f"{status['job_text']:,}")
     metric_cols[5].metric("Suggestions", f"{status['job_recommendations']:,}")
+    metric_cols[6].metric("Applications", f"{status['applications']:,}")
+    metric_cols[7].metric("Resume Versions", f"{status['resume_versions']:,}")
 
     st.divider()
     left, right = st.columns([2, 1])

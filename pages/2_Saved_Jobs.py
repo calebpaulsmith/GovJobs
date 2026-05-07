@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.exports import dataframe_to_csv_bytes, dataframe_to_xlsx_bytes
 from src.ui_data import alerts_dataframe, app_connection, job_detail, notes_dataframe, saved_jobs_dataframe, tags_for_job
 
 
@@ -20,6 +21,21 @@ if df.empty:
     st.info("No saved postings yet.")
 else:
     st.dataframe(df, use_container_width=True, hide_index=True)
+    export_cols = st.columns(2)
+    export_cols[0].download_button(
+        "Download Saved Jobs CSV",
+        dataframe_to_csv_bytes(df),
+        file_name="govjobs_saved_jobs.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    export_cols[1].download_button(
+        "Download Saved Jobs Excel",
+        dataframe_to_xlsx_bytes(df, sheet_name="Saved Jobs", title="GovJobs Saved Jobs"),
+        file_name="govjobs_saved_jobs.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
     options = {f"{row.title} | {row.status} | {row.id}": int(row.id) for row in df.itertuples()}
     selected_id = options[st.selectbox("Selected saved posting", list(options))]
     detail = job_detail(conn, selected_id)

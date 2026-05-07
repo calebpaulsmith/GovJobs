@@ -288,6 +288,16 @@ def search_locations(descriptor: Mapping[str, Any]) -> list[dict[str, Any]]:
             "location_code": _text(
                 loc.get("LocationID") or loc.get("GeoLocationCode") or loc.get("Code")
             ),
+            "latitude": _float(
+                loc.get("Latitude")
+                or loc.get("latitude")
+                or loc.get("PositionLocationLatitude")
+            ),
+            "longitude": _float(
+                loc.get("Longitude")
+                or loc.get("longitude")
+                or loc.get("PositionLocationLongitude")
+            ),
             "remote_indicator": _remote_status(
                 _mapping(_mapping(descriptor.get("UserArea")).get("Details")).get("RemoteIndicator"),
                 _mapping(_mapping(descriptor.get("UserArea")).get("Details")).get("TeleworkEligible"),
@@ -310,6 +320,16 @@ def historic_locations(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             "state": _state_from_location(loc),
             "country": _text(loc.get("positionLocationCountry")),
             "location_code": _text(loc.get("positionLocationCode") or loc.get("locationCode")),
+            "latitude": _float(
+                loc.get("positionLocationLatitude")
+                or loc.get("latitude")
+                or loc.get("Latitude")
+            ),
+            "longitude": _float(
+                loc.get("positionLocationLongitude")
+                or loc.get("longitude")
+                or loc.get("Longitude")
+            ),
             "remote_indicator": _remote_status(None, record.get("teleworkEligible")),
         }
         if any(row.values()):

@@ -2,7 +2,7 @@
 
 A local-first dashboard for searching, archiving, and analyzing USAJOBS postings and OPM federal-workforce data. Built to be runnable and improvable by a non-coder using Claude Code or Codex.
 
-> Status: **V1 core through OPM maps complete.** Reconnaissance, SQLite persistence, USAJOBS importers, Streamlit UI, rule-based scoring, alerts, explainable similar-job recommendations, OPM file import, and source-labeled state maps are implemented; exports are next.
+> Status: **V1 core plus early V2 tracking/intelligence phases are complete.** Reconnaissance, SQLite persistence, USAJOBS importers, Streamlit UI, rule-based scoring, alerts, explainable similar-job recommendations, OPM file import, GIS-style source-labeled maps, CSV/Excel exports, the local Application Tracker, Resume Versions, and Repost Detector are implemented.
 
 ---
 
@@ -18,7 +18,7 @@ A local-first dashboard for searching, archiving, and analyzing USAJOBS postings
 8. Surface alerts for new matches, high scores, and closing-soon jobs.
 9. Provide a data-admin page showing import status, freshness, and errors.
 
-Versions 2 and 3 add an application tracker, repost detection, locality-normalized salary, vector search, and resume-to-announcement matching. See [docs/ROADMAP.md](docs/ROADMAP.md).
+The remaining Version 2 and 3 work adds closing-window analytics, locality-normalized salary, vector search, and resume-to-announcement matching. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
@@ -50,17 +50,17 @@ Explicitly **not** in V1: React, FastAPI, Docker, cloud deployment, user account
 ├── CLAUDE.md                     # Guidance for AI coding assistants in this repo
 ├── .env.example                  # Template for required environment variables
 ├── requirements.txt              # Python dependencies (V1)
-├── config.py                     # (planned) Thresholds + paths read from .env
-├── app.py                        # (planned) Streamlit entry point
+├── config.py                     # Thresholds + paths read from .env
+├── app.py                        # Streamlit entry point
 ├── data/
-│   ├── federal_jobs.sqlite       # (planned) SQLite database
+│   ├── federal_jobs.sqlite       # SQLite database created locally
 │   ├── manifests/                # Import manifests
 │   ├── raw/                      # Raw API JSON, by source
 │   └── processed/                # Samples and exports
 ├── docs/                         # Planning docs (see below)
-├── src/                          # (planned) Python modules
-├── pages/                        # (planned) Streamlit multipage UI
-└── tests/                        # (planned) pytest tests
+├── src/                          # Python modules
+├── pages/                        # Streamlit multipage UI
+└── tests/                        # pytest tests
 ```
 
 ### Planning docs
@@ -76,12 +76,13 @@ Explicitly **not** in V1: React, FastAPI, Docker, cloud deployment, user account
 | [docs/FIELD_DICTIONARY.md](docs/FIELD_DICTIONARY.md) | Definitions of every normalized field |
 | [docs/FEATURE_FEASIBILITY_MATRIX.md](docs/FEATURE_FEASIBILITY_MATRIX.md) | Each feature × data it requires × feasibility |
 | [docs/DOWNLOAD_STRATEGY.md](docs/DOWNLOAD_STRATEGY.md) | Recommended download mode per dataset |
+| [docs/MAP_FEATURE_SPEC.md](docs/MAP_FEATURE_SPEC.md) | Reusable GIS-style map feature sheet and replication checklist |
 
 ---
 
-## Getting started (eventually)
+## Getting started
 
-> None of this works yet — V1 has not been built. These are the intended steps.
+These are the local setup steps.
 
 1. Install Python 3.11+ and create a virtual environment.
 2. `pip install -r requirements.txt`

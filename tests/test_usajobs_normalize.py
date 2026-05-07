@@ -84,7 +84,14 @@ def test_job_from_search_item_normalizes_core_fields():
                 "DepartmentName": "Department of Homeland Security",
                 "OrganizationName": "Federal Emergency Management Agency",
                 "PositionLocationDisplay": "Chicago, Illinois",
-                "PositionLocation": [{"CityName": "Chicago", "CountrySubDivisionCode": "IL"}],
+                "PositionLocation": [
+                    {
+                        "CityName": "Chicago",
+                        "CountrySubDivisionCode": "IL",
+                        "Latitude": "41.8781",
+                        "Longitude": "-87.6298",
+                    }
+                ],
             "JobCategory": {"Code": "343"},
             "JobGrade": {"Code": "GS"},
             "PositionRemuneration": [
@@ -108,6 +115,8 @@ def test_job_from_search_item_normalizes_core_fields():
     assert job["state"] == "IL"
     assert job["grade_rows"][0]["pay_plan"] == "GS"
     assert job["salary_range_rows"][0]["minimum"] == 100000
+    assert job["locations"][0]["latitude"] == 41.8781
+    assert job["locations"][0]["longitude"] == -87.6298
     assert job["application_option_rows"][0]["apply_online_url"] == "https://www.usajobs.gov/job/123"
 
 

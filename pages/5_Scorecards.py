@@ -5,6 +5,7 @@ import json
 import plotly.express as px
 import streamlit as st
 
+from src.exports import dataframe_to_csv_bytes, dataframe_to_xlsx_bytes
 from src.ui_data import (
     app_connection,
     grouped_counts,
@@ -31,6 +32,21 @@ if scores.empty:
     st.info("No scores recorded yet.")
 else:
     st.dataframe(scores, use_container_width=True, hide_index=True)
+    export_cols = st.columns(2)
+    export_cols[0].download_button(
+        "Download Scorecards CSV",
+        dataframe_to_csv_bytes(scores),
+        file_name="govjobs_scorecards.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    export_cols[1].download_button(
+        "Download Scorecards Excel",
+        dataframe_to_xlsx_bytes(scores, sheet_name="Scorecards", title="GovJobs Scorecards"),
+        file_name="govjobs_scorecards.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
     selected = st.selectbox(
         "Score detail",
         [f"{row.score} | {row.title} | {row.id}" for row in scores.itertuples()],

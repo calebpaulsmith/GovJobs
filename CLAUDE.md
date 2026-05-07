@@ -24,7 +24,12 @@ A local-first Python/Streamlit/SQLite dashboard for USAJOBS posting data and OPM
 - Phase 6 local alerts are implemented in `src/alerts.py`; alerts are generated manually in the app, deduped in SQLite, visible in Data Admin and Saved Jobs, and exportable as CSV. Email/push alerts are out of scope for V1.
 - Phase 6.5 preference feedback and explainable similar-job recommendations are implemented in `src/recommendations.py`, backed by `job_feedback`, `recommendation_runs`, and `job_recommendations`.
 - Phase 7 OPM file ingestion and map source switching are implemented in `src/opm_data.py`, `pages/7_Data_Admin.py`, and `pages/4_State_Map.py`. OPM data is file-based and must stay labeled as workforce/accessions/separations, not postings.
-- The Public Map Tool (`thegrandpipeline.com/map`) is a separate sibling product per ADR-0016, ADR-0017, ADR-0018, ADR-0019. It lives in `public_map/` (SvelteKit + Mapbox GL JS, deployed to Cloudflare Pages) and is fed one-way by `scripts/export_public_map.py` writing static GeoJSON/JSON snapshots. The map is **layered and zoom-driven** (state choropleth → locality / county / CBSA outlines → marker clusters → individual markers) with a hard **maxzoom of 9** (no street-level views). The dashboard's "no cloud / no FastAPI / no React" rule still applies to everything outside `public_map/`. The detailed implementation plan lives at `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`.
+- Phase 8 CSV/Excel exports are implemented in `src/exports.py` and exposed for saved jobs, scorecards, and alerts.
+- V2 Application Tracker is implemented in `pages/6_Application_Tracker.py`, backed by `applications` and `application_events`. It is tracking-only and must never automate applications.
+- V2 Resume Versions is implemented in `pages/9_Resume_Versions.py`, backed by `resume_versions`. It stores metadata only; do not parse or copy resume contents in V2.
+- V2 Repost Detector is implemented in `pages/10_Repost_Detector.py`, backed by `repost_runs`, `repost_groups`, and `repost_group_members`. Treat groups as review evidence, not administrative certainty.
+- Map behavior is specified in `docs/MAP_FEATURE_SPEC.md`; use that as the source of truth before changing `pages/4_State_Map.py`.
+- The Public Map Tool (`thegrandpipeline.com/map`) is a separate sibling product per ADR-0016, ADR-0017, ADR-0018, ADR-0019. It lives in `public_map/` (SvelteKit + Mapbox GL JS, deployed to Cloudflare Pages) and is fed one-way by `scripts/export_public_map.py` writing static GeoJSON/JSON snapshots. The map is **layered and zoom-driven** (state choropleth â†’ locality / county / CBSA outlines â†’ marker clusters â†’ individual markers) with a hard **maxzoom of 9** (no street-level views). The dashboard's "no cloud / no FastAPI / no React" rule still applies to everything outside `public_map/`. The detailed implementation plan lives at `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`.
 - Public-map reference data lives in dedicated SQLite tables: `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status`, `locations_geocoded`, `geocoding_misses`. Polygon GeoJSON is stored as files under `data/external/` and referenced by `polygon_path`. Pay calculation goes through `src/pay_calculator.py`; status read/write through `src/data_source_registry.py`; reads through `src/reference_data.py`. Per-source ingest scripts live in `scripts/ingest_*.py` and are orchestrated by `scripts/refresh_public_map_data.py`.
 - A local-only Streamlit page `pages/9_Public_Map_Admin.py` is the operator console for public-map data: per-source status, last-success time, row counts, year-over-year diffs, manual refresh, and CSV upload override. This page is part of the dashboard and never deployed.
 - Reference docs for the public map: `docs/PUBLIC_MAP_DATA_SOURCES.md` (catalog of every external dataset), `docs/PUBLIC_MAP_PIPELINE.md` (operator runbook), and the Public Map section of `docs/PRODUCT_SPEC.md` (vision and definition of done).
@@ -45,11 +50,11 @@ A local-first Python/Streamlit/SQLite dashboard for USAJOBS posting data and OPM
 ## Hard rules
 
 1. **Never hardcode API keys.** Credentials live only in `.env` (read via `python-dotenv`). `.env` is gitignored; `.env.example` is the template.
-2. **Postings ≠ hires.** Use "postings" or "announcements" for USAJOBS data and "hires", "accessions", "separations", or "workforce counts" for OPM data. Charts and maps must label the data source.
+2. **Postings â‰  hires.** Use "postings" or "announcements" for USAJOBS data and "hires", "accessions", "separations", or "workforce counts" for OPM data. Charts and maps must label the data source.
 3. **No full download without reconnaissance.** Before downloading any large dataset, run `src/data_recon.py` and write the recommendation to `docs/DOWNLOAD_STRATEGY.md`. The user explicitly approves the mode (`FULL_DOWNLOAD` | `FOCUSED_FULL_DOWNLOAD` | `STAGED_DOWNLOAD` | `SAMPLE_ONLY`).
 4. **Respect rate limits.** Implement paging, backoff, retry, and resumable imports. Save every raw response to `data/raw/...`. Track each request in `raw_api_responses` and each import run in `import_manifests`.
-5. **Deduplicate.** Use position ID + announcement number + source as the dedup key for jobs. Upserts only — never blind insert.
-6. **Transparent scoring in V1.** The match-score module is rule-based, returns a 0–100 score plus a list of positive factors, negative factors, and missing info. **Do not call an LLM for scoring in V1.**
+5. **Deduplicate.** Use position ID + announcement number + source as the dedup key for jobs. Upserts only â€” never blind insert.
+6. **Transparent scoring in V1.** The match-score module is rule-based, returns a 0â€“100 score plus a list of positive factors, negative factors, and missing info. **Do not call an LLM for scoring in V1.**
 7. **No advanced features in V1.** No React, FastAPI, Docker, cloud deployment, user accounts, vector DB, paid APIs, browser scraping, or auto-applications. See `docs/ROADMAP.md` for what belongs where. **Exception:** the `public_map/` subdirectory is a separate sibling product per ADR-0016 (a static, read-only SvelteKit site at `thegrandpipeline.com/map` fed by nightly snapshots). The dashboard itself stays local-first and unchanged.
 8. **Tests live next to features.** Anything in `src/` has a matching `tests/test_*.py`. Use mocked HTTP responses; do not hit real USAJOBS endpoints in tests.
 9. **Preserve control numbers.** Keep `usajobs_control_number` on imported jobs; it is the join key between HistoricJoa structured rows and selected AnnouncementText rows.
@@ -67,8 +72,8 @@ A local-first Python/Streamlit/SQLite dashboard for USAJOBS posting data and OPM
 8. `src/alerts.py` + tests. **Done for local/manual V1 alerts; no email yet.**
 9. Recommendation feedback/similarity. **Done for deterministic local recommendations; embeddings remain V3.**
 10. OPM importer and map source switch. **Done for file import and state-level workforce/accession/separation maps.**
-11. Maps, scorecards, exports.
-12. (V2/V3) Application tracker, repost detector, RAG / vector search, resume-to-announcement matching.
+11. Maps, scorecards, exports. **Done for CSV/Excel exports of saved jobs, scorecards, and alerts.**
+12. V2 tracking/intelligence: Application Tracker, Resume Versions, and Repost Detector are implemented. Remaining V2 starts with closing-window analytics; RAG/vector matching remains V3.
 
 Do not skip ahead.
 

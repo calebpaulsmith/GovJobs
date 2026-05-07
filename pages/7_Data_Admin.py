@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from config import load_config
+from src.exports import dataframe_to_csv_bytes, dataframe_to_xlsx_bytes
 from src.opm_data import import_opm_file
 from src.usajobs_announcement_text_api import import_announcement_text_filters
 from src.usajobs_historic_api import import_historic
@@ -15,6 +16,7 @@ from src.ui_data import (
     opm_datasets_dataframe,
     raw_responses_dataframe,
     run_alerts,
+    run_repost_detection,
 )
 
 
@@ -55,6 +57,22 @@ recommendation_cols[1].metric("Recommendation Runs", f"{status['recommendation_r
 recommendation_cols[2].metric("Suggestions", f"{status['job_recommendations']:,}")
 recommendation_cols[3].metric("Application Options", f"{status['job_application_options']:,}")
 
+repost_cols = st.columns(4)
+repost_cols[0].metric("Repost Runs", f"{status['repost_runs']:,}")
+repost_cols[1].metric("Repost Groups", f"{status['repost_groups']:,}")
+repost_cols[2].metric("Repost Members", f"{status['repost_group_members']:,}")
+if repost_cols[3].button("Run Repost Detector", use_container_width=True):
+    with st.spinner("Detecting possible reposts"):
+        groups = run_repost_detection(conn)
+    st.success(f"Detected {groups:,} repost group(s).")
+
+application_cols = st.columns(2)
+application_cols[0].metric("Applications", f"{status['applications']:,}")
+application_cols[1].metric("Application Events", f"{status['application_events']:,}")
+
+resume_cols = st.columns(1)
+resume_cols[0].metric("Resume Versions", f"{status['resume_versions']:,}")
+
 alert_cols = st.columns(4)
 alert_cols[0].metric("Open Alerts", f"{status['open_alerts']:,}")
 alert_cols[1].metric("Total Alerts", f"{status['alerts']:,}")
@@ -71,11 +89,19 @@ if alerts.empty:
     st.info("No alerts yet.")
 else:
     st.dataframe(alerts, use_container_width=True, hide_index=True)
-    st.download_button(
+    alert_export_cols = st.columns(2)
+    alert_export_cols[0].download_button(
         "Download Alerts CSV",
-        alerts.to_csv(index=False),
+        dataframe_to_csv_bytes(alerts),
         file_name="govjobs_alerts.csv",
         mime="text/csv",
+        use_container_width=True,
+    )
+    alert_export_cols[1].download_button(
+        "Download Alerts Excel",
+        dataframe_to_xlsx_bytes(alerts, sheet_name="Alerts", title="GovJobs Alerts"),
+        file_name="govjobs_alerts.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
     active_alerts = alerts[alerts["status"] != "dismissed"]
