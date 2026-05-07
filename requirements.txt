@@ -2,12 +2,14 @@
 streamlit>=1.36,<2.0
 pandas>=2.2,<3.0
 plotly>=5.22,<6.0
+folium>=0.16,<1.0
+streamlit-folium>=0.20,<1.0
 requests>=2.32,<3.0
 python-dotenv>=1.0,<2.0
 openpyxl>=3.1,<4.0
 
-# Geo helpers for the state map (lightweight; no GIS install required).
-# Plotly has built-in choropleth support, so no geopandas in V1.
+# Geo helpers for the map. Folium gives us pan/zoom viewport bounds in Streamlit.
+# Plotly remains for state choropleths and charts. No geopandas in V1.
 
 # Dev / test
 pytest>=8.0,<10.0

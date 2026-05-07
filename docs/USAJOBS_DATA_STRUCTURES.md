@@ -112,7 +112,7 @@ Fields that should likely become child tables before the app gets much larger:
 
 | Child table | Why |
 | --- | --- |
-| `job_locations` | JOAs can have multiple locations; a single `state` distorts maps and filters. |
+| `job_locations` | JOAs can have multiple locations; a single `state` distorts maps and filters. Current Search can also provide latitude/longitude for zoomable point maps. |
 | `job_categories` | JOAs can include multiple occupational series. |
 | `job_hiring_paths` | Hiring paths are repeated and useful for eligibility filtering. |
 | `job_required_documents` | Standard document codes and free text should be queryable. |
@@ -132,6 +132,7 @@ Treat each announcement as a structured document with a summary row plus repeate
 4. Populate `jobs` with stable summary values for fast tables and charts.
 5. Preserve original text fields in `job_text`, with HTML stripped for display but raw JSON retained for replay.
 6. Keep provenance on every import scope so a row can be traced back to exact endpoint params and raw response.
+7. Preserve location coordinates when the API provides them. Do not infer street addresses or silently geocode city/state-only records.
 
 Avoid parsing display strings when the API provides structured values. Display strings are still stored, but they should not be the basis for agency filtering, series filtering, or deduplication.
 
@@ -145,6 +146,8 @@ The UI should favor structured filters over generic keyword search:
 - Grade/pay-plan filters.
 - Date range filters.
 - Location/state/remote filters.
+- Work-location point map when latitude/longitude are available, plus a state-count fallback.
+- Multi-location postings can appear in each listed location, but the UI must let the user filter them out. Remote-anywhere postings stay separate below the map.
 - Hiring path filters.
 - Security clearance / travel / supervisory filters.
 

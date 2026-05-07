@@ -12,14 +12,19 @@ from config import load_config
 from src.database import (
     add_job_note,
     add_job_tag,
+    add_application_event,
     connect,
     dismiss_job_recommendation,
     init_schema,
     record_job_feedback,
     save_job,
+    set_resume_version_active,
+    upsert_application,
+    upsert_resume_version,
 )
 from src.alerts import dismiss_alert, generate_alerts
 from src.recommendations import generate_similar_jobs
+from src.reposts import detect_reposts
 from src.scoring import score_all_jobs
 
 
@@ -43,6 +48,61 @@ JOB_DISPLAY_COLUMNS = [
     "latest_score.score AS score",
     "jobs.url AS url",
 ]
+
+STATE_CENTERS = {
+    "AL": (32.8067, -86.7911),
+    "AK": (61.3707, -152.4044),
+    "AZ": (33.7298, -111.4312),
+    "AR": (34.9697, -92.3731),
+    "CA": (36.1162, -119.6816),
+    "CO": (39.0598, -105.3111),
+    "CT": (41.5978, -72.7554),
+    "DC": (38.9072, -77.0369),
+    "DE": (39.3185, -75.5071),
+    "FL": (27.7663, -81.6868),
+    "GA": (33.0406, -83.6431),
+    "HI": (21.0943, -157.4983),
+    "IA": (42.0115, -93.2105),
+    "ID": (44.2405, -114.4788),
+    "IL": (40.3495, -88.9861),
+    "IN": (39.8494, -86.2583),
+    "KS": (38.5266, -96.7265),
+    "KY": (37.6681, -84.6701),
+    "LA": (31.1695, -91.8678),
+    "MA": (42.2302, -71.5301),
+    "MD": (39.0639, -76.8021),
+    "ME": (44.6939, -69.3819),
+    "MI": (43.3266, -84.5361),
+    "MN": (45.6945, -93.9002),
+    "MO": (38.4561, -92.2884),
+    "MS": (32.7416, -89.6787),
+    "MT": (46.9219, -110.4544),
+    "NC": (35.6301, -79.8064),
+    "ND": (47.5289, -99.7840),
+    "NE": (41.1254, -98.2681),
+    "NH": (43.4525, -71.5639),
+    "NJ": (40.2989, -74.5210),
+    "NM": (34.8405, -106.2485),
+    "NV": (38.3135, -117.0554),
+    "NY": (42.1657, -74.9481),
+    "OH": (40.3888, -82.7649),
+    "OK": (35.5653, -96.9289),
+    "OR": (44.5720, -122.0709),
+    "PA": (40.5908, -77.2098),
+    "PR": (18.2208, -66.5901),
+    "RI": (41.6809, -71.5118),
+    "SC": (33.8569, -80.9450),
+    "SD": (44.2998, -99.4388),
+    "TN": (35.7478, -86.6923),
+    "TX": (31.0545, -97.5635),
+    "UT": (40.1500, -111.8624),
+    "VA": (37.7693, -78.1700),
+    "VT": (44.0459, -72.7107),
+    "WA": (47.4009, -121.4905),
+    "WI": (44.2685, -89.6165),
+    "WV": (38.4912, -80.9545),
+    "WY": (42.7560, -107.3025),
+}
 
 
 def app_connection() -> sqlite3.Connection:
@@ -88,15 +148,22 @@ def database_status(conn: sqlite3.Connection) -> dict[str, Any]:
         "job_travel_requirements": _count(conn, "job_travel_requirements"),
         "job_application_options": _count(conn, "job_application_options"),
         "saved_jobs": _count(conn, "saved_jobs"),
+        "applications": _count(conn, "applications"),
+        "application_events": _count(conn, "application_events"),
+        "resume_versions": _count(conn, "resume_versions"),
         "job_feedback": _count(conn, "job_feedback"),
         "recommendation_runs": _count(conn, "recommendation_runs"),
         "job_recommendations": _count(conn, "job_recommendations"),
+        "repost_runs": _count(conn, "repost_runs"),
+        "repost_groups": _count(conn, "repost_groups"),
+        "repost_group_members": _count(conn, "repost_group_members"),
         "alerts": _count(conn, "alerts"),
         "open_alerts": _scalar(conn, "SELECT COUNT(*) FROM alerts WHERE status != 'dismissed'"),
         "opm_records": _count(conn, "opm_workforce_records"),
         "last_import": _scalar(conn, "SELECT MAX(completed_at) FROM import_manifests"),
         "last_api_request": _scalar(conn, "SELECT MAX(request_time) FROM raw_api_responses"),
         "last_alert_run": _scalar(conn, "SELECT MAX(completed_at) FROM alert_runs"),
+        "last_repost_run": _scalar(conn, "SELECT MAX(completed_at) FROM repost_runs"),
     }
 
 
@@ -291,6 +358,154 @@ def saved_jobs_dataframe(conn: sqlite3.Connection) -> pd.DataFrame:
     )
 
 
+def applications_dataframe(conn: sqlite3.Connection) -> pd.DataFrame:
+    return pd.read_sql_query(
+        """
+        SELECT a.id AS application_id, a.job_id, a.application_status,
+               a.resume_version, a.usajobs_application_id, a.application_url, a.submitted_at,
+               a.referred_at, a.interview_at, a.outcome, a.next_action,
+               a.next_action_due, a.contact_name, a.contact_email, a.notes,
+               j.title, j.agency, j.agency_code, j.series, j.grade_high,
+               j.close_date, j.url
+        FROM applications a
+        JOIN jobs j ON j.id = a.job_id
+        ORDER BY
+            a.next_action_due IS NULL,
+            a.next_action_due ASC,
+            a.updated_at DESC
+        """,
+        conn,
+    )
+
+
+def resume_versions_dataframe(conn: sqlite3.Connection, *, active_only: bool = False) -> pd.DataFrame:
+    where = "WHERE active = 1" if active_only else ""
+    return pd.read_sql_query(
+        f"""
+        SELECT id, label, file_name, file_path, version_date, target_series,
+               target_grade, notes, active, created_at, updated_at
+        FROM resume_versions
+        {where}
+        ORDER BY active DESC, version_date DESC, updated_at DESC, label
+        """,
+        conn,
+    )
+
+
+def application_events_dataframe(conn: sqlite3.Connection, application_id: int) -> pd.DataFrame:
+    return pd.read_sql_query(
+        """
+        SELECT id, event_type, event_date, notes, created_at
+        FROM application_events
+        WHERE application_id=?
+        ORDER BY COALESCE(event_date, created_at) DESC, id DESC
+        """,
+        conn,
+        params=[application_id],
+    )
+
+
+def upsert_application_workflow(
+    conn: sqlite3.Connection,
+    *,
+    job_id: int,
+    application_status: str,
+    resume_version: str | None = None,
+    usajobs_application_id: str | None = None,
+    application_url: str | None = None,
+    submitted_at: str | None = None,
+    referred_at: str | None = None,
+    interview_at: str | None = None,
+    outcome: str | None = None,
+    next_action: str | None = None,
+    next_action_due: str | None = None,
+    contact_name: str | None = None,
+    contact_email: str | None = None,
+    notes: str | None = None,
+    event_note: str | None = None,
+) -> int:
+    application_id = upsert_application(
+        conn,
+        job_id=job_id,
+        application_status=application_status,
+        resume_version=resume_version,
+        usajobs_application_id=usajobs_application_id,
+        application_url=application_url,
+        submitted_at=submitted_at,
+        referred_at=referred_at,
+        interview_at=interview_at,
+        outcome=outcome,
+        next_action=next_action,
+        next_action_due=next_action_due,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        notes=notes,
+    )
+    if application_status == "Submitted":
+        save_job(conn, job_id, status="Applied")
+    elif application_status in {"Referred", "Interview", "Selected", "Not selected"}:
+        save_job(conn, job_id, status=application_status)
+    if event_note:
+        add_application_event(
+            conn,
+            application_id=application_id,
+            event_type=application_status,
+            event_date=submitted_at or referred_at or interview_at,
+            notes=event_note,
+        )
+    return application_id
+
+
+def add_application_event_workflow(
+    conn: sqlite3.Connection,
+    *,
+    application_id: int,
+    event_type: str,
+    event_date: str | None = None,
+    notes: str | None = None,
+) -> int:
+    return add_application_event(
+        conn,
+        application_id=application_id,
+        event_type=event_type,
+        event_date=event_date,
+        notes=notes,
+    )
+
+
+def upsert_resume_version_workflow(
+    conn: sqlite3.Connection,
+    *,
+    label: str,
+    file_name: str | None = None,
+    file_path: str | None = None,
+    version_date: str | None = None,
+    target_series: str | None = None,
+    target_grade: str | None = None,
+    notes: str | None = None,
+    active: bool = True,
+) -> int:
+    return upsert_resume_version(
+        conn,
+        label=label,
+        file_name=file_name,
+        file_path=file_path,
+        version_date=version_date,
+        target_series=target_series,
+        target_grade=target_grade,
+        notes=notes,
+        active=active,
+    )
+
+
+def set_resume_version_active_workflow(
+    conn: sqlite3.Connection,
+    resume_version_id: int,
+    active: bool,
+) -> None:
+    set_resume_version_active(conn, resume_version_id, active)
+
+
 def notes_dataframe(conn: sqlite3.Connection, job_id: int) -> pd.DataFrame:
     return pd.read_sql_query(
         "SELECT note, created_at FROM job_notes WHERE job_id=? ORDER BY created_at DESC",
@@ -399,6 +614,52 @@ def dismiss_recommendation_workflow(conn: sqlite3.Connection, recommendation_id:
     dismiss_job_recommendation(conn, recommendation_id)
 
 
+def run_repost_detection(conn: sqlite3.Connection) -> int:
+    result = detect_reposts(conn)
+    return result.groups_created
+
+
+def repost_groups_dataframe(conn: sqlite3.Connection, *, latest_only: bool = True) -> pd.DataFrame:
+    where = ""
+    params: list[Any] = []
+    if latest_only:
+        where = "WHERE rg.run_id = (SELECT MAX(id) FROM repost_runs WHERE completed_at IS NOT NULL)"
+    return pd.read_sql_query(
+        f"""
+        SELECT rg.id AS group_id, rg.run_id, rg.group_title, rg.agency_key,
+               rg.series_key, rg.member_count, rg.confidence_score,
+               rg.group_signature, rg.evidence_json, rg.created_at
+        FROM repost_groups rg
+        {where}
+        ORDER BY rg.confidence_score DESC, rg.member_count DESC, rg.group_title
+        """,
+        conn,
+        params=params,
+    )
+
+
+def repost_group_members_dataframe(conn: sqlite3.Connection, group_id: int | None = None) -> pd.DataFrame:
+    where = ""
+    params: list[Any] = []
+    if group_id is not None:
+        where = "WHERE rgm.group_id = ?"
+        params.append(group_id)
+    return pd.read_sql_query(
+        f"""
+        SELECT rgm.group_id, rgm.job_id, rgm.role, rgm.title_similarity,
+               rgm.text_hash, j.title, j.agency, j.agency_code, j.series,
+               j.open_date, j.close_date, j.usajobs_control_number,
+               j.announcement_number, j.position_id, j.url
+        FROM repost_group_members rgm
+        JOIN jobs j ON j.id = rgm.job_id
+        {where}
+        ORDER BY rgm.group_id, rgm.role, j.open_date, j.id
+        """,
+        conn,
+        params=params,
+    )
+
+
 def trend_dataframe(conn: sqlite3.Connection, grain: str = "month") -> pd.DataFrame:
     date_expr = "substr(open_date, 1, 7)" if grain == "month" else "open_date"
     return pd.read_sql_query(
@@ -482,6 +743,200 @@ def state_counts(conn: sqlite3.Connection) -> pd.DataFrame:
         ORDER BY postings DESC
         """,
         conn,
+    )
+
+
+def work_location_points(
+    conn: sqlite3.Connection,
+    *,
+    include_multi_location: bool = True,
+    source: str | None = None,
+) -> pd.DataFrame:
+    where = [
+        "jl.latitude IS NOT NULL",
+        "jl.longitude IS NOT NULL",
+        "COALESCE(jl.remote_indicator, j.remote_status, 'unknown') != 'remote'",
+    ]
+    params: list[Any] = []
+    if source and source != "All":
+        where.append("j.source = ?")
+        params.append(source)
+    if not include_multi_location:
+        where.append(
+            """
+            j.id IN (
+                SELECT job_id
+                FROM job_locations
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                GROUP BY job_id
+                HAVING COUNT(*) = 1
+            )
+            """
+        )
+    return pd.read_sql_query(
+        f"""
+        WITH location_counts AS (
+            SELECT job_id, COUNT(*) AS location_count
+            FROM job_locations
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            GROUP BY job_id
+        ),
+        named_locations AS (
+            SELECT job_id, group_concat(location_label, ' | ') AS all_locations
+            FROM (
+                SELECT DISTINCT job_id,
+                    COALESCE(
+                        NULLIF(location_text, ''),
+                        NULLIF(TRIM(COALESCE(city, '') || ', ' || COALESCE(state, '')), ', '),
+                        NULLIF(state, ''),
+                        NULLIF(country, '')
+                    ) AS location_label
+                FROM job_locations
+            )
+            WHERE location_label IS NOT NULL
+            GROUP BY job_id
+        )
+        SELECT j.id AS job_id, j.title, j.agency, j.agency_code, j.series,
+               j.grade_high, j.remote_status, j.close_date, j.url,
+               jl.location_text, jl.city, jl.state, jl.country, jl.latitude,
+               jl.longitude, lc.location_count, jt.summary, jt.qualifications,
+               jt.specialized_experience, nl.all_locations,
+               CASE WHEN lc.location_count > 1 THEN 1 ELSE 0 END AS is_multi_location
+        FROM job_locations jl
+        JOIN jobs j ON j.id = jl.job_id
+        JOIN location_counts lc ON lc.job_id = jl.job_id
+        LEFT JOIN named_locations nl ON nl.job_id = j.id
+        LEFT JOIN job_text jt ON jt.job_id = j.id
+        WHERE {' AND '.join(where)}
+        ORDER BY j.close_date IS NULL, j.close_date ASC, j.title
+        LIMIT 5000
+        """,
+        conn,
+        params=params,
+    )
+
+
+def current_location_coverage(conn: sqlite3.Connection) -> dict[str, int]:
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS current_postings,
+            COUNT(
+                CASE WHEN COALESCE(j.remote_status, 'unknown') != 'remote'
+                      AND EXISTS (
+                    SELECT 1 FROM job_locations jl
+                    WHERE jl.job_id = j.id
+                      AND jl.latitude IS NOT NULL
+                      AND jl.longitude IS NOT NULL
+                ) THEN 1 END
+            ) AS mapped_postings,
+            COUNT(
+                CASE WHEN COALESCE(j.remote_status, 'unknown') != 'remote'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM job_locations jl
+                          WHERE jl.job_id = j.id
+                            AND jl.latitude IS NOT NULL
+                            AND jl.longitude IS NOT NULL
+                      )
+                THEN 1 END
+            ) AS unmapped_non_remote_postings,
+            COUNT(CASE WHEN COALESCE(j.remote_status, 'unknown') = 'remote' THEN 1 END) AS remote_postings
+        FROM jobs j
+        WHERE j.source = 'usajobs_search'
+        """
+    ).fetchone()
+    return {key: int(row[key] or 0) for key in row.keys()}
+
+
+def remote_anywhere_jobs(conn: sqlite3.Connection, limit: int = 500) -> pd.DataFrame:
+    return pd.read_sql_query(
+        """
+        SELECT id, title, agency, agency_code, series, grade_high, close_date, url
+        FROM jobs
+        WHERE remote_status = 'remote'
+        ORDER BY close_date IS NULL, close_date ASC, updated_at DESC
+        LIMIT ?
+        """,
+        conn,
+        params=[limit],
+    )
+
+
+def non_mappable_current_postings(
+    conn: sqlite3.Connection,
+    *,
+    bounds: dict[str, float] | None,
+    limit: int = 500,
+) -> pd.DataFrame:
+    if not bounds:
+        return pd.DataFrame()
+    rows = pd.read_sql_query(
+        """
+        WITH named_locations AS (
+            SELECT job_id, group_concat(location_label, ' | ') AS all_locations
+            FROM (
+                SELECT DISTINCT job_id,
+                    COALESCE(
+                        NULLIF(location_text, ''),
+                        NULLIF(TRIM(COALESCE(city, '') || ', ' || COALESCE(state, '')), ', '),
+                        NULLIF(state, ''),
+                        NULLIF(country, '')
+                    ) AS location_label
+                FROM job_locations
+            )
+            WHERE location_label IS NOT NULL
+            GROUP BY job_id
+        )
+        SELECT j.id, j.title, j.agency, j.agency_code, j.series, j.grade_high,
+               j.state, j.city, j.location_text, nl.all_locations, j.close_date, j.url
+        FROM jobs j
+        LEFT JOIN named_locations nl ON nl.job_id = j.id
+        WHERE j.source = 'usajobs_search'
+          AND COALESCE(j.remote_status, 'unknown') != 'remote'
+          AND NOT EXISTS (
+              SELECT 1 FROM job_locations jl
+              WHERE jl.job_id = j.id
+                AND jl.latitude IS NOT NULL
+                AND jl.longitude IS NOT NULL
+          )
+        ORDER BY j.close_date IS NULL, j.close_date ASC, j.updated_at DESC
+        LIMIT ?
+        """,
+        conn,
+        params=[limit],
+    )
+    if rows.empty:
+        return rows
+    visible_states = {
+        state
+        for state, (lat, lon) in STATE_CENTERS.items()
+        if _bounds_contains(bounds, lat, lon)
+    }
+    if not visible_states:
+        return rows.iloc[0:0]
+    return rows[rows["state"].isin(visible_states)]
+
+
+def multi_location_jobs(conn: sqlite3.Connection, limit: int = 500) -> pd.DataFrame:
+    return pd.read_sql_query(
+        """
+        WITH location_counts AS (
+            SELECT job_id, COUNT(*) AS location_count,
+                   group_concat(COALESCE(location_text, city || ', ' || state), ' | ') AS locations
+            FROM job_locations
+            WHERE COALESCE(remote_indicator, 'unknown') != 'remote'
+            GROUP BY job_id
+            HAVING COUNT(*) > 1
+        )
+        SELECT j.id, j.title, j.agency, j.agency_code, j.series, j.grade_high,
+               j.close_date, lc.location_count, lc.locations, j.url
+        FROM location_counts lc
+        JOIN jobs j ON j.id = lc.job_id
+        ORDER BY lc.location_count DESC, j.close_date IS NULL, j.close_date ASC
+        LIMIT ?
+        """,
+        conn,
+        params=[limit],
     )
 
 
@@ -709,3 +1164,15 @@ def _folder_size(path: Path) -> int:
     if not path.exists():
         return 0
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def _bounds_contains(bounds: dict[str, float], lat: float, lon: float) -> bool:
+    south = bounds["south"]
+    north = bounds["north"]
+    west = bounds["west"]
+    east = bounds["east"]
+    if lat < south or lat > north:
+        return False
+    if west <= east:
+        return west <= lon <= east
+    return lon >= west or lon <= east

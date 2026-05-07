@@ -197,3 +197,51 @@ Status: Accepted
 **Decision.** V1 imports OPM/FedScope CSV, TSV, Excel, or ZIP files through `src/opm_data.py` into `opm_workforce_records`. State maps expose an explicit source switch: "USAJOBS postings" or "OPM workforce", with separate OPM metrics for employment, accessions, and separations.
 
 **Consequences.** The app can ingest downloaded OPM files without adding a network downloader or scheduler. Charts remain plainly labeled, avoiding posting-versus-hire confusion. More precise OPM field mapping can be added as real source files reveal additional column variants.
+
+---
+
+## ADR-0016 - USAJOBS map favors real work-location coordinates
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** The user needs to zoom into actual work locations, not only see state totals. USAJOBS Search can return latitude and longitude inside `PositionLocation`; HistoricJoa commonly returns city/state/country. Neither endpoint should be treated as a reliable street-address source.
+
+**Decision.** Store `job_locations.latitude` and `job_locations.longitude` when observed. The USAJOBS map is a Folium-based GIS-style map with detailed street/imagery base layers. It uses only real coordinates for work-location points, lets the user include/exclude multi-location postings, and shows remote-anywhere plus current non-remote postings without coordinates in tables only after the user zooms into the map.
+
+**Consequences.** Current Search imports can produce zoomable point maps. Historic-only slices may still show mostly state-level maps until coordinate data is present. We avoid fake precision by not silently geocoding city/state-only records. Detailed behavior and reusable replication guidance live in `docs/MAP_FEATURE_SPEC.md`.
+
+---
+
+## ADR-0017 - Application tracker is manual and local
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** The user needs application follow-through: resume version used, submission/reference IDs, referral/interview/outcome dates, next actions, contacts, and notes. This can make the dashboard much more useful without crossing into automated application behavior.
+
+**Decision.** Add local `applications` and `application_events` tables with a Streamlit Application Tracker page. Tracker status can sync the matching `saved_jobs.status` value for Applied/Referred/Interview/Selected/Not selected, but all fields are user-entered or locally derived. The app does not submit applications, fill agency forms, or authenticate to USAJOBS.
+
+**Consequences.** The user gets a practical pipeline view and event history while preserving ADR-0008. Future resume-version management may link file labels or local metadata to these rows, but no resume parsing is required for this phase.
+
+---
+
+## ADR-0018 - Resume versions are metadata-only in V2
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** The application tracker needs to know which résumé package was used, but full résumé parsing belongs with the later AI/RAG work and should not be mixed into the local CRUD tracker.
+
+**Decision.** Add a `resume_versions` table and Streamlit page for labels, filenames, local paths, target series/grade, active/archive status, and notes. The Application Tracker can select an active label, but the app does not upload, parse, score, or rewrite résumé content in V2.
+
+**Consequences.** Application records become more consistent without introducing sensitive-document processing. V3 can later add résumé parsing against this metadata boundary.
+
+---
+
+## ADR-0019 - Repost detection is deterministic and review-oriented
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** Reposted announcements are useful career intelligence, but title reuse and recurring hiring actions can look similar without being the same administrative announcement.
+
+**Decision.** Add a local deterministic repost detector that blocks by agency and series, then compares normalized titles and long-form text hashes. Results are persisted in `repost_runs`, `repost_groups`, and `repost_group_members` with evidence JSON. Repost alerts use persisted groups when available.
+
+**Consequences.** The user gets auditable possible-repost groups without opaque AI or overclaiming certainty. Thresholds may need tuning as more real data accumulates.

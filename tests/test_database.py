@@ -8,6 +8,7 @@ import pytest
 from src.database import (
     add_job_note,
     add_job_tag,
+    add_application_event,
     complete_manifest,
     connect,
     create_recommendation_run,
@@ -23,8 +24,10 @@ from src.database import (
     save_job,
     start_manifest,
     update_manifest,
+    upsert_application,
     upsert_job,
     upsert_job_text,
+    upsert_resume_version,
 )
 
 
@@ -103,6 +106,12 @@ def test_init_schema_creates_core_tables(conn):
         "job_feedback",
         "recommendation_runs",
         "job_recommendations",
+        "repost_runs",
+        "repost_groups",
+        "repost_group_members",
+        "applications",
+        "application_events",
+        "resume_versions",
     }.issubset(tables)
     assert conn.execute("SELECT name FROM agency_codes WHERE code='HSCB'").fetchone()[0]
 
@@ -130,6 +139,8 @@ def test_upsert_job_populates_repeated_structure_tables(conn):
                     "city": "Chicago",
                     "state": "IL",
                     "country": "United States",
+                    "latitude": 41.8781,
+                    "longitude": -87.6298,
                 },
                 {
                     "location_text": "Denton, Texas",
@@ -166,6 +177,9 @@ def test_upsert_job_populates_repeated_structure_tables(conn):
 
     assert conn.execute("SELECT agency_code FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "HSCB"
     assert conn.execute("SELECT COUNT(*) FROM job_locations WHERE job_id=?", (job_id,)).fetchone()[0] == 2
+    location = conn.execute("SELECT latitude, longitude FROM job_locations WHERE job_id=? AND state='IL'", (job_id,)).fetchone()
+    assert location["latitude"] == 41.8781
+    assert location["longitude"] == -87.6298
     assert conn.execute("SELECT COUNT(*) FROM job_categories WHERE job_id=?", (job_id,)).fetchone()[0] == 2
     assert conn.execute("SELECT COUNT(*) FROM job_hiring_paths WHERE job_id=?", (job_id,)).fetchone()[0] == 2
     assert conn.execute("SELECT COUNT(*) FROM job_grades WHERE job_id=?", (job_id,)).fetchone()[0] == 1
@@ -177,6 +191,60 @@ def test_upsert_job_populates_repeated_structure_tables(conn):
     assert conn.execute("SELECT COUNT(*) FROM job_application_options WHERE job_id=?", (job_id,)).fetchone()[0] == 1
     agency = conn.execute("SELECT * FROM agency_codes WHERE code='HSCB'").fetchone()
     assert agency["department_code"] == "HS"
+
+
+def test_init_schema_backfills_search_coordinates_from_raw_json(conn, tmp_path):
+    raw_path = tmp_path / "search.json"
+    raw_path.write_text(
+        json.dumps(
+            {
+                "SearchResult": {
+                    "SearchResultItems": [
+                        {
+                            "MatchedObjectDescriptor": {
+                                "PositionID": "FEMA-JD-1",
+                                "PositionURI": "https://www.usajobs.gov/job/867603000",
+                                "PositionLocation": [
+                                    {
+                                        "CityName": "Round Hill, Virginia",
+                                        "CountryCode": "United States",
+                                        "CountrySubDivisionCode": "Virginia",
+                                        "Latitude": 39.135,
+                                        "LocationName": "Round Hill, Virginia",
+                                        "Longitude": -77.7689,
+                                    }
+                                ],
+                                "UserArea": {"Details": {"RemoteIndicator": False, "TeleworkEligible": False}},
+                            }
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    job_id = upsert_job(
+        conn,
+        _job(
+            source="usajobs_search",
+            position_id="FEMA-JD-1",
+            announcement_number="FEMA-JD-1",
+            usajobs_control_number="867603000",
+            raw_json_path=str(raw_path),
+            locations=[{"city": "Round Hill, Virginia", "state": "VA"}],
+        ),
+    )
+
+    init_schema(conn)
+
+    locations = conn.execute(
+        "SELECT city, state, latitude, longitude FROM job_locations WHERE job_id=?",
+        (job_id,),
+    ).fetchall()
+    assert len(locations) == 1
+    assert locations[0]["state"] == "VA"
+    assert locations[0]["latitude"] == 39.135
+    assert locations[0]["longitude"] == -77.7689
 
 
 def test_upsert_job_can_dedupe_by_control_number_when_ids_are_missing(conn):
@@ -392,6 +460,72 @@ def test_feedback_and_recommendation_tables(conn):
         record_job_feedback(conn, job_id=job_id, feedback_type="maybe", explanation="")
 
 
+def test_application_tracker_tables(conn):
+    job_id = upsert_job(conn, _job())
+    application_id = upsert_application(
+        conn,
+        job_id=job_id,
+        application_status="Submitted",
+        resume_version="fema-gs13-v2",
+        usajobs_application_id="APP-123",
+        submitted_at="2026-05-06",
+        next_action="Check referral status",
+        next_action_due="2026-05-20",
+        notes="Submitted with mitigation resume.",
+    )
+    same_id = upsert_application(
+        conn,
+        job_id=job_id,
+        application_status="Referred",
+        resume_version="fema-gs13-v2",
+        usajobs_application_id="APP-123",
+        submitted_at="2026-05-06",
+        referred_at="2026-05-12",
+    )
+    event_id = add_application_event(
+        conn,
+        application_id=application_id,
+        event_type="Referred",
+        event_date="2026-05-12",
+        notes="Best qualified referral.",
+    )
+
+    assert same_id == application_id
+    app = conn.execute("SELECT * FROM applications WHERE id=?", (application_id,)).fetchone()
+    event = conn.execute("SELECT * FROM application_events WHERE id=?", (event_id,)).fetchone()
+    assert app["application_status"] == "Referred"
+    assert app["referred_at"] == "2026-05-12"
+    assert event["event_type"] == "Referred"
+    assert event["notes"] == "Best qualified referral."
+
+
+def test_resume_version_manager_table(conn):
+    version_id = upsert_resume_version(
+        conn,
+        label="fema-gs13-v1",
+        file_name="Caleb_FEMA_GS13_v1.pdf",
+        file_path="C:/Users/caleb/resumes/Caleb_FEMA_GS13_v1.pdf",
+        version_date="2026-05-06",
+        target_series="0089",
+        target_grade="GS-13",
+        notes="Mitigation-heavy version.",
+    )
+    same_id = upsert_resume_version(
+        conn,
+        label="fema-gs13-v1",
+        file_name="Caleb_FEMA_GS13_v1b.pdf",
+        active=False,
+    )
+
+    row = conn.execute("SELECT * FROM resume_versions WHERE id=?", (version_id,)).fetchone()
+    assert same_id == version_id
+    assert row["file_name"] == "Caleb_FEMA_GS13_v1b.pdf"
+    assert row["active"] == 0
+
+    with pytest.raises(ValueError, match="label"):
+        upsert_resume_version(conn, label="")
+
+
 def test_child_rows_cascade_when_job_is_deleted(conn):
     job_id = upsert_job(
         conn,
@@ -443,6 +577,9 @@ def test_child_rows_cascade_when_job_is_deleted(conn):
     assert conn.execute("SELECT COUNT(*) FROM job_feedback").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM recommendation_runs").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM job_recommendations").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM repost_group_members").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM application_events").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM saved_jobs").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM job_notes").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM job_tags").fetchone()[0] == 0

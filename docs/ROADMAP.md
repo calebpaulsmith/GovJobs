@@ -62,7 +62,7 @@ Files: `src/usajobs_current_api.py`, `src/usajobs_historic_api.py`, `src/usajobs
 
 ## Phase 4 — First Streamlit UI
 
-Files: `app.py`, `pages/1_Search_Jobs.py`, `pages/2_Saved_Jobs.py`, `pages/3_Historical_Trends.py`, `pages/4_State_Map.py`, `pages/5_Scorecards.py`, `pages/7_Data_Admin.py`, `pages/8_Settings.py`. (Application Tracker — `pages/6_Application_Tracker.py` — comes in V2.)
+Files: `app.py`, `pages/1_Search_Jobs.py`, `pages/2_Saved_Jobs.py`, `pages/3_Historical_Trends.py`, `pages/4_State_Map.py`, `pages/5_Scorecards.py`, `pages/7_Data_Admin.py`, `pages/8_Settings.py`. V2 now also adds `pages/6_Application_Tracker.py`.
 
 - [x] Home shows DB status + freshness.
 - [x] Current search with filters + result table + save / tag / note / status.
@@ -140,6 +140,8 @@ Files: `src/recommendations.py`, `src/ui_data.py`, `src/database.py`, `pages/1_S
 - [x] OPM file ingestion → `opm_workforce_records`.
 - [x] OPM-derived map / chart with explicit "workforce" label.
 - [x] Multi-location and remote postings handled separately on the state map.
+- [x] Course correction: USAJOBS map supports a GIS-style Folium map with detailed street/imagery base layers, zoomable work-location points when latitude/longitude are present, a control to include/exclude multi-location postings, and zoom-scoped tables for current postings that cannot be mapped plus remote-anywhere postings.
+- [x] Map behavior captured as a reusable feature sheet in `docs/MAP_FEATURE_SPEC.md`.
 
 **Exit:** the user can switch a chart between USAJOBS postings and OPM workforce and see the source label change. **Done.**
 
@@ -147,15 +149,17 @@ Files: `src/recommendations.py`, `src/ui_data.py`, `src/database.py`, `pages/1_S
 
 ## Phase 8 — Exports
 
-- [ ] CSV / Excel export for saved jobs, scorecards, alerts.
+- [x] CSV / Excel export for saved jobs, scorecards, alerts.
+
+**Exit:** saved jobs, scorecards, and alerts can be downloaded as CSV or Excel from the app. **Done.**
 
 ---
 
 ## Version 2
 
-- [ ] Application Tracker (`pages/6_Application_Tracker.py`).
-- [ ] Resume version manager.
-- [ ] Repost detector.
+- [x] Application Tracker (`pages/6_Application_Tracker.py`).
+- [x] Resume version manager (`pages/9_Resume_Versions.py`).
+- [x] Repost detector (`pages/10_Repost_Detector.py`).
 - [ ] Closing-window analytics.
 - [ ] Postings-vs-accessions comparison.
 - [ ] Locality salary normalization.

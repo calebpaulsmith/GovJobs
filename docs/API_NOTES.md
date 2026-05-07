@@ -38,6 +38,7 @@ Reference: <https://developer.usajobs.gov/api-reference/get-api-search>
 - `ResultsPerPage` max ≈ 500. Confirm during recon.
 - Pagination is page-based via `Page=N`.
 - Use for the live search UI and for daily "new postings since last run" alerts.
+- `PositionLocation` can include location name, city/subdivision, latitude, and longitude. Store coordinates when present so the map can zoom to actual work-location points. Do not assume a street address exists.
 
 #### 2. Historic JOAs API — `/api/HistoricJoa`
 
@@ -50,6 +51,7 @@ Reference: <https://developer.usajobs.gov/API-Reference/GET-api-HistoricJoa>
 - Live check on 2026-05-05: `HiringAgencyCodes=HSCB` returned `26,479` FEMA records.
 - Recon must confirm: total available records, earliest date, paging mechanism (cursor vs. page), per-request maximum, and rate-limit headers.
 - Use for trend charts, scorecards, the state map, and the historical archive.
+- `positionLocations` commonly provide city/state/country. Treat these as city/state work locations unless latitude/longitude are observed in the payload; do not geocode or invent a point silently.
 
 #### 3. Announcement Text API — `/api/historicjoa/announcementtext`
 

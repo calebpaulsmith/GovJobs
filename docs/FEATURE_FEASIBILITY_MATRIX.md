@@ -18,14 +18,14 @@ Legend:
 | Match score (rule-based) | jobs (+ optional job_text) | scoring rules | high | Transparent, deterministic. |
 | Trend chart: postings over time | Historic JOA backfill | Recon mode | medium | "Medium" only because the historic pull may take time; the chart itself is trivial. |
 | Trend chart: postings by agency / series / grade / state / remote share / salary | Historic JOA backfill | Recon mode | medium | Same caveat. |
-| State map of postings | Historic JOA + state normalization | Reliable state field | medium | Multi-location and remote postings handled separately to avoid distortion. |
+| GIS map of current postings | Search API `job_locations` with latitude/longitude | Coordinate presence varies by source row | high | Implemented with Folium street/imagery layers. Multi-location postings can be filtered out; remote-anywhere and current unmapped rows stay in zoom-scoped tables instead of being plotted falsely. |
 | State map of OPM workforce | OPM workforce dataset | OPM ETL | medium | Map labels source explicitly. |
 | Scorecards (hottest agencies / series / locations / grades) | Historic + current | Backfill present | medium | Hotness formula in `docs/PRODUCT_SPEC.md`. |
 | Local alerts (saved-search match, high score, closing soon, reposted) | jobs + saved_searches + match_scores | Email/push deferred | high | Implemented as manual in-app alerts with CSV export; no email in V1. |
 | Data Admin page | manifests + raw_api_responses | DB | high | Surfaces what already exists. |
 | Resumable historic import | manifests + raw responses | Pagination contract | high | Manifest-driven. |
 | Announcement Text — selective import | AnnouncementText API | Selection criteria | high | Pulled only for saved / high-score / sample jobs. |
-| Excel / CSV export | Pandas + openpyxl | None | high | Trivial once data is in DB. |
+| Excel / CSV export | Pandas + openpyxl | None | high | Implemented for saved jobs, scorecards, alerts, and the application tracker. |
 
 ---
 
@@ -33,9 +33,9 @@ Legend:
 
 | Feature | Data needed | Blocker | Feasibility | Notes |
 | --- | --- | --- | --- | --- |
-| Application Tracker | saved_jobs + applications table | UI design | high | Add `pages/6_Application_Tracker.py`. |
-| Resume Version Manager | local file storage | File-storage decisions | medium | Stores filenames + versions only, no parsing. |
-| Repost Detector | jobs + simple text-similarity | text similarity tuning | medium | MinHash / Jaccard on title+series+text-hash. |
+| Application Tracker | saved_jobs + applications + application_events | None | high | Implemented in `pages/6_Application_Tracker.py`; local/manual only, no application submission. |
+| Resume Version Manager | resume_versions | None | high | Implemented as metadata-only labels, filenames, paths, target series/grade, notes, active/archive status. No parsing. |
+| Repost Detector | jobs + job_text + repost tables | tuning thresholds over real data | high | Implemented as deterministic agency/series blocking with title similarity and text-hash evidence; persists runs/groups/members and feeds repost alerts. |
 | Closing-window analytics | Historic JOA with reliable close_date | Historic backfill | medium | Median-days-open by series/grade. |
 | Postings vs. accessions comparison | USAJOBS Historic + OPM accessions | Joinable agency / series codes | medium | Always footnoted: postings ≠ hires. |
 | Locality salary normalization | jobs + GS locality table | Static GS locality lookup | high | Lookup table maintained in `data/processed/`. |

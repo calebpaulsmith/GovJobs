@@ -14,6 +14,62 @@ from pathlib import Path
 from typing import Any
 
 
+STATE_NAME_TO_CODE = {
+    "Alabama": "AL",
+    "Alaska": "AK",
+    "Arizona": "AZ",
+    "Arkansas": "AR",
+    "California": "CA",
+    "Colorado": "CO",
+    "Connecticut": "CT",
+    "Delaware": "DE",
+    "District of Columbia": "DC",
+    "Florida": "FL",
+    "Georgia": "GA",
+    "Hawaii": "HI",
+    "Idaho": "ID",
+    "Illinois": "IL",
+    "Indiana": "IN",
+    "Iowa": "IA",
+    "Kansas": "KS",
+    "Kentucky": "KY",
+    "Louisiana": "LA",
+    "Maine": "ME",
+    "Maryland": "MD",
+    "Massachusetts": "MA",
+    "Michigan": "MI",
+    "Minnesota": "MN",
+    "Mississippi": "MS",
+    "Missouri": "MO",
+    "Montana": "MT",
+    "Nebraska": "NE",
+    "Nevada": "NV",
+    "New Hampshire": "NH",
+    "New Jersey": "NJ",
+    "New Mexico": "NM",
+    "New York": "NY",
+    "North Carolina": "NC",
+    "North Dakota": "ND",
+    "Ohio": "OH",
+    "Oklahoma": "OK",
+    "Oregon": "OR",
+    "Pennsylvania": "PA",
+    "Puerto Rico": "PR",
+    "Rhode Island": "RI",
+    "South Carolina": "SC",
+    "South Dakota": "SD",
+    "Tennessee": "TN",
+    "Texas": "TX",
+    "Utah": "UT",
+    "Vermont": "VT",
+    "Virginia": "VA",
+    "Washington": "WA",
+    "West Virginia": "WV",
+    "Wisconsin": "WI",
+    "Wyoming": "WY",
+}
+
+
 JOB_COLUMNS = (
     "source",
     "usajobs_control_number",
@@ -187,6 +243,8 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             state TEXT,
             country TEXT,
             location_code TEXT,
+            latitude REAL,
+            longitude REAL,
             remote_indicator TEXT,
             FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
         );
@@ -410,6 +468,61 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL UNIQUE,
+            application_status TEXT NOT NULL DEFAULT 'Draft',
+            resume_version TEXT,
+            usajobs_application_id TEXT,
+            application_url TEXT,
+            submitted_at TEXT,
+            referred_at TEXT,
+            interview_at TEXT,
+            outcome TEXT,
+            next_action TEXT,
+            next_action_due TEXT,
+            contact_name TEXT,
+            contact_email TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_applications_status
+            ON applications(application_status);
+        CREATE INDEX IF NOT EXISTS idx_applications_next_action_due
+            ON applications(next_action_due);
+
+        CREATE TABLE IF NOT EXISTS application_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            application_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            event_date TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(application_id) REFERENCES applications(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_application_events_application_id
+            ON application_events(application_id);
+
+        CREATE TABLE IF NOT EXISTS resume_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL UNIQUE,
+            file_name TEXT,
+            file_path TEXT,
+            version_date TEXT,
+            target_series TEXT,
+            target_grade TEXT,
+            notes TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_resume_versions_active
+            ON resume_versions(active);
+
         CREATE TABLE IF NOT EXISTS job_notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
@@ -493,6 +606,48 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             ON job_recommendations(run_id, score DESC);
         CREATE INDEX IF NOT EXISTS idx_job_recommendations_job_id
             ON job_recommendations(job_id);
+
+        CREATE TABLE IF NOT EXISTS repost_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            groups_created INTEGER DEFAULT 0,
+            members_created INTEGER DEFAULT 0,
+            params_json TEXT NOT NULL DEFAULT '{}',
+            notes TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS repost_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            group_signature TEXT NOT NULL,
+            group_title TEXT,
+            agency_key TEXT,
+            series_key TEXT,
+            member_count INTEGER NOT NULL,
+            confidence_score REAL NOT NULL,
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES repost_runs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_repost_groups_run_id
+            ON repost_groups(run_id);
+        CREATE INDEX IF NOT EXISTS idx_repost_groups_signature
+            ON repost_groups(group_signature);
+
+        CREATE TABLE IF NOT EXISTS repost_group_members (
+            group_id INTEGER NOT NULL,
+            job_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'member',
+            title_similarity REAL,
+            text_hash TEXT,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(group_id, job_id),
+            FOREIGN KEY(group_id) REFERENCES repost_groups(id) ON DELETE CASCADE,
+            FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_repost_group_members_job_id
+            ON repost_group_members(job_id);
 
         CREATE TABLE IF NOT EXISTS alerts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -579,11 +734,14 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     )
     _ensure_column(conn, "jobs", "agency_code", "TEXT")
     _ensure_column(conn, "jobs", "department_code", "TEXT")
+    _ensure_column(conn, "job_locations", "latitude", "REAL")
+    _ensure_column(conn, "job_locations", "longitude", "REAL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_agency_code ON jobs(agency_code)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_department_code ON jobs(department_code)")
     _seed_core_codes(conn)
     _backfill_child_tables_from_jobs(conn)
-    _set_meta(conn, "schema_version", "6")
+    _backfill_search_locations_from_raw(conn)
+    _set_meta(conn, "schema_version", "9")
     conn.commit()
     return conn
 
@@ -672,9 +830,10 @@ def replace_job_locations(
     conn.executemany(
         """
         INSERT INTO job_locations (
-            job_id, location_text, city, state, country, location_code, remote_indicator
+            job_id, location_text, city, state, country, location_code, latitude, longitude,
+            remote_indicator
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -684,10 +843,23 @@ def replace_job_locations(
                 _clean(row.get("state")),
                 _clean(row.get("country")),
                 _clean(row.get("location_code")),
+                _float_or_none(row.get("latitude")),
+                _float_or_none(row.get("longitude")),
                 _clean(row.get("remote_indicator")),
             )
             for row in locations
-            if any(row.get(key) for key in ("location_text", "city", "state", "country", "location_code"))
+            if any(
+                row.get(key)
+                for key in (
+                    "location_text",
+                    "city",
+                    "state",
+                    "country",
+                    "location_code",
+                    "latitude",
+                    "longitude",
+                )
+            )
         ],
     )
 
@@ -1316,6 +1488,164 @@ def save_job(
     conn.commit()
 
 
+def upsert_application(
+    conn: sqlite3.Connection,
+    *,
+    job_id: int,
+    application_status: str = "Draft",
+    resume_version: str | None = None,
+    usajobs_application_id: str | None = None,
+    application_url: str | None = None,
+    submitted_at: str | None = None,
+    referred_at: str | None = None,
+    interview_at: str | None = None,
+    outcome: str | None = None,
+    next_action: str | None = None,
+    next_action_due: str | None = None,
+    contact_name: str | None = None,
+    contact_email: str | None = None,
+    notes: str | None = None,
+) -> int:
+    _require_job(conn, job_id)
+    now = utc_now()
+    cur = conn.execute(
+        """
+        INSERT INTO applications (
+            job_id, application_status, resume_version, usajobs_application_id,
+            application_url, submitted_at, referred_at, interview_at, outcome,
+            next_action, next_action_due, contact_name, contact_email, notes,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(job_id) DO UPDATE SET
+            application_status=excluded.application_status,
+            resume_version=excluded.resume_version,
+            usajobs_application_id=excluded.usajobs_application_id,
+            application_url=excluded.application_url,
+            submitted_at=excluded.submitted_at,
+            referred_at=excluded.referred_at,
+            interview_at=excluded.interview_at,
+            outcome=excluded.outcome,
+            next_action=excluded.next_action,
+            next_action_due=excluded.next_action_due,
+            contact_name=excluded.contact_name,
+            contact_email=excluded.contact_email,
+            notes=excluded.notes,
+            updated_at=excluded.updated_at
+        RETURNING id
+        """,
+        (
+            job_id,
+            _clean(application_status) or "Draft",
+            _clean(resume_version),
+            _clean(usajobs_application_id),
+            _clean(application_url),
+            _clean(submitted_at),
+            _clean(referred_at),
+            _clean(interview_at),
+            _clean(outcome),
+            _clean(next_action),
+            _clean(next_action_due),
+            _clean(contact_name),
+            _clean(contact_email),
+            _clean(notes),
+            now,
+            now,
+        ),
+    )
+    application_id = int(cur.fetchone()["id"])
+    conn.commit()
+    return application_id
+
+
+def add_application_event(
+    conn: sqlite3.Connection,
+    *,
+    application_id: int,
+    event_type: str,
+    event_date: str | None = None,
+    notes: str | None = None,
+) -> int:
+    row = conn.execute("SELECT id FROM applications WHERE id=?", (application_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"application_id does not exist: {application_id}")
+    cur = conn.execute(
+        """
+        INSERT INTO application_events (application_id, event_type, event_date, notes, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            application_id,
+            _clean(event_type) or "note",
+            _clean(event_date),
+            _clean(notes),
+            utc_now(),
+        ),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def upsert_resume_version(
+    conn: sqlite3.Connection,
+    *,
+    label: str,
+    file_name: str | None = None,
+    file_path: str | None = None,
+    version_date: str | None = None,
+    target_series: str | None = None,
+    target_grade: str | None = None,
+    notes: str | None = None,
+    active: bool = True,
+) -> int:
+    clean_label = _clean(label)
+    if not clean_label:
+        raise ValueError("resume version label is required")
+    now = utc_now()
+    cur = conn.execute(
+        """
+        INSERT INTO resume_versions (
+            label, file_name, file_path, version_date, target_series,
+            target_grade, notes, active, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(label) DO UPDATE SET
+            file_name=excluded.file_name,
+            file_path=excluded.file_path,
+            version_date=excluded.version_date,
+            target_series=excluded.target_series,
+            target_grade=excluded.target_grade,
+            notes=excluded.notes,
+            active=excluded.active,
+            updated_at=excluded.updated_at
+        RETURNING id
+        """,
+        (
+            clean_label,
+            _clean(file_name),
+            _clean(file_path),
+            _clean(version_date),
+            _clean(target_series),
+            _clean(target_grade),
+            _clean(notes),
+            1 if active else 0,
+            now,
+            now,
+        ),
+    )
+    row = cur.fetchone()
+    conn.commit()
+    return int(row["id"])
+
+
+def set_resume_version_active(conn: sqlite3.Connection, resume_version_id: int, active: bool) -> None:
+    conn.execute(
+        "UPDATE resume_versions SET active=?, updated_at=? WHERE id=?",
+        (1 if active else 0, utc_now(), resume_version_id),
+    )
+    conn.commit()
+
+
 def add_job_note(conn: sqlite3.Connection, job_id: int, note: str) -> int:
     _require_job(conn, job_id)
     now = utc_now()
@@ -1940,6 +2270,120 @@ def _backfill_child_tables_from_jobs(conn: sqlite3.Connection) -> None:
                     for idx, part in enumerate(_split_text_items(text))
                 ],
             )
+
+
+def _backfill_search_locations_from_raw(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT id, position_id, usajobs_control_number, raw_json_path
+        FROM jobs
+        WHERE source = 'usajobs_search'
+          AND raw_json_path IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM job_locations jl
+              WHERE jl.job_id = jobs.id
+                AND jl.latitude IS NOT NULL
+                AND jl.longitude IS NOT NULL
+          )
+        """
+    ).fetchall()
+    for row in rows:
+        raw_path = Path(row["raw_json_path"])
+        if not raw_path.exists():
+            continue
+        try:
+            payload = json.loads(raw_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        descriptor = _find_search_descriptor(
+            payload,
+            position_id=row["position_id"],
+            control_number=row["usajobs_control_number"],
+        )
+        if not descriptor:
+            continue
+        locations = _search_descriptor_locations(descriptor)
+        if locations:
+            replace_job_locations(conn, int(row["id"]), locations)
+
+
+def _find_search_descriptor(
+    payload: Mapping[str, Any],
+    *,
+    position_id: str | None,
+    control_number: str | None,
+) -> Mapping[str, Any] | None:
+    items = payload.get("SearchResult", {}).get("SearchResultItems") or payload.get("SearchResultItems") or []
+    for item in _listify(items):
+        descriptor = item.get("MatchedObjectDescriptor") if isinstance(item, Mapping) else None
+        if not isinstance(descriptor, Mapping):
+            continue
+        if position_id and _clean(descriptor.get("PositionID")) == position_id:
+            return descriptor
+        if control_number and _position_uri_control_number(descriptor.get("PositionURI")) == control_number:
+            return descriptor
+    return None
+
+
+def _search_descriptor_locations(descriptor: Mapping[str, Any]) -> list[dict[str, Any]]:
+    details = descriptor.get("UserArea", {}).get("Details", {})
+    rows: list[dict[str, Any]] = []
+    for location in _listify(descriptor.get("PositionLocation")):
+        if not isinstance(location, Mapping):
+            continue
+        rows.append(
+            {
+                "location_text": _clean(
+                    location.get("LocationName")
+                    or location.get("CityName")
+                    or descriptor.get("PositionLocationDisplay")
+                ),
+                "city": _clean(location.get("CityName") or location.get("LocationName")),
+                "state": _state_code(location.get("CountrySubDivisionCode")),
+                "country": _clean(location.get("CountryCode")),
+                "latitude": location.get("Latitude") or location.get("PositionLocationLatitude"),
+                "longitude": location.get("Longitude") or location.get("PositionLocationLongitude"),
+                "remote_indicator": _search_remote_status(
+                    details.get("RemoteIndicator"),
+                    details.get("TeleworkEligible"),
+                ),
+            }
+        )
+    return rows
+
+
+def _position_uri_control_number(value: Any) -> str | None:
+    text = _clean(value)
+    if not text:
+        return None
+    match = re.search(r"/job/(\d+)", text)
+    return match.group(1) if match else None
+
+
+def _state_code(value: Any) -> str | None:
+    text = _clean(value)
+    if not text:
+        return None
+    if len(text) == 2:
+        return text.upper()
+    return STATE_NAME_TO_CODE.get(text)
+
+
+def _search_remote_status(remote_indicator: Any, telework_eligible: Any) -> str:
+    if str(remote_indicator).strip().lower() in {"true", "1", "yes", "y"}:
+        return "remote"
+    if str(telework_eligible).strip().lower() in {"true", "1", "yes", "y"}:
+        return "hybrid"
+    return "onsite"
+
+
+def _listify(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 def _set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:

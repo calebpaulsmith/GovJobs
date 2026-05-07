@@ -24,6 +24,11 @@ A local-first Python/Streamlit/SQLite dashboard for USAJOBS posting data and OPM
 - Phase 6 local alerts are implemented in `src/alerts.py`; alerts are generated manually in the app, deduped in SQLite, visible in Data Admin and Saved Jobs, and exportable as CSV. Email/push alerts are out of scope for V1.
 - Phase 6.5 preference feedback and explainable similar-job recommendations are implemented in `src/recommendations.py`, backed by `job_feedback`, `recommendation_runs`, and `job_recommendations`.
 - Phase 7 OPM file ingestion and map source switching are implemented in `src/opm_data.py`, `pages/7_Data_Admin.py`, and `pages/4_State_Map.py`. OPM data is file-based and must stay labeled as workforce/accessions/separations, not postings.
+- Phase 8 CSV/Excel exports are implemented in `src/exports.py` and exposed for saved jobs, scorecards, and alerts.
+- V2 Application Tracker is implemented in `pages/6_Application_Tracker.py`, backed by `applications` and `application_events`. It is tracking-only and must never automate applications.
+- V2 Resume Versions is implemented in `pages/9_Resume_Versions.py`, backed by `resume_versions`. It stores metadata only; do not parse or copy resume contents in V2.
+- V2 Repost Detector is implemented in `pages/10_Repost_Detector.py`, backed by `repost_runs`, `repost_groups`, and `repost_group_members`. Treat groups as review evidence, not administrative certainty.
+- Map behavior is specified in `docs/MAP_FEATURE_SPEC.md`; use that as the source of truth before changing `pages/4_State_Map.py`.
 - USAJOBS field mapping lives in `src/usajobs_normalize.py`. Do not duplicate normalization logic inside UI pages or importers.
 - Preference learning / recommendations must remain inspectable: user feedback accepts both a structured signal (`liked`, `disliked`, `more_like_this`, `less_like_this`) and a short free-text explanation for later review. Suggested jobs must always expose "why suggested" factors; do not add opaque recommendations.
 
@@ -63,8 +68,8 @@ A local-first Python/Streamlit/SQLite dashboard for USAJOBS posting data and OPM
 8. `src/alerts.py` + tests. **Done for local/manual V1 alerts; no email yet.**
 9. Recommendation feedback/similarity. **Done for deterministic local recommendations; embeddings remain V3.**
 10. OPM importer and map source switch. **Done for file import and state-level workforce/accession/separation maps.**
-11. Maps, scorecards, exports.
-12. (V2/V3) Application tracker, repost detector, RAG / vector search, resume-to-announcement matching.
+11. Maps, scorecards, exports. **Done for CSV/Excel exports of saved jobs, scorecards, and alerts.**
+12. V2 tracking/intelligence: Application Tracker, Resume Versions, and Repost Detector are implemented. Remaining V2 starts with closing-window analytics; RAG/vector matching remains V3.
 
 Do not skip ahead.
 

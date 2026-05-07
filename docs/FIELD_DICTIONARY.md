@@ -56,7 +56,7 @@ Occupational series can repeat on some JOAs. The `job_categories` child table pr
 
 A JOA may list multiple cities and states. In V1 we store a representative `state` for the row plus the original `location_text`. Multi-location handling for the map is described in `docs/PRODUCT_SPEC.md` §State map.
 
-SIF and observed REST data both show location as a repeated structure. The `job_locations` child table preserves every parsed location for filtering, maps, remote/hybrid handling, and regional analytics.
+SIF and observed REST data both show location as a repeated structure. The `job_locations` child table preserves every parsed location for filtering, maps, remote/hybrid handling, and regional analytics. Current Search rows may include `latitude` and `longitude`; HistoricJoa rows are usually city/state/country only. The app maps work-location points only when coordinates are present, keeps remote-anywhere postings in a separate table, and shows current non-remote postings without coordinates in a zoom-scoped unmapped table.
 
 ## Schedule and tenure
 
@@ -156,6 +156,21 @@ V1 alerts are local and manually generated from the app. They do not send email 
 
 ---
 
+## Repost detector (`repost_runs`, `repost_groups`, `repost_group_members`)
+
+| Field / table | Definition |
+| --- | --- |
+| `repost_runs` | One manual run of the deterministic repost detector. Stores thresholds and run totals. |
+| `repost_groups.group_signature` | Signature built from agency key, series key, and normalized group titles. Used for alert dedupe. |
+| `repost_groups.confidence_score` | Average title-similarity score across grouped postings. This is review evidence, not a final administrative finding. |
+| `repost_groups.evidence_json` | Member job IDs, control numbers, titles, text hashes, dates, and algorithm metadata. |
+| `repost_group_members.role` | `original` for the earliest observed posting in the group; `possible_repost` for later postings. |
+| `repost_group_members.text_hash` | Hash of normalized long-form text when enough text exists to compare. |
+
+The detector blocks by agency and occupational series, then compares normalized titles and text hashes. Repost alerts should use persisted detector groups when a detector run exists.
+
+---
+
 ## Preference feedback and recommendations
 
 | Field / table | Definition |
@@ -176,6 +191,35 @@ Every recommendation must be inspectable. Do not show a suggested job without a 
 Allowed enum values, in suggested order:
 
 `New` → `Interested` → `Maybe` → `Applied` → `Referred` → `Interview` → `Selected` / `Not selected` → `Skip` → `Archived`.
+
+---
+
+## Application tracker (`applications`, `application_events`)
+
+| Field | Definition |
+| --- | --- |
+| `applications.application_status` | Local tracking state: Draft, Submitted, Referred, Interview, Selected, Not selected, Withdrawn, or Archived. |
+| `resume_version` | User-entered label for the resume/application package used. |
+| `usajobs_application_id` | USAJOBS or agency application/reference identifier, when the user has one. |
+| `submitted_at`, `referred_at`, `interview_at` | ISO dates for key application milestones. |
+| `next_action`, `next_action_due` | Local reminder fields for the user's next manual step. |
+| `application_events` | Timestamped local history rows for status changes, notes, interviews, referrals, and outcomes. |
+
+The tracker is local and manual. It never submits an application, fills forms, or authenticates to USAJOBS.
+
+---
+
+## Resume versions (`resume_versions`)
+
+| Field | Definition |
+| --- | --- |
+| `label` | Unique user-facing version label, such as `fema-gs13-mitigation-v3`. |
+| `file_name`, `file_path` | Local filename/path references. The app does not upload, parse, or copy resume content. |
+| `version_date` | User-entered date for the version. |
+| `target_series`, `target_grade` | Optional intended use, such as `0089` or `GS-13`. |
+| `active` | Active versions appear in the Application Tracker resume-version selector; archived versions remain in history. |
+
+Resume versions are metadata only in V2. Actual resume-to-announcement parsing remains V3.
 
 ---
 

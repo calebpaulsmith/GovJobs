@@ -33,6 +33,7 @@ A posting is *not* a hire. Multiple postings can lead to one hire; one posting c
 - Prefer structured filters over broad keyword searches. The app should guide the user toward agency codes, department codes, occupational series, grade/pay plan, location, remote status, dates, hiring paths, travel, security clearance, and supervisory status.
 - Keep keyword search available, but treat it as a secondary text filter for discovery and narrowing.
 - Preserve repeated structures from the source data. A job can have multiple locations, series, hiring paths, and required documents; the UI should not pretend those are always single values.
+- The map should behave like a lightweight GIS review map, not only a dashboard chart. It should use detailed street/imagery base layers, support pan/zoom, and show actual work-location points where coordinates exist. Current Search locations can include latitude/longitude and should render as zoomable points. HistoricJoa commonly provides city/state/country without street address or coordinates, so historical rows do not need exact point placement. `docs/MAP_FEATURE_SPEC.md` is the detailed reusable feature sheet for map behavior.
 - Preference learning must be explainable. When the user marks a job as liked/disliked or "more/less like this," the app should accept a short explanation for later review, and every suggested job must offer a "why suggested" view.
 
 ## V1 user stories
@@ -43,7 +44,7 @@ A posting is *not* a hire. Multiple postings can lead to one hire; one posting c
 4. *As a user,* I see a transparent match score 0–100 for each job along with positive factors, negative factors, and missing info.
 5. *As a user,* I import historical USAJOBS data by filter scope (agency code, department code, series, date range, grade/pay plan), but only after the recon step recommends a download mode and I approve it.
 6. *As a user,* I view trend charts: postings over time, by agency, by series, by grade, by state; remote share over time; salary range over time.
-7. *As a user,* I view a US state map of postings (with remote and multi-location handled separately).
+7. *As a user,* I view a GIS-style map of current postings by actual work-location points when coordinates are present. Multi-location postings may appear in more than one place, but I can filter them out. Remote-anywhere postings are kept in a table and never plotted as a fake state/location. Current non-remote postings without mappable coordinates are not excluded; when I zoom into an area, they appear in an unmapped-current-postings table for that visible area.
 8. *As a user,* I view scorecards (hottest agencies/series/locations/grades; best remote opportunities; best matches).
 9. *As a user,* I see a list of local alerts (saved-search matches, high score, closing soon, reposted) and can export them to CSV.
 10. *As a user,* I open the Data Admin page to see import status, last API pull, errors, raw-folder size, and database size.
@@ -52,23 +53,24 @@ A posting is *not* a hire. Multiple postings can lead to one hire; one posting c
 
 ## V2 user stories (after V1 is stable)
 
-11. Track applications end-to-end with résumé version, submission date, USAJOBS reference, and outcome.
-12. Detect reposts of the same announcement by similarity of title/series/agency/text hash.
-13. Closing-window tracker (median days open by series and grade).
-14. Compare USAJOBS posting volume to OPM accession volume by agency/series.
-15. Locality-adjusted salary view.
-16. Improved hotness model.
-17. Excel/PDF export of saved jobs and scorecards.
-18. Personal agency / series notes (separate from per-job notes).
-19. Career-ladder categorization (e.g., "GS-12 → GS-13 ladder").
-20. Improved preference learning using saved feedback history, negative preferences, and explanation review.
+11. Track applications end-to-end with résumé version, submission date, USAJOBS reference, outcome, next action, and event history. **Implemented as a local/manual tracker.**
+12. Manage resume version labels, filenames, local paths, target series/grade, active/archive status, and notes without parsing resume contents. **Implemented as a local/manual library.**
+13. Detect reposts of the same announcement by similarity of title/series/agency/text hash. **Implemented as a deterministic local detector with persisted groups and alert integration.**
+14. Closing-window tracker (median days open by series and grade).
+15. Compare USAJOBS posting volume to OPM accession volume by agency/series.
+16. Locality-adjusted salary view.
+17. Improved hotness model.
+18. Excel/PDF export of saved jobs and scorecards.
+19. Personal agency / series notes (separate from per-job notes).
+20. Career-ladder categorization (e.g., "GS-12 -> GS-13 ladder").
+21. Improved preference learning using saved feedback history, negative preferences, and explanation review.
 
 ## V3 user stories (AI / RAG)
 
-21. Vector search across job duties, qualifications, specialized experience, and résumé text.
-22. Resume-to-announcement matching that returns score, evidence, missing keywords, and "should I apply?" recommendation. **Must not invent experience.**
-23. Hidden-opportunity finder for jobs whose titles do not use obvious keywords.
-24. Application-strategy generator (key announcement language, résumé sections to emphasize, weaknesses, pre-application questions).
+22. Vector search across job duties, qualifications, specialized experience, and resume text.
+23. Resume-to-announcement matching that returns score, evidence, missing keywords, and "should I apply?" recommendation. **Must not invent experience.**
+24. Hidden-opportunity finder for jobs whose titles do not use obvious keywords.
+25. Application-strategy generator (key announcement language, resume sections to emphasize, weaknesses, pre-application questions).
 
 ## Definition of done — V1
 

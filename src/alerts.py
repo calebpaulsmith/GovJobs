@@ -218,6 +218,9 @@ def _saved_search_alerts(conn: sqlite3.Connection) -> list[AlertCandidate]:
 
 
 def _reposted_alerts(conn: sqlite3.Connection) -> list[AlertCandidate]:
+    detected = _detected_repost_alerts(conn)
+    if detected:
+        return detected
     groups = conn.execute(
         """
         SELECT lower(trim(title)) AS title_key,
@@ -266,6 +269,62 @@ def _reposted_alerts(conn: sqlite3.Connection) -> list[AlertCandidate]:
                     "usajobs_control_number": row["usajobs_control_number"],
                 },
                 dedupe_key=f"group:{group['title_key']}:{group['agency_key']}:{group['series_key']}:job:{row['id']}",
+            )
+        )
+    return alerts
+
+
+def _detected_repost_alerts(conn: sqlite3.Connection) -> list[AlertCandidate]:
+    latest_run = conn.execute("SELECT MAX(id) AS id FROM repost_runs WHERE completed_at IS NOT NULL").fetchone()
+    if latest_run is None or latest_run["id"] is None:
+        return []
+    rows = conn.execute(
+        """
+        SELECT rg.id AS group_id, rg.group_signature, rg.group_title, rg.agency_key,
+               rg.series_key, rg.member_count, rg.confidence_score, rg.evidence_json,
+               newest.job_id
+        FROM repost_groups rg
+        JOIN (
+            SELECT rgm.group_id, rgm.job_id
+            FROM repost_group_members rgm
+            JOIN jobs j ON j.id = rgm.job_id
+            JOIN (
+                SELECT rgm2.group_id, MAX(COALESCE(j2.open_date, j2.updated_at, j2.imported_at)) AS newest_date
+                FROM repost_group_members rgm2
+                JOIN jobs j2 ON j2.id = rgm2.job_id
+                GROUP BY rgm2.group_id
+            ) ranked ON ranked.group_id = rgm.group_id
+                    AND ranked.newest_date = COALESCE(j.open_date, j.updated_at, j.imported_at)
+            GROUP BY rgm.group_id
+        ) newest ON newest.group_id = rg.id
+        WHERE rg.run_id = ?
+        ORDER BY rg.confidence_score DESC, rg.member_count DESC
+        """,
+        (int(latest_run["id"]),),
+    ).fetchall()
+    alerts: list[AlertCandidate] = []
+    for row in rows:
+        evidence = _safe_json(row["evidence_json"])
+        alerts.append(
+            AlertCandidate(
+                job_id=int(row["job_id"]),
+                alert_type="reposted",
+                severity="medium" if float(row["confidence_score"]) >= 0.94 else "low",
+                title="Possible repost group",
+                message=(
+                    f"{row['group_title'] or 'Untitled'} appears in "
+                    f"{int(row['member_count'])} similar announcements."
+                ),
+                details={
+                    **evidence,
+                    "repost_group_id": int(row["group_id"]),
+                    "group_signature": row["group_signature"],
+                    "member_count": int(row["member_count"]),
+                    "confidence_score": float(row["confidence_score"]),
+                    "agency_key": row["agency_key"],
+                    "series_key": row["series_key"],
+                },
+                dedupe_key=f"group:{row['group_signature']}",
             )
         )
     return alerts
