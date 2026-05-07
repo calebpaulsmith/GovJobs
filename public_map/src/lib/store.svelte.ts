@@ -1,10 +1,14 @@
 import { DEFAULT_METRIC, type MetricKey } from './metrics';
+import { DEFAULT_FILTERS, type JobFilters } from './filters';
 
 class MapState {
 	metric = $state<MetricKey>(DEFAULT_METRIC);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
 	selectedFeature = $state<SelectedFeature | null>(null);
+	filters = $state<JobFilters>({ ...DEFAULT_FILTERS });
+	filteredJobCount = $state(0);
+	totalJobCount = $state(0);
 }
 
 export interface Manifest {

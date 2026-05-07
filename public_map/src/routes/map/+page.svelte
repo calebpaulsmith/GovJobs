@@ -2,6 +2,7 @@
 	import Map from '$lib/Map.svelte';
 	import MetricSwitcher from '$lib/MetricSwitcher.svelte';
 	import FeaturePanel from '$lib/FeaturePanel.svelte';
+	import FilterPanel from '$lib/FilterPanel.svelte';
 	import { mapState } from '$lib/store.svelte';
 </script>
 
@@ -29,6 +30,7 @@
 
 	<Map />
 	<MetricSwitcher />
+	<FilterPanel />
 	<FeaturePanel />
 
 	<footer class="attrib">
