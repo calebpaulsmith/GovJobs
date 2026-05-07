@@ -84,6 +84,61 @@ def test_init_schema_seeds_state_centroids(conn):
     assert row["lon"] is not None
 
 
+def test_jobs_geojson_prefers_job_locations_lat_lon_over_geocoded(conn):
+    # Seed BOTH a city geocode and a source coord; verify the source coord wins.
+    _seed_chicago(conn)
+    upsert_job(
+        conn,
+        _job(
+            locations=[
+                {
+                    "city": "Chicago",
+                    "state": "IL",
+                    "location_text": "Chicago, IL",
+                    # USAJOBS Search payload coordinates (more precise than city centroid)
+                    "latitude": 41.8500,
+                    "longitude": -87.6500,
+                }
+            ],
+        ),
+    )
+
+    feature = jobs_geojson(conn)["features"][0]
+    lon, lat = feature["geometry"]["coordinates"]
+    assert lat == 41.85
+    assert lon == -87.65
+    assert feature["properties"]["geo_quality"] == "source"
+
+
+def test_geocoding_summary_counts_source_coords_separately(conn):
+    _seed_chicago(conn)
+    # Job 1: source coords
+    upsert_job(
+        conn,
+        _job(
+            locations=[{
+                "city": "Chicago", "state": "IL",
+                "latitude": 41.85, "longitude": -87.65,
+            }],
+        ),
+    )
+    # Job 2: city geocode fallback (no source coords)
+    upsert_job(
+        conn,
+        _job(
+            position_id="JOB-2",
+            announcement_number="JOB-2",
+            usajobs_control_number="100000099",
+            locations=[{"city": "Chicago", "state": "IL"}],
+        ),
+    )
+
+    summary = geocoding_summary(conn)
+    assert summary["source_coords"] == 1
+    assert summary["city_matches"] == 1
+    assert summary["state_matches"] == 0
+
+
 def test_jobs_geojson_uses_city_match_when_available(conn):
     _seed_chicago(conn)
     upsert_job(conn, _job())

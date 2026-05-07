@@ -5,7 +5,7 @@ For a given (pay_plan, year, city, state, grade range), produce a table of
 applies to the duty station. Used by:
 
 * ``src/public_map_export.py`` to embed pay tables in ``jobs_detail.json``
-* ``pages/9_Public_Map_Admin.py`` to spot-check a job's pay table
+* ``pages/11_Public_Map_Admin.py`` to spot-check a job's pay table
 * The future job-card popup on the public site
 
 The calculator is **deterministic** and **explainable**: every returned cell

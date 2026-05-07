@@ -29,8 +29,15 @@ def open_postings_features(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Return one GeoJSON-ready feature per (job, location) with a coordinate.
 
     Includes only USAJOBS postings whose close_date is in the future or null.
-    Postings without a city-level or state-centroid match are omitted from
-    the feature list (counted separately by `geocoding_summary`).
+    Coordinate resolution per ADR-0019 / MAP_FEATURE_SPEC priority:
+
+    1. ``job_locations.latitude/longitude`` — authoritative coords from the
+       USAJOBS Search payload (added when the dashboard backfills coords).
+    2. SimpleMaps city geocode in ``locations_geocoded`` (city-level).
+    3. State centroid in ``locations_geocoded`` (low-confidence fallback).
+
+    Postings with no coordinate at any level are omitted from the feature
+    list and counted separately by ``geocoding_summary``.
     """
     rows = conn.execute(
         """
@@ -52,9 +59,12 @@ def open_postings_features(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             jl.state          AS jl_state,
             jl.location_text  AS jl_location_text,
             jl.remote_indicator AS jl_remote_indicator,
-            COALESCE(city_lookup.lat, state_lookup.lat) AS lat,
-            COALESCE(city_lookup.lon, state_lookup.lon) AS lon,
+            jl.latitude       AS jl_lat,
+            jl.longitude      AS jl_lon,
+            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat) AS lat,
+            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon) AS lon,
             CASE
+                WHEN jl.latitude IS NOT NULL THEN 'source'
                 WHEN city_lookup.lat IS NOT NULL THEN city_lookup.geo_quality
                 WHEN state_lookup.lat IS NOT NULL THEN state_lookup.geo_quality
                 ELSE NULL
@@ -285,13 +295,26 @@ def series_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
-    """Counts of city, state-centroid, and unmatched location rows for open postings."""
+    """Counts of source-coord, city, state-centroid, and unmatched rows.
+
+    Per ADR-0019 the public map prefers source-published coordinates
+    (``job_locations.latitude/longitude`` from the USAJOBS Search payload)
+    over geocoded fallbacks. ``source`` is the high-confidence count;
+    ``city_matches`` and ``state_matches`` are SimpleMaps fallbacks.
+    """
     row = conn.execute(
         """
         SELECT
-            SUM(CASE WHEN city_lookup.lat IS NOT NULL THEN 1 ELSE 0 END) AS city_matches,
-            SUM(CASE WHEN city_lookup.lat IS NULL AND state_lookup.lat IS NOT NULL THEN 1 ELSE 0 END) AS state_matches,
-            SUM(CASE WHEN city_lookup.lat IS NULL AND state_lookup.lat IS NULL THEN 1 ELSE 0 END) AS unmatched,
+            SUM(CASE WHEN jl.latitude IS NOT NULL THEN 1 ELSE 0 END) AS source_coords,
+            SUM(CASE WHEN jl.latitude IS NULL AND city_lookup.lat IS NOT NULL THEN 1 ELSE 0 END) AS city_matches,
+            SUM(CASE
+                    WHEN jl.latitude IS NULL
+                     AND city_lookup.lat IS NULL
+                     AND state_lookup.lat IS NOT NULL THEN 1 ELSE 0 END) AS state_matches,
+            SUM(CASE
+                    WHEN jl.latitude IS NULL
+                     AND city_lookup.lat IS NULL
+                     AND state_lookup.lat IS NULL THEN 1 ELSE 0 END) AS unmatched,
             COUNT(*) AS total
         FROM jobs j
         JOIN job_locations jl ON jl.job_id = j.id
@@ -306,6 +329,7 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
         """
     ).fetchone()
     return {
+        "source_coords": int(row["source_coords"] or 0),
         "city_matches": int(row["city_matches"] or 0),
         "state_matches": int(row["state_matches"] or 0),
         "unmatched": int(row["unmatched"] or 0),

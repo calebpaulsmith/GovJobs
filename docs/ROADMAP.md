@@ -206,7 +206,7 @@ Files: `src/database.py` (locations_geocoded), `src/public_map_export.py`, `scri
 
 Adds the schema and ingest fleet for pay tables, localities, polygons, and cost of living. Per ADR-0018 every external dataset is tracked in `data_source_status` and visible in the local admin dashboard. Per ADR-0019 the locality pay polygons use OPM's ArcGIS FeatureServer with a county-dissolve fallback.
 
-Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`, `src/pay_calculator.py`, `pages/9_Public_Map_Admin.py`, `scripts/ingest_*.py`, matching `tests/`.
+Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`, `src/pay_calculator.py`, `pages/11_Public_Map_Admin.py`, `scripts/ingest_*.py`, matching `tests/`.
 
 - [ ] Add 9 reference-data tables: `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status`. Bump schema_version to 8.
 - [ ] `src/data_source_registry.py` — read/update helpers for `data_source_status`.
@@ -223,7 +223,7 @@ Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`
   - [ ] `ingest_other_pay_plans.py` (FW first; ES, AD, FP, LE, VN incrementally)
   - [ ] `ingest_bea_rpp.py` (BEA Regional Price Parities, state + metro)
   - [ ] `refresh_public_map_data.py` (orchestrator)
-- [ ] `pages/9_Public_Map_Admin.py` — local-only Streamlit page with per-source status, last run, row count, manual refresh button, CSV upload override, year-over-year diff for pay scales.
+- [ ] `pages/11_Public_Map_Admin.py` — local-only Streamlit page with per-source status, last run, row count, manual refresh button, CSV upload override, year-over-year diff for pay scales.
 - [ ] Tests: status registry round-trip, pay calculator (real OPM values), reference-data lookups.
 
 **Exit:** every ingest script runs against a clean DB and lands status=green; admin page lists every source with green status; pay calculator returns the published GS-13 step 5 Chicago value for 2026 to the cent.

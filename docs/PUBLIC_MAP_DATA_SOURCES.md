@@ -1,6 +1,6 @@
 # PUBLIC_MAP_DATA_SOURCES.md
 
-The complete catalog of every external dataset the Public Map Tool depends on. Each entry lists the source, the local table(s) it lands in, the ingest script, refresh cadence, and verification notes. Live status (last successful refresh, row counts, errors, manual override) is in the local admin dashboard at `pages/9_Public_Map_Admin.py`.
+The complete catalog of every external dataset the Public Map Tool depends on. Each entry lists the source, the local table(s) it lands in, the ingest script, refresh cadence, and verification notes. Live status (last successful refresh, row counts, errors, manual override) is in the local admin dashboard at `pages/11_Public_Map_Admin.py`.
 
 Per ADR-0018, every dataset is local-first and admin-managed. Per ADR-0019, locality polygons have a primary source and a fallback path.
 
@@ -186,5 +186,5 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 3. Write `scripts/ingest_<source_key>.py` — must be idempotent and call into `src.data_source_registry` to record start/success/error.
 4. If it has its own table or column, update `src/database.py` and bump `schema_version`.
 5. Add it to `scripts/refresh_public_map_data.py` so the orchestrator includes it.
-6. Surface it in `pages/9_Public_Map_Admin.py` (the page reads `data_source_status` so it picks up new keys automatically).
+6. Surface it in `pages/11_Public_Map_Admin.py` (the page reads `data_source_status` so it picks up new keys automatically).
 7. Reference the new fields in `src/public_map_export.py` if the public map should display them.

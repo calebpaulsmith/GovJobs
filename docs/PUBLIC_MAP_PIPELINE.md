@@ -4,7 +4,7 @@ Operator's runbook for the Public Map Tool at `thegrandpipeline.com/map`.
 
 The public map is a separate sibling product per ADR-0016. The dashboard reads and writes the local SQLite database; the public map only **reads** through the export script and ships static files to Cloudflare Pages.
 
-The full external dataset catalog (where each comes from, how to refresh, schema notes) is in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Status of every source at any time is visible in the local dashboard at `pages/9_Public_Map_Admin.py`.
+The full external dataset catalog (where each comes from, how to refresh, schema notes) is in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Status of every source at any time is visible in the local dashboard at `pages/11_Public_Map_Admin.py`.
 
 ## Data flow
 
@@ -49,7 +49,7 @@ The public site is read-only. No backend, no API, no auth, no DB online.
 
 ## Admin dashboard (private)
 
-Open the local Streamlit app and navigate to **Public Map Admin** (`pages/9_Public_Map_Admin.py`). It shows:
+Open the local Streamlit app and navigate to **Public Map Admin** (`pages/11_Public_Map_Admin.py`). It shows:
 
 - Every external data source with status (green = fresh, yellow = stale, red = error or missing)
 - Last successful run timestamp, row count, last error message, manual-override flag
@@ -128,7 +128,7 @@ Task Scheduler skips runs when the laptop is asleep. The footer's "freshness per
 | `scripts/ingest_*.py` | Per-source idempotent ingest |
 | `scripts/refresh_public_map_data.py` | Orchestrator |
 | `scripts/export_public_map.py` | Bundle writer |
-| `pages/9_Public_Map_Admin.py` | Local-only admin dashboard |
+| `pages/11_Public_Map_Admin.py` | Local-only admin dashboard |
 | `public_map/` | SvelteKit static site (separate `package.json`) |
 | `data/external/` | Downloaded raw datasets (gitignored) |
 | `docs/PUBLIC_MAP_DATA_SOURCES.md` | Per-dataset catalog |
