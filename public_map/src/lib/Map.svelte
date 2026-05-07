@@ -8,9 +8,12 @@
 		loadLocalities,
 		loadManifest,
 		loadMetros,
+		loadJobDetailsIndex,
 		loadStates,
-		type FeatureCollection
+		type FeatureCollection,
+		type JobDetails
 	} from './data';
+	import { filterJobs } from './filters';
 	import {
 		LAYER_IDS,
 		SOURCE_IDS,
@@ -23,6 +26,9 @@
 	let container: HTMLDivElement;
 	let map: MaplibreMap | null = null;
 	let mounted = false;
+	let allStates: FeatureCollection | null = null;
+	let allJobs: FeatureCollection | null = null;
+	let jobDetails: Record<string, JobDetails> = {};
 
 	const MAXZOOM = 9;
 	const MINZOOM = 3;
@@ -54,26 +60,35 @@
 		map.on('load', async () => {
 			if (!map) return;
 			try {
-				const [states, counties, metros, localities, jobs, manifest] = await Promise.all([
+				const [states, counties, metros, localities, jobs, details, manifest] = await Promise.all([
 					loadStates(),
 					loadCounties(),
 					loadMetros(),
 					loadLocalities(),
 					loadJobs(),
+					loadJobDetailsIndex(),
 					loadManifest()
 				]);
 
 				mapState.manifest = manifest as Manifest | null;
+				allStates = cloneCollection(states);
+				allJobs = jobs;
+				jobDetails = details;
+				mapState.totalJobCount = jobs.features.length;
+
+				const filteredJobs = filterJobs(jobs, mapState.filters, jobDetails);
+				const displayStates = cloneCollection(allStates);
 
 				// Stamp client-derived `remote_share` onto each state feature so the
 				// metric switcher's "remote share" option has data to color.
-				deriveRemoteShare(states, jobs);
+				deriveRemoteShare(displayStates, filteredJobs);
+				mapState.filteredJobCount = filteredJobs.features.length;
 
-				addOrUpdateSource(map, SOURCE_IDS.states, states);
+				addOrUpdateSource(map, SOURCE_IDS.states, displayStates);
 				addOrUpdateSource(map, SOURCE_IDS.counties, counties);
 				addOrUpdateSource(map, SOURCE_IDS.metros, metros);
 				addOrUpdateSource(map, SOURCE_IDS.localities, localities);
-				addOrUpdateSource(map, SOURCE_IDS.jobs, jobs, /* cluster */ true);
+				addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 
 				addAllLayers(map, mapState.metric);
 				attachClickHandling(map);
@@ -92,10 +107,39 @@
 		}
 	});
 
+	$effect(() => {
+		const filters = mapState.filters;
+		if (!mounted || !map || !allJobs || !allStates || !map.isStyleLoaded()) return;
+		const filteredJobs = filterJobs(allJobs, filters, jobDetails);
+		const displayStates = cloneCollection(allStates);
+		deriveRemoteShare(displayStates, filteredJobs);
+		mapState.filteredJobCount = filteredJobs.features.length;
+		addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
+		addOrUpdateSource(map, SOURCE_IDS.states, displayStates);
+		setStateFillMetric(map, mapState.metric);
+		if (mapState.selectedFeature?.source === LAYER_IDS.markers) {
+			const selectedId = String(mapState.selectedFeature.properties.id ?? '');
+			const stillVisible = filteredJobs.features.some(
+				(feature) => String(feature.properties?.id ?? '') === selectedId
+			);
+			if (!stillVisible) mapState.selectedFeature = null;
+		}
+	});
+
 	onDestroy(() => {
 		map?.remove();
 		map = null;
 	});
+
+	function cloneCollection(collection: FeatureCollection): FeatureCollection {
+		return {
+			type: 'FeatureCollection',
+			features: collection.features.map((feature) => ({
+				...feature,
+				properties: { ...(feature.properties ?? {}) }
+			}))
+		};
+	}
 
 	function deriveRemoteShare(states: FeatureCollection, jobs: FeatureCollection): void {
 		// Aggregate jobs by state: total + remote count.

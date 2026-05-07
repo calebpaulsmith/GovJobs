@@ -260,10 +260,11 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 **Exit:** every popup matches reference data exactly for at least three sample features; pay tables match OPM-published values to the cent.
 
-### Phase D — Filters, URL state, styling pass
+### Phase D — Filters, URL state, styling pass *(INITIATED)*
 
-- [ ] `FilterPanel.svelte` (keyword, agency, series, grade range, salary minimum, remote, hiring path, pay plan).
-- [ ] URL-encoded filter state, debounced replaceState.
+- [x] `FilterPanel.svelte` (keyword, agency, series, grade range, salary minimum, remote, hiring path, pay plan).
+- [x] URL-encoded filter state, debounced replaceState.
+- [x] Filtered marker-source updates plus filtered remote-share recoloring for the state choropleth.
 - [ ] Aesthetic pass: typography, spacing, mobile drawer, layer-transition animations, accessibility audit.
 
 **Exit:** sharing a filtered URL restores the same view; mobile drawer works; Lighthouse ≥ 90.

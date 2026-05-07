@@ -50,6 +50,7 @@ export type PayTables = Record<string, Record<string, Record<string, Record<stri
 
 let jobDetailsCache: Record<string, JobDetails> | null = null;
 let payTablesCache: PayTables | null = null;
+let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -79,8 +80,13 @@ export const loadLocalities = () =>
 export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY_COLLECTION);
 export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
 
+export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {
+	jobDetailsIndexCache ??= await fetchJson<Record<string, JobDetails>>('jobs_detail.json', {});
+	return jobDetailsIndexCache;
+}
+
 export async function loadJobDetails(id: string | number): Promise<JobDetails | null> {
-	jobDetailsCache ??= await fetchJson<Record<string, JobDetails>>('jobs_detail.json', {});
+	jobDetailsCache ??= await loadJobDetailsIndex();
 	return jobDetailsCache[String(id)] ?? null;
 }
 
