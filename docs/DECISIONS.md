@@ -197,3 +197,64 @@ Status: Accepted
 **Decision.** V1 imports OPM/FedScope CSV, TSV, Excel, or ZIP files through `src/opm_data.py` into `opm_workforce_records`. State maps expose an explicit source switch: "USAJOBS postings" or "OPM workforce", with separate OPM metrics for employment, accessions, and separations.
 
 **Consequences.** The app can ingest downloaded OPM files without adding a network downloader or scheduler. Charts remain plainly labeled, avoiding posting-versus-hire confusion. More precise OPM field mapping can be added as real source files reveal additional column variants.
+
+---
+
+## ADR-0016 - Public map tool is a separate sibling product, not a dashboard feature
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** The local dashboard (ADR-0001) is intentionally local-first, single-user, no cloud, no FastAPI/React. A separate public-facing job-search map at `thegrandpipeline.com/map` was requested. Treating it as a dashboard feature would silently invalidate ADR-0001's hosting and stack rules; treating it as a separate product preserves both products' constraints.
+
+**Decision.** The public map lives in a new `public_map/` subdirectory with its own SvelteKit app, its own `package.json`, and its own deploy target (Cloudflare Pages). The data flow is one-way and read-only: a Python script (`scripts/export_public_map.py`) reads the local SQLite database, writes static GeoJSON/JSON snapshots to `public_map/static/data/`, and a nightly `git push` triggers a Cloudflare Pages rebuild. No live API, no auth, no DB online, no user data. Stack: SvelteKit (static adapter) + Mapbox GL JS + Cloudflare Pages. The Mapbox token is restricted by URL referrer to `thegrandpipeline.com` and `*.pages.dev` so a leaked bundle token cannot be reused elsewhere.
+
+**Consequences.** ADR-0001 still applies to the dashboard; the public map is the documented exception. ADR-0002's "postings ≠ hires" rule applies to the public map's UI just as it does to the dashboard — the optional OPM overlay must be labeled "federal workforce, not postings." ADR-0008's "no automated applications" rule still holds: the public map only links out to canonical USAJOBS URLs. Future migrations (Postgres, FastAPI) remain optional and would happen on the dashboard side; the public map's read-only static contract is unaffected.
+
+---
+
+## ADR-0017 - Public map uses a layered, zoom-driven interaction model with a maxzoom cap
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** USAJOBS publishes city-level locations, not duty-station addresses. The original V1 plan called for cluster markers at all zoom levels, which would imply street-level precision the data does not have. Separately, the user wants meaningful low-zoom analysis (state and locality stats), not just markers — and a way to surface "where does my paycheck go furthest" more directly than a list of jobs.
+
+**Decision.** The public map presents a layered, zoom-driven view with a hard **maxzoom of 9** (metro level):
+
+- Zoom 3–5: state choropleth with a user-selectable metric (postings, workforce, accessions, separations, remote share, pay-vs-COL).
+- Zoom 5–7: locality pay area outlines fade in over the choropleth.
+- Zoom 7–9: county and CBSA outlines plus emerging marker clusters.
+- Zoom 9 (cap): individual job markers at city centroid. The map never zooms past 9.
+
+Every marker carries a `geo_quality` flag (`city` or `state_centroid`) which the UI surfaces. The flagship choropleth metric is **pay-vs-cost-of-living ratio** = locality-adjusted pay ÷ BEA Regional Price Parity, expressed as a number where 100 = national average. State, locality, county, and marker layers are all clickable with their own popups.
+
+**Consequences.** The map is honest about precision. The state/locality/county roundup popups become a primary feature, not an afterthought. The choropleth metric switcher requires a robust reference-data layer (pay tables, COL, polygons) — see ADR-0018. The 9-zoom cap also has a side benefit: the polygon GeoJSON files don't need high-resolution geometry, keeping the public bundle small.
+
+---
+
+## ADR-0018 - Reference data is local-first and admin-managed, with per-source status tracking
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** The public map needs annual data from at least four federal sources (OPM pay tables across many pay plans, OPM locality definitions, Census TIGER polygons, BEA RPP) plus a third-party COL backup. The user has stated the bar is "exquisite" — pay data accuracy is non-negotiable — but is the sole operator and not a software engineer. Bad imports must be detectable, and manual override must be available when an automated source breaks or is wrong.
+
+**Decision.** Every external dataset has a row in a new `data_source_status` table with a stable `source_key`, display name, category, last run / success / error timestamps, row count, manual-override flag, and notes. A new local-only Streamlit page (`pages/9_Public_Map_Admin.py`) renders this table and provides per-source actions: refresh now, upload override, view recent diff. Every ingest script writes its result back to `data_source_status`. The admin page is part of the dashboard's `pages/` tree and never appears on the public site.
+
+Every pay-scale row also stores its `source` and `source_url` so the public site (and the admin diff view) can attribute and audit individual values. Pay plan support starts with GS and Federal Wage System (largest by headcount) and adds others incrementally; the admin page makes it obvious which plans are present, stale, or missing.
+
+**Consequences.** The user can self-verify every dataset before a public deploy — the dashboard's diff view shows year-over-year changes on pay tables so an import bug is visible before nightly snapshots reach the CDN. Manual overrides give an escape hatch when an automated source breaks or is wrong. The freshness UI in the public footer reads from the same status table, so what the user sees in admin matches what the public sees about provenance.
+
+---
+
+## ADR-0019 - Locality pay polygons: OPM ArcGIS FeatureServer primary, county-dissolve fallback
+Date: 2026-05-06
+Status: Accepted
+
+**Context.** Locality pay areas are defined annually by OPM at the **county** level (5 CFR 531.603). Polygons must be drawn somehow. Options: (a) the public OPM ArcGIS Online FeatureServer at `services1.arcgis.com/cc7nIINtrZ67dyVJ/.../Locality_Pay_Areas/FeatureServer/1` (publicly queryable polygon layer, JSON, owner is a third-party publisher); (b) dissolve Census TIGER county polygons by OPM's annual county FIPS membership list. Each has trade-offs.
+
+**Decision.** Use both. The OPM ArcGIS FeatureServer is the **primary fast-bootstrap source** because it ships ready-to-use polygon geometry. OPM's annual county-FIPS definition list is the **canonical membership source** because it is the legal definition of the boundaries. The ingest pipeline:
+
+1. `scripts/ingest_locality_definitions.py` pulls OPM's per-locality county FIPS list. This is what `locality_pay_counties` stores; it is the source of truth for membership.
+2. `scripts/ingest_locality_polygons.py` tries the OPM ArcGIS FeatureServer first; on failure (service down, schema change, wrong year), it falls back to dissolving Census TIGER county polygons keyed by `locality_pay_counties` from step 1.
+3. Both paths write to `locality_pay_areas.polygon_path` (a file under `data/external/`) and update `data_source_status` so the admin dashboard reflects whichever path produced the current polygons.
+
+**Consequences.** The public map ships fast in V1 thanks to the FeatureServer. If that service moves, disappears, or drifts from OPM definitions, the dissolve fallback keeps the site working without code changes. The county-FIPS table doubles as the join key that maps any (city, state) job location → county → locality, which the pay calculator already needs.

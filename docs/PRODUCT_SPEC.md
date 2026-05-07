@@ -88,8 +88,70 @@ The build is done when:
 12. Tests pass with `pytest`.
 13. README explains setup and run.
 
-## Out-of-scope clarifications
+## Out-of-scope clarifications (dashboard)
 
 - We will not build email/push notifications in V1; local in-app alerts are manual and stored in SQLite.
 - We will not call any LLM in V1 — scoring is rule-based.
-- We will not deploy to the cloud.
+- We will not deploy the **dashboard** to the cloud. The dashboard is local-first.
+
+The Public Map Tool below is a **separate sibling product** (ADR-0016) that is hosted, not a deployment of the dashboard.
+
+---
+
+## Public Map Tool — `thegrandpipeline.com/map`
+
+A separate, public-facing, static web tool that helps anyone find federal jobs on a map. Fed one-way by nightly snapshots from the local dashboard's SQLite. The dashboard remains local-first; the public map is the only piece that ever lives on the internet.
+
+### Vision
+
+A federal job-search map that is honest about precision and surfaces the question every applicant actually asks: **"Where will my paycheck go furthest?"** The map answers that question by combining USAJOBS posting data, OPM federal workforce data, OPM locality pay tables, and BEA Regional Price Parities into a single zoomable surface.
+
+### Interaction model
+
+- **National / state zoom (3–5)**: choropleth of states. Metric is user-selectable: open postings, federal workforce density, accessions, separations, remote-eligible postings, and the flagship **pay-vs-cost-of-living ratio**. Click a state for a roundup popup.
+- **Regional zoom (5–7)**: locality pay area outlines fade in over the state choropleth. Click a locality for its pay adjustment, member counties, sample pay tables, and COL.
+- **Metro / county zoom (7–9)**: county and CBSA outlines plus emerging marker clusters. Click a county or metro for COL and stats.
+- **Maxzoom 9 (cap)**: individual job markers at city centroid. The map never goes to street level — USAJOBS does not publish duty-station addresses, and pretending we have street-level precision would be dishonest. Each marker carries a `geo_quality` flag (`city` or `state_centroid`) that the UI surfaces.
+
+### Pay-table fidelity
+
+Pay data must be **exquisite**. Every USAJOBS pay plan we encounter (GS first, then Federal Wage System, ES, AD, FP, LE, VN, others incrementally) is supported with:
+
+- Annual pay scales sourced from OPM, stored per pay plan / year / grade / step / locality
+- Locality-adjusted rates derived for every job from its (city, state) → county → locality chain
+- A full pay table (every step) shown in the marker detail card
+- Year-over-year diffs visible in the admin dashboard so import errors are caught before they reach the public site
+
+### Polygon layers
+
+- **States** (Census TIGER) — 56 features (50 states + DC + territories)
+- **Locality pay areas** (OPM) — ~58 features. Polygons sourced from the public OPM ArcGIS FeatureServer; membership cross-validated against OPM's annual county-FIPS definition list (5 CFR 531.603); fallback rebuild path is dissolving Census counties by membership list.
+- **Counties** (Census TIGER) — ~3,200 features
+- **CBSAs / metro areas** (Census TIGER) — ~390 features
+
+All clickable; all sourced from public, federally-published datasets.
+
+### Cost of living
+
+V1 uses BEA Regional Price Parities (free, official, state and metro level). Locality-area COL is derived by averaging across constituent metros and labeled as approximate. C2ER is reserved as a paid upgrade path (~$200/yr) if richer granularity is needed.
+
+### Out of scope (public map V1)
+
+- User accounts, saved jobs, scoring, recommendations, alerts.
+- Application submission. The public map only links out to canonical USAJOBS URLs; we never host applications.
+- Live API. The public map is a static snapshot. No backend, no auth, no DB online.
+- Street-level zoom.
+- Anything that is not in service of "find a federal job on a map and understand the pay there."
+
+### Definition of done — public map V1
+
+1. Layered Mapbox GL map renders at zoom 3–9 with state, locality, county, and metro polygons plus job markers.
+2. Choropleth metric switcher offers at least: postings, workforce, accessions, separations, pay-vs-COL.
+3. State / locality / county / marker popups all render with correct, sourced data.
+4. Marker detail panel shows a full locality-adjusted pay table for the job's grade range × every step, for every supported pay plan.
+5. Admin dashboard (local, private) lists every external data source with status, last-success time, row count, manual override, and per-source refresh button.
+6. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`.
+7. Footer credits every source and surfaces freshness per source.
+8. `pytest` green; pay tables for at least three localities × three pay plans match published OPM values exactly.
+
+The full implementation plan lives in `docs/ROADMAP.md` (Public Map Tool track). External datasets are catalogued in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Pipeline operations are documented in `docs/PUBLIC_MAP_PIPELINE.md`.

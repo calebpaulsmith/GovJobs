@@ -575,6 +575,144 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             raw_row_path TEXT,
             imported_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS locations_geocoded (
+            city TEXT NOT NULL,
+            state TEXT NOT NULL,
+            lat REAL,
+            lon REAL,
+            county_fips TEXT,
+            geo_quality TEXT,
+            source TEXT,
+            geocoded_at TEXT NOT NULL,
+            PRIMARY KEY(city, state)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_locations_geocoded_state
+            ON locations_geocoded(state);
+
+        CREATE TABLE IF NOT EXISTS geocoding_misses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT,
+            state TEXT,
+            location_text TEXT,
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            UNIQUE(city, state, location_text)
+        );
+
+        CREATE TABLE IF NOT EXISTS pay_plans (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            has_locality_adjustment INTEGER NOT NULL DEFAULT 0,
+            has_steps INTEGER NOT NULL DEFAULT 1,
+            notes TEXT,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS pay_scales (
+            pay_plan TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            grade TEXT NOT NULL,
+            step INTEGER NOT NULL DEFAULT 0,
+            locality_code TEXT NOT NULL DEFAULT '',
+            annual_rate REAL NOT NULL,
+            source TEXT NOT NULL,
+            source_url TEXT,
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(pay_plan, year, grade, step, locality_code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pay_scales_lookup
+            ON pay_scales(pay_plan, year, locality_code);
+
+        CREATE TABLE IF NOT EXISTS locality_pay_areas (
+            code TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            adjustment_pct REAL NOT NULL,
+            polygon_path TEXT,
+            source TEXT NOT NULL,
+            source_url TEXT,
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(code, year)
+        );
+
+        CREATE TABLE IF NOT EXISTS locality_pay_counties (
+            locality_code TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            county_fips TEXT NOT NULL,
+            inclusion_type TEXT NOT NULL DEFAULT 'core',
+            PRIMARY KEY(locality_code, year, county_fips)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_locality_pay_counties_fips
+            ON locality_pay_counties(year, county_fips);
+
+        CREATE TABLE IF NOT EXISTS counties (
+            fips TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            state TEXT NOT NULL,
+            cbsa_code TEXT,
+            polygon_path TEXT,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_counties_state ON counties(state);
+        CREATE INDEX IF NOT EXISTS idx_counties_cbsa ON counties(cbsa_code);
+
+        CREATE TABLE IF NOT EXISTS metro_areas (
+            cbsa_code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            cbsa_type TEXT,
+            polygon_path TEXT,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS state_polygons (
+            state TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            polygon_path TEXT,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cost_of_living_index (
+            year INTEGER NOT NULL,
+            geo_type TEXT NOT NULL,
+            geo_code TEXT NOT NULL,
+            rpp_overall REAL,
+            rpp_goods REAL,
+            rpp_services REAL,
+            rpp_rents REAL,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(year, geo_type, geo_code, source)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cost_of_living_geo
+            ON cost_of_living_index(geo_type, geo_code);
+
+        CREATE TABLE IF NOT EXISTS data_source_status (
+            source_key TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            last_run_at TEXT,
+            last_success_at TEXT,
+            last_error TEXT,
+            row_count INTEGER,
+            manual_override INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_data_source_status_category
+            ON data_source_status(category);
         """
     )
     _ensure_column(conn, "jobs", "agency_code", "TEXT")
@@ -582,8 +720,10 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_agency_code ON jobs(agency_code)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_department_code ON jobs(department_code)")
     _seed_core_codes(conn)
+    _seed_state_centroids(conn)
+    _seed_pay_plans(conn)
     _backfill_child_tables_from_jobs(conn)
-    _set_meta(conn, "schema_version", "6")
+    _set_meta(conn, "schema_version", "8")
     conn.commit()
     return conn
 
@@ -1709,6 +1849,289 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_typ
     columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+
+
+STATE_CENTROIDS: dict[str, tuple[float, float]] = {
+    "AL": (32.7794, -86.8287), "AK": (64.0685, -152.2782), "AZ": (34.2744, -111.6602),
+    "AR": (34.8938, -92.4426), "CA": (37.1841, -119.4696), "CO": (38.9972, -105.5478),
+    "CT": (41.6219, -72.7273), "DE": (38.9896, -75.5050), "DC": (38.9101, -77.0147),
+    "FL": (28.6305, -82.4497), "GA": (32.6415, -83.4426), "HI": (20.2927, -156.3737),
+    "ID": (44.3509, -114.6130), "IL": (40.0417, -89.1965), "IN": (39.8942, -86.2816),
+    "IA": (42.0751, -93.4960), "KS": (38.4937, -98.3804), "KY": (37.5347, -85.3021),
+    "LA": (31.0689, -91.9968), "ME": (45.3695, -69.2428), "MD": (39.0550, -76.7909),
+    "MA": (42.2596, -71.8083), "MI": (44.3467, -85.4102), "MN": (46.2807, -94.3053),
+    "MS": (32.7364, -89.6678), "MO": (38.3566, -92.4580), "MT": (47.0527, -109.6333),
+    "NE": (41.5378, -99.7951), "NV": (39.3289, -116.6312), "NH": (43.6805, -71.5811),
+    "NJ": (40.1907, -74.6728), "NM": (34.4071, -106.1126), "NY": (42.9538, -75.5268),
+    "NC": (35.5557, -79.3877), "ND": (47.4501, -100.4659), "OH": (40.2862, -82.7937),
+    "OK": (35.5889, -97.4943), "OR": (43.9336, -120.5583), "PA": (40.8781, -77.7996),
+    "RI": (41.6762, -71.5562), "SC": (33.9169, -80.8964), "SD": (44.4443, -100.2263),
+    "TN": (35.8580, -86.3505), "TX": (31.4757, -99.3312), "UT": (39.3055, -111.6703),
+    "VT": (44.0687, -72.6658), "VA": (37.5215, -78.8537), "WA": (47.3826, -120.4472),
+    "WV": (38.6409, -80.6227), "WI": (44.6243, -89.9941), "WY": (42.9957, -107.5512),
+    "PR": (18.2208, -66.5901), "VI": (18.3358, -64.8963), "GU": (13.4443, 144.7937),
+    "AS": (-14.2710, -170.1322), "MP": (17.3308, 145.3847),
+}
+
+
+def _seed_state_centroids(conn: sqlite3.Connection) -> None:
+    now = utc_now()
+    rows = [
+        ("", state, lat, lon, None, "state_centroid", "manual_seed", now)
+        for state, (lat, lon) in STATE_CENTROIDS.items()
+    ]
+    conn.executemany(
+        """
+        INSERT INTO locations_geocoded (
+            city, state, lat, lon, county_fips, geo_quality, source, geocoded_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(city, state) DO UPDATE SET
+            lat=excluded.lat,
+            lon=excluded.lon,
+            geo_quality=excluded.geo_quality,
+            source=excluded.source,
+            geocoded_at=excluded.geocoded_at
+        """,
+        rows,
+    )
+
+
+def upsert_geocoded_location(
+    conn: sqlite3.Connection,
+    city: str,
+    state: str,
+    lat: float | None,
+    lon: float | None,
+    county_fips: str | None = None,
+    geo_quality: str = "city",
+    source: str = "simplemaps",
+) -> None:
+    """Insert or update one (city, state) -> coordinate row.
+
+    `city` is normalized to lowercase/stripped; `state` is uppercased. The
+    state centroids seeded by `_seed_state_centroids` use an empty-string city
+    as the sentinel and `geo_quality='state_centroid'`.
+    """
+    normalized_city = (city or "").strip().lower()
+    normalized_state = (state or "").strip().upper()
+    if not normalized_state:
+        raise ValueError("state is required for geocoded location")
+    conn.execute(
+        """
+        INSERT INTO locations_geocoded (
+            city, state, lat, lon, county_fips, geo_quality, source, geocoded_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(city, state) DO UPDATE SET
+            lat=excluded.lat,
+            lon=excluded.lon,
+            county_fips=excluded.county_fips,
+            geo_quality=excluded.geo_quality,
+            source=excluded.source,
+            geocoded_at=excluded.geocoded_at
+        """,
+        (
+            normalized_city,
+            normalized_state,
+            lat,
+            lon,
+            county_fips,
+            geo_quality,
+            source,
+            utc_now(),
+        ),
+    )
+
+
+def lookup_geocoded_location(
+    conn: sqlite3.Connection,
+    city: str | None,
+    state: str | None,
+) -> dict[str, Any] | None:
+    """Return `{lat, lon, county_fips, geo_quality}` for (city, state).
+
+    Tries an exact city match first, then falls back to the state centroid.
+    Returns None when no state centroid is seeded either (e.g., overseas).
+    """
+    normalized_state = (state or "").strip().upper()
+    if not normalized_state:
+        return None
+    normalized_city = (city or "").strip().lower()
+    if normalized_city:
+        row = conn.execute(
+            "SELECT lat, lon, county_fips, geo_quality FROM locations_geocoded "
+            "WHERE city=? AND state=?",
+            (normalized_city, normalized_state),
+        ).fetchone()
+        if row and row["lat"] is not None and row["lon"] is not None:
+            return {
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "county_fips": row["county_fips"],
+                "geo_quality": row["geo_quality"],
+            }
+    row = conn.execute(
+        "SELECT lat, lon, county_fips, geo_quality FROM locations_geocoded "
+        "WHERE city='' AND state=?",
+        (normalized_state,),
+    ).fetchone()
+    if row and row["lat"] is not None and row["lon"] is not None:
+        return {
+            "lat": row["lat"],
+            "lon": row["lon"],
+            "county_fips": row["county_fips"],
+            "geo_quality": row["geo_quality"],
+        }
+    return None
+
+
+def record_geocoding_miss(
+    conn: sqlite3.Connection,
+    city: str | None,
+    state: str | None,
+    location_text: str | None = None,
+) -> None:
+    """Log an unmatched (city, state) pair so misses can be reviewed.
+
+    Empty strings (rather than NULL) are stored for missing fields so the
+    UNIQUE constraint can deduplicate via ON CONFLICT.
+    """
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO geocoding_misses (
+            city, state, location_text, seen_count, first_seen_at, last_seen_at
+        )
+        VALUES (?, ?, ?, 1, ?, ?)
+        ON CONFLICT(city, state, location_text) DO UPDATE SET
+            seen_count = seen_count + 1,
+            last_seen_at = excluded.last_seen_at
+        """,
+        (
+            (city or "").strip().lower(),
+            (state or "").strip().upper(),
+            (location_text or "").strip(),
+            now,
+            now,
+        ),
+    )
+
+
+PAY_PLAN_SEED: list[dict[str, Any]] = [
+    {
+        "code": "GS",
+        "name": "General Schedule",
+        "description": "The white-collar pay system covering most professional, administrative, technical, and clerical federal positions.",
+        "has_locality_adjustment": 1,
+        "has_steps": 1,
+        "notes": "15 grades, 10 steps each. Locality-adjusted in 58 areas plus 'Rest of US'.",
+    },
+    {
+        "code": "FW",
+        "name": "Federal Wage System",
+        "description": "Hourly wage schedule for federal blue-collar (trades, crafts, labor) workers.",
+        "has_locality_adjustment": 1,
+        "has_steps": 1,
+        "notes": "Wage areas defined by locality; steps vary.",
+    },
+    {
+        "code": "ES",
+        "name": "Senior Executive Service",
+        "description": "Performance-based pay for senior executives.",
+        "has_locality_adjustment": 1,
+        "has_steps": 0,
+        "notes": "Single rate within a band; no steps.",
+    },
+    {
+        "code": "AD",
+        "name": "Administratively Determined",
+        "description": "Pay set by agency under specific statutory authority.",
+        "has_locality_adjustment": 0,
+        "has_steps": 0,
+        "notes": "Highly variable; treat as opaque unless agency-specific table is loaded.",
+    },
+    {
+        "code": "FP",
+        "name": "TSA Pay Bands",
+        "description": "Transportation Security Administration broadbanded pay system.",
+        "has_locality_adjustment": 1,
+        "has_steps": 0,
+        "notes": "Bands instead of steps.",
+    },
+    {
+        "code": "LE",
+        "name": "Law Enforcement",
+        "description": "Special pay tables for law enforcement officers.",
+        "has_locality_adjustment": 1,
+        "has_steps": 1,
+        "notes": "GS-equivalent grades 3-10 only.",
+    },
+    {
+        "code": "VN",
+        "name": "Veterans Affairs Nurses",
+        "description": "Title 38 nurse pay schedule administered by VA.",
+        "has_locality_adjustment": 1,
+        "has_steps": 1,
+        "notes": "Local pay panel adjustments per facility.",
+    },
+    {
+        "code": "EX",
+        "name": "Executive Schedule",
+        "description": "Pay for top federal officials (Levels I-V).",
+        "has_locality_adjustment": 0,
+        "has_steps": 0,
+        "notes": "5 levels; flat rate.",
+    },
+    {
+        "code": "SL",
+        "name": "Senior Level",
+        "description": "Senior-level non-executive professional positions.",
+        "has_locality_adjustment": 1,
+        "has_steps": 0,
+        "notes": "Pay range, not steps.",
+    },
+    {
+        "code": "ST",
+        "name": "Scientific & Professional",
+        "description": "Senior scientific and technical positions.",
+        "has_locality_adjustment": 1,
+        "has_steps": 0,
+        "notes": "Pay range, not steps.",
+    },
+]
+
+
+def _seed_pay_plans(conn: sqlite3.Connection) -> None:
+    now = utc_now()
+    rows = [
+        (
+            plan["code"],
+            plan["name"],
+            plan.get("description"),
+            int(plan.get("has_locality_adjustment", 0)),
+            int(plan.get("has_steps", 1)),
+            plan.get("notes"),
+            now,
+        )
+        for plan in PAY_PLAN_SEED
+    ]
+    conn.executemany(
+        """
+        INSERT INTO pay_plans (
+            code, name, description, has_locality_adjustment, has_steps, notes, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code) DO UPDATE SET
+            name=excluded.name,
+            description=excluded.description,
+            has_locality_adjustment=excluded.has_locality_adjustment,
+            has_steps=excluded.has_steps,
+            notes=excluded.notes,
+            updated_at=excluded.updated_at
+        """,
+        rows,
+    )
 
 
 def _seed_core_codes(conn: sqlite3.Connection) -> None:

@@ -178,4 +178,101 @@ Files: `src/recommendations.py`, `src/ui_data.py`, `src/database.py`, `pages/1_S
 
 - Automated submission of applications.
 - Browser scraping in lieu of APIs.
-- Multi-tenant / cloud SaaS deployment.
+- Multi-tenant / cloud SaaS deployment of the dashboard. (The public map at `thegrandpipeline.com/map` is a separate product per ADR-0016, not a hosted version of the dashboard.)
+
+---
+
+## Parallel track — Public Map Tool (`thegrandpipeline.com/map`)
+
+A separate sibling product per ADR-0016, ADR-0017, ADR-0018, and ADR-0019. The dashboard remains local-first; the public map is a static, read-only website fed by nightly snapshots from the local SQLite. Lives in `public_map/` with its own `package.json`. Stack: SvelteKit (static adapter) + Mapbox GL JS + Cloudflare Pages. **Layered, zoom-driven map** with maxzoom 9. Runs independently of the dashboard's V1/V2/V3 build order. The detailed implementation plan is at `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. External dataset catalog: `docs/PUBLIC_MAP_DATA_SOURCES.md`.
+
+### Phase A — Markers and geocoding ✅
+
+Files: `src/database.py` (locations_geocoded), `src/public_map_export.py`, `scripts/export_public_map.py`, `scripts/geocode_locations.py`, `tests/test_public_map_export.py`.
+
+- [x] `locations_geocoded` table + 56 state/territory centroids; `geocoding_misses` log table.
+- [x] `scripts/geocode_locations.py` backfills from SimpleMaps US Cities CSV.
+- [x] `src/public_map_export.py` pure query functions (jobs_geojson, job_details, opm_state_aggregates, manifest, geocoding_summary).
+- [x] `scripts/export_public_map.py` writes the marker bundle.
+- [x] 12 tests green; full suite (96) green.
+
+**Exit:** open postings export produces well-formed GeoJSON; geocoding falls back from city to state centroid; closed postings excluded. **Done.**
+
+### Phase A.5 — Reference data foundation
+
+Adds the schema and ingest fleet for pay tables, localities, polygons, and cost of living. Per ADR-0018 every external dataset is tracked in `data_source_status` and visible in the local admin dashboard. Per ADR-0019 the locality pay polygons use OPM's ArcGIS FeatureServer with a county-dissolve fallback.
+
+Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`, `src/pay_calculator.py`, `pages/9_Public_Map_Admin.py`, `scripts/ingest_*.py`, matching `tests/`.
+
+- [ ] Add 9 reference-data tables: `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status`. Bump schema_version to 8.
+- [ ] `src/data_source_registry.py` — read/update helpers for `data_source_status`.
+- [ ] `src/reference_data.py` — pure read helpers (lookup locality by FIPS, lookup pay scale by pay plan/year/grade/step/locality).
+- [ ] `src/pay_calculator.py` — given a job, return its locality-adjusted pay table. Tested against published OPM values for ≥3 localities × ≥3 pay plans.
+- [ ] Ingest scripts (each idempotent, each writes status):
+  - [ ] `ingest_state_polygons.py` (Census TIGER, simplified)
+  - [ ] `ingest_county_polygons.py`
+  - [ ] `ingest_cbsa_polygons.py`
+  - [ ] `ingest_locality_definitions.py` (OPM annual county-FIPS list)
+  - [ ] `ingest_locality_polygons.py` (OPM ArcGIS primary, county-dissolve fallback)
+  - [ ] `ingest_locality_pay.py` (annual % adjustment per locality)
+  - [ ] `ingest_gs_pay.py` (OPM GS tables, base + per-locality)
+  - [ ] `ingest_other_pay_plans.py` (FW first; ES, AD, FP, LE, VN incrementally)
+  - [ ] `ingest_bea_rpp.py` (BEA Regional Price Parities, state + metro)
+  - [ ] `refresh_public_map_data.py` (orchestrator)
+- [ ] `pages/9_Public_Map_Admin.py` — local-only Streamlit page with per-source status, last run, row count, manual refresh button, CSV upload override, year-over-year diff for pay scales.
+- [ ] Tests: status registry round-trip, pay calculator (real OPM values), reference-data lookups.
+
+**Exit:** every ingest script runs against a clean DB and lands status=green; admin page lists every source with green status; pay calculator returns the published GS-13 step 5 Chicago value for 2026 to the cent.
+
+### Phase A.7 — Polygon and pay-table export
+
+Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_public_map_export_polygons.py`.
+
+- [ ] Extend the export to emit `states.geojson`, `localities.geojson`, `counties.geojson`, `metros.geojson`, `pay_tables.json`, `cost_of_living.json`.
+- [ ] Each polygon FeatureCollection joins reference data so the public site can render the choropleth metric switcher without per-feature lookups.
+- [ ] Each marker in `jobs.geojson` carries its `locality_code` so the SvelteKit pay calculator can resolve a pay table client-side.
+- [ ] `manifest.json` lists per-source freshness pulled from `data_source_status`.
+
+**Exit:** every output validates as well-formed GeoJSON / JSON; bundle gzipped size ≤ 15 MB; tests cover polygon emit shape and the per-feature pay-vs-COL field.
+
+### Phase B — SvelteKit map skeleton with layered architecture
+
+- [ ] Scaffold SvelteKit (`adapter-static`) under `public_map/`.
+- [ ] Mapbox GL map with `maxzoom: 9` and per-layer `minzoom`/`maxzoom`.
+- [ ] Layer order: basemap → states fill → counties outline → metros outline → localities outline+fill → marker clusters → individual markers.
+- [ ] Choropleth metric switcher (open postings, workforce, accessions, separations, remote share, pay-vs-COL).
+
+**Exit:** `npm run dev` renders the layered map; switcher recolors; markers appear past zoom 7; nothing renders past zoom 9.
+
+### Phase C — Popups and click handling
+
+- [ ] `StateRoundup`, `LocalityDetail`, `CountyDetail`, `JobCard` Svelte components.
+- [ ] Click resolution: polygon clicks at low zoom; marker clicks at high zoom.
+- [ ] `JobCard` lazy-loads its detail entry and renders the full locality-adjusted pay table.
+
+**Exit:** every popup matches reference data exactly for at least three sample features; pay tables match OPM-published values to the cent.
+
+### Phase D — Filters, URL state, styling pass
+
+- [ ] `FilterPanel.svelte` (keyword, agency, series, grade range, salary minimum, remote, hiring path, pay plan).
+- [ ] URL-encoded filter state, debounced replaceState.
+- [ ] Aesthetic pass: typography, spacing, mobile drawer, layer-transition animations, accessibility audit.
+
+**Exit:** sharing a filtered URL restores the same view; mobile drawer works; Lighthouse ≥ 90.
+
+### Phase E — Deploy
+
+- [ ] Cloudflare Pages from GitHub, build root `public_map/`.
+- [ ] Custom domain `thegrandpipeline.com`, route `/map`.
+- [ ] Mapbox token in Pages env vars + URL referrer restrictions in Mapbox dashboard.
+
+**Exit:** `https://thegrandpipeline.com/map` resolves over HTTPS and matches local build.
+
+### Phase F — Operations and polish
+
+- [ ] Cloudflare Web Analytics, `robots.txt`, sitemap, OG image, share-preview meta.
+- [ ] `/about` page with attributions: USAJOBS, OPM, Census, BEA, OpenStreetMap, SimpleMaps. "Not affiliated with the U.S. government."
+- [ ] Windows Task Scheduler nightly job runs `refresh_public_map_data.py` + `export_public_map.py` + `git push`.
+- [ ] Update runbook in `docs/PUBLIC_MAP_PIPELINE.md`.
+
+**Exit:** a nightly run lands fresh data on the public site without manual steps; freshness per source visible in the footer.
