@@ -1,0 +1,9 @@
+# Generated bundle goes here.
+#
+# `scripts/export_public_map.py` writes 12 files: jobs.geojson, jobs_detail.json,
+# states.geojson, localities.geojson, counties.geojson, metros.geojson,
+# pay_tables.json, cost_of_living.json, opm_states.json, agencies.json,
+# series.json, manifest.json.
+#
+# This .gitkeep is committed so the directory exists in fresh checkouts; the
+# data files are committed by the nightly export run (see ADR-0016).

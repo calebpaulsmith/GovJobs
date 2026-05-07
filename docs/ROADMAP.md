@@ -241,14 +241,15 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 **Exit:** every output validates as well-formed GeoJSON / JSON; bundle gzipped size ≤ 15 MB; tests cover polygon emit shape and the per-feature pay-vs-COL field. **Done.**
 
-### Phase B — SvelteKit map skeleton with layered architecture *(NEXT)*
+### Phase B — SvelteKit map skeleton with layered architecture *(SKELETON LANDED)*
 
-- [ ] Scaffold SvelteKit (`adapter-static`) under `public_map/`.
-- [ ] Mapbox GL map with `maxzoom: 9` and per-layer `minzoom`/`maxzoom`.
-- [ ] Layer order: basemap → states fill → counties outline → metros outline → localities outline+fill → marker clusters → individual markers.
-- [ ] Choropleth metric switcher (open postings, workforce, accessions, separations, remote share, pay-vs-COL).
+- [x] Scaffold SvelteKit (`adapter-static`) under `public_map/` (Svelte 5 + Vite 6 + TS; SPA mode).
+- [x] Mapbox GL map with `maxZoom: 9` and per-layer `minzoom`/`maxzoom`; OSM raster fallback when `VITE_MAPBOX_TOKEN` is unset.
+- [x] Layer order in `src/lib/layers.ts`: basemap → states fill → states outline → counties outline → metros outline → localities fill+outline → marker clusters → individual markers.
+- [x] Choropleth metric switcher (open postings, workforce, accessions, separations, remote share, pay-vs-COL); `remote_share` derived client-side from `jobs.geojson` and stamped onto each state feature.
+- [x] `npm run check` and `npm run build` are green; SPA bundles to `public_map/build/`.
 
-**Exit:** `npm run dev` renders the layered map; switcher recolors; markers appear past zoom 7; nothing renders past zoom 9.
+**Exit:** `npm run dev` renders the layered map; switcher recolors; markers appear past zoom 7; nothing renders past zoom 9. *(Awaiting visual verification with the local data bundle in `public_map/static/data/`.)*
 
 ### Phase C — Popups and click handling
 
