@@ -29,3 +29,4 @@ data/app.log
 Thumbs.db
 .vscode/
 .idea/
+.claude/
