@@ -1,43 +1,53 @@
 """Pure query functions for the public map (`thegrandpipeline.com/map`).
 
 Reads the local SQLite database and returns plain Python dicts/lists ready
-for JSON serialization. Has no Streamlit imports, no file I/O, and no
-side effects on the database — the CLI entry in
-`scripts/export_public_map.py` orchestrates writing files.
+for JSON serialization. Has no Streamlit imports, no file I/O for the
+marker queries — but the polygon emitters DO read polygon files referenced
+by `state_polygons.polygon_path`, `counties.polygon_path`, etc., so they
+take a ``repo_root`` argument that resolves repo-relative paths.
 
 Per ADR-0016 the public map is fed by static snapshots; per ADR-0002 the
 OPM overlay must be labeled "federal workforce, not postings" — that label
-is part of the manifest emitted from this module.
+is part of the manifest emitted from this module. Per ADR-0017 the public
+map's layered zoom model uses simplified polygon geometry (~10% of TIGER
+detail) to keep the bundle small; ``simplify_geometry`` runs at export time.
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+from src.reference_data import REST_OF_US_CODE
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 GENERATOR = "scripts/export_public_map.py"
+
+# Default Douglas-Peucker tolerances (degrees). Trade-off: lower = more detail,
+# bigger bundle. ADR-0017 calls for ~10% of TIGER detail; these values produce
+# polygons that look correct at the public map's maxzoom of 9.
+DEFAULT_STATE_TOLERANCE = 0.05
+DEFAULT_LOCALITY_TOLERANCE = 0.03
+DEFAULT_COUNTY_TOLERANCE = 0.01
+DEFAULT_METRO_TOLERANCE = 0.01
 
 
 # ---------- Open postings (the map's primary feature) -----------------------
 
 
-def open_postings_features(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Return one GeoJSON-ready feature per (job, location) with a coordinate.
+def _marker_dataset(conn: sqlite3.Connection, *, year: int) -> list[dict[str, Any]]:
+    """Return enriched marker rows used by both the GeoJSON and the polygon
+    aggregations.
 
-    Includes only USAJOBS postings whose close_date is in the future or null.
-    Coordinate resolution per ADR-0019 / MAP_FEATURE_SPEC priority:
-
-    1. ``job_locations.latitude/longitude`` — authoritative coords from the
-       USAJOBS Search payload (added when the dashboard backfills coords).
-    2. SimpleMaps city geocode in ``locations_geocoded`` (city-level).
-    3. State centroid in ``locations_geocoded`` (low-confidence fallback).
-
-    Postings with no coordinate at any level are omitted from the feature
-    list and counted separately by ``geocoding_summary``.
+    Each row carries the public marker properties plus internal helpers
+    (``county_fips``, ``cbsa_code``) needed to count postings per county or
+    CBSA. The locality lookup is keyed by ``year`` because OPM redefines
+    locality membership annually.
     """
     rows = conn.execute(
         """
@@ -68,7 +78,10 @@ def open_postings_features(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 WHEN city_lookup.lat IS NOT NULL THEN city_lookup.geo_quality
                 WHEN state_lookup.lat IS NOT NULL THEN state_lookup.geo_quality
                 ELSE NULL
-            END AS geo_quality
+            END AS geo_quality,
+            city_lookup.county_fips AS county_fips,
+            counties.cbsa_code      AS cbsa_code,
+            lpc.locality_code       AS locality_code
         FROM jobs j
         JOIN job_locations jl ON jl.job_id = j.id
         LEFT JOIN locations_geocoded city_lookup
@@ -77,49 +90,113 @@ def open_postings_features(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         LEFT JOIN locations_geocoded state_lookup
             ON state_lookup.city = ''
             AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN counties ON counties.fips = city_lookup.county_fips
+        LEFT JOIN locality_pay_counties lpc
+            ON lpc.county_fips = city_lookup.county_fips
+            AND lpc.year = ?
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
           AND COALESCE(j.url, '') <> ''
-        """
+        """,
+        (int(year),),
     ).fetchall()
 
-    features: list[dict[str, Any]] = []
+    dataset: list[dict[str, Any]] = []
     for row in rows:
         if row["lat"] is None or row["lon"] is None:
             continue
-        features.append(
+        dataset.append(
             {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [round(row["lon"], 5), round(row["lat"], 5)],
-                },
-                "properties": {
-                    "id": int(row["job_id"]),
-                    "title": row["title"],
-                    "agency_code": row["agency_code"],
-                    "series": row["series"],
-                    "grade_low": row["grade_low"],
-                    "grade_high": row["grade_high"],
-                    "pay_plan": row["pay_plan"],
-                    "salary_min": _round_or_none(row["salary_min"]),
-                    "salary_max": _round_or_none(row["salary_max"]),
-                    "remote_status": row["remote_status"],
-                    "close_date": row["close_date"],
-                    "city": row["jl_city"],
-                    "state": (row["jl_state"] or "").upper() or None,
-                    "geo_quality": row["geo_quality"],
-                },
+                "job_id": int(row["job_id"]),
+                "title": row["title"],
+                "agency_code": row["agency_code"],
+                "series": row["series"],
+                "grade_low": row["grade_low"],
+                "grade_high": row["grade_high"],
+                "pay_plan": row["pay_plan"],
+                "salary_min": _round_or_none(row["salary_min"]),
+                "salary_max": _round_or_none(row["salary_max"]),
+                "remote_status": row["remote_status"],
+                "close_date": row["close_date"],
+                "city": row["jl_city"],
+                "state": (row["jl_state"] or "").upper() or None,
+                "geo_quality": row["geo_quality"],
+                "lat": float(row["lat"]),
+                "lon": float(row["lon"]),
+                "county_fips": row["county_fips"],
+                "cbsa_code": row["cbsa_code"],
+                "locality_code": row["locality_code"],
             }
         )
-    return features
+    return dataset
 
 
-def jobs_geojson(conn: sqlite3.Connection) -> dict[str, Any]:
+def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [round(marker["lon"], 5), round(marker["lat"], 5)],
+        },
+        "properties": {
+            "id": marker["job_id"],
+            "title": marker["title"],
+            "agency_code": marker["agency_code"],
+            "series": marker["series"],
+            "grade_low": marker["grade_low"],
+            "grade_high": marker["grade_high"],
+            "pay_plan": marker["pay_plan"],
+            "salary_min": marker["salary_min"],
+            "salary_max": marker["salary_max"],
+            "remote_status": marker["remote_status"],
+            "close_date": marker["close_date"],
+            "city": marker["city"],
+            "state": marker["state"],
+            "geo_quality": marker["geo_quality"],
+            "locality_code": marker["locality_code"],
+        },
+    }
+
+
+def open_postings_features(
+    conn: sqlite3.Connection,
+    *,
+    year: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return one GeoJSON-ready feature per (job, location) with a coordinate.
+
+    Includes only USAJOBS postings whose close_date is in the future or null.
+    Coordinate resolution per ADR-0019 / MAP_FEATURE_SPEC priority:
+
+    1. ``job_locations.latitude/longitude`` — authoritative coords from the
+       USAJOBS Search payload (added when the dashboard backfills coords).
+    2. SimpleMaps city geocode in ``locations_geocoded`` (city-level).
+    3. State centroid in ``locations_geocoded`` (low-confidence fallback).
+
+    Postings with no coordinate at any level are omitted from the feature
+    list and counted separately by ``geocoding_summary``.
+
+    The ``locality_code`` property is the OPM locality area covering the
+    marker's geocoded county for ``year`` (or the latest reference year if
+    omitted). It is ``None`` when the city has no county FIPS or the
+    county is not assigned to a locality area in that year.
+    """
+    resolved_year = year if year is not None else current_reference_year(conn)
+    return [
+        _feature_from_marker(marker)
+        for marker in _marker_dataset(conn, year=resolved_year)
+    ]
+
+
+def jobs_geojson(
+    conn: sqlite3.Connection,
+    *,
+    year: int | None = None,
+) -> dict[str, Any]:
     """Wrap `open_postings_features` in a GeoJSON FeatureCollection."""
     return {
         "type": "FeatureCollection",
-        "features": open_postings_features(conn),
+        "features": open_postings_features(conn, year=year),
     }
 
 
@@ -337,23 +414,689 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def data_sources_freshness(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    """Per-source freshness map for the public site footer.
+
+    Reads ``data_source_status`` (populated by ``src/data_source_registry``).
+    Returns a dict keyed by ``source_key`` so the SvelteKit client can show
+    a line like "Pay tables: refreshed 2026-01-15".
+    """
+    if not _table_exists(conn, "data_source_status"):
+        return {}
+    rows = conn.execute(
+        """
+        SELECT source_key, display_name, category, last_run_at, last_success_at,
+               last_error, row_count, manual_override
+        FROM data_source_status
+        ORDER BY category, display_name
+        """
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = (row["source_key"] or "").strip()
+        if not key:
+            continue
+        out[key] = {
+            "display_name": row["display_name"],
+            "category": row["category"],
+            "last_run_at": row["last_run_at"],
+            "last_success_at": row["last_success_at"],
+            "row_count": row["row_count"],
+            "manual_override": bool(row["manual_override"] or 0),
+            "has_error": bool(row["last_error"]),
+        }
+    return out
+
+
 def manifest(
     conn: sqlite3.Connection,
     *,
     feature_count: int,
     job_count: int,
     opm_state_count: int,
+    reference_year: int | None = None,
+    layer_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": GENERATOR,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "reference_year": int(
+            reference_year if reference_year is not None else current_reference_year(conn)
+        ),
         "feature_count": feature_count,
         "job_count": job_count,
         "opm_state_count": opm_state_count,
         "opm_label": "federal workforce, not postings",
         "geocoding": geocoding_summary(conn),
+        "layers": dict(layer_counts or {}),
+        "data_sources": data_sources_freshness(conn),
     }
+
+
+# ---------- Polygon emitters ------------------------------------------------
+
+
+def states_geojson(
+    conn: sqlite3.Connection,
+    *,
+    repo_root: Path,
+    year: int | None = None,
+    tolerance: float | None = DEFAULT_STATE_TOLERANCE,
+) -> dict[str, Any]:
+    """FeatureCollection of US state polygons with joined dashboard metrics.
+
+    Per-feature properties: ``state``, ``name``, ``postings`` (open USAJOBS
+    count), ``workforce`` / ``accessions`` / ``separations`` (from
+    ``opm_workforce_records``), ``gs13_step1_locality`` (illustrative pay for
+    the state's most populated locality area — proxied as the locality with
+    the most member counties in the state), ``rpp_overall`` from BEA, and
+    ``pay_vs_col`` = pay ÷ rpp × 100.
+    """
+    resolved_year = year if year is not None else current_reference_year(conn)
+    markers = _marker_dataset(conn, year=resolved_year)
+    postings_by_state = _count_by(markers, "state")
+    opm_by_state = opm_state_aggregates(conn)
+    rpp_by_state = _rpp_lookup(conn, geo_type="state")
+
+    state_rows = conn.execute(
+        "SELECT state, name, polygon_path FROM state_polygons ORDER BY state"
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in state_rows:
+        state_code = (row["state"] or "").upper()
+        if not state_code:
+            continue
+        geometry = _load_polygon(row["polygon_path"], repo_root)
+        if geometry is None:
+            continue
+        if tolerance:
+            geometry = simplify_geometry(geometry, tolerance)
+
+        opm = opm_by_state.get(state_code, {})
+        workforce = int(opm.get("employment", 0)) or None
+        accessions = int(opm.get("accessions", 0)) or None
+        separations = int(opm.get("separations", 0)) or None
+
+        locality_code = _state_dominant_locality(conn, state=state_code, year=resolved_year)
+        gs13_pay = _gs13_step1_for_locality(
+            conn, locality_code=locality_code, year=resolved_year
+        )
+        rpp = rpp_by_state.get(state_code)
+        pay_vs_col = _pay_vs_col(gs13_pay, rpp)
+
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": {
+                    "state": state_code,
+                    "name": row["name"],
+                    "postings": int(postings_by_state.get(state_code, 0)),
+                    "workforce": workforce,
+                    "accessions": accessions,
+                    "separations": separations,
+                    "locality_code": locality_code,
+                    "gs13_step1_locality": gs13_pay,
+                    "rpp_overall": rpp,
+                    "pay_vs_col": pay_vs_col,
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+def localities_geojson(
+    conn: sqlite3.Connection,
+    *,
+    repo_root: Path,
+    year: int | None = None,
+    tolerance: float | None = DEFAULT_LOCALITY_TOLERANCE,
+) -> dict[str, Any]:
+    """FeatureCollection of OPM locality pay areas for ``year``.
+
+    RPP is averaged across constituent metros and labeled approximate per
+    `docs/PUBLIC_MAP_DATA_SOURCES.md` — BEA does not publish RPP at the
+    locality-pay-area level.
+    """
+    resolved_year = year if year is not None else current_reference_year(conn)
+    markers = _marker_dataset(conn, year=resolved_year)
+    postings_by_locality = _count_by(markers, "locality_code")
+    rpp_by_cbsa = _rpp_lookup(conn, geo_type="cbsa")
+
+    locality_rows = conn.execute(
+        """
+        SELECT code, year, name, adjustment_pct, polygon_path
+        FROM locality_pay_areas
+        WHERE year = ?
+        ORDER BY code
+        """,
+        (resolved_year,),
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in locality_rows:
+        code = (row["code"] or "").upper()
+        if not code:
+            continue
+        county_fips = _locality_county_fips(conn, locality_code=code, year=resolved_year)
+        county_count = len(county_fips)
+        cbsa_codes = _cbsa_codes_for_counties(conn, county_fips)
+        rpp_values = [v for v in (rpp_by_cbsa.get(c) for c in cbsa_codes) if v is not None]
+        rpp_avg = round(sum(rpp_values) / len(rpp_values), 2) if rpp_values else None
+
+        gs13_pay = _gs13_step1_for_locality(
+            conn, locality_code=code, year=resolved_year
+        )
+
+        geometry = _load_polygon(row["polygon_path"], repo_root)
+        if geometry is None:
+            # Localities without polygons (e.g. Rest of U.S.) still belong in
+            # the bundle so the client can render their popup metadata when
+            # the user clicks a county that maps to them; emit a null geom.
+            continue
+        if tolerance:
+            geometry = simplify_geometry(geometry, tolerance)
+
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": {
+                    "code": code,
+                    "name": row["name"],
+                    "adjustment_pct": _round_or_none(row["adjustment_pct"]),
+                    "county_count": county_count,
+                    "gs13_step1_locality": gs13_pay,
+                    "rpp_overall": rpp_avg,
+                    "rpp_overall_approximate": rpp_avg is not None,
+                    "postings": int(postings_by_locality.get(code, 0)),
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+def counties_geojson(
+    conn: sqlite3.Connection,
+    *,
+    repo_root: Path,
+    year: int | None = None,
+    tolerance: float | None = DEFAULT_COUNTY_TOLERANCE,
+) -> dict[str, Any]:
+    """FeatureCollection of US counties with locality + RPP context.
+
+    ``locality_code`` is joined via ``locality_pay_counties`` for ``year``.
+    ``rpp_overall`` is the state-level fallback (BEA does not publish county-
+    level RPP). ``postings`` counts markers whose geocoded county matches.
+    """
+    resolved_year = year if year is not None else current_reference_year(conn)
+    markers = _marker_dataset(conn, year=resolved_year)
+    postings_by_county = _count_by(markers, "county_fips")
+    rpp_by_state = _rpp_lookup(conn, geo_type="state")
+
+    rows = conn.execute(
+        """
+        SELECT c.fips, c.name, c.state, c.cbsa_code, c.polygon_path,
+               lpc.locality_code AS locality_code
+        FROM counties c
+        LEFT JOIN locality_pay_counties lpc
+            ON lpc.county_fips = c.fips AND lpc.year = ?
+        ORDER BY c.fips
+        """,
+        (resolved_year,),
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in rows:
+        fips = (row["fips"] or "").strip()
+        if not fips:
+            continue
+        geometry = _load_polygon(row["polygon_path"], repo_root)
+        if geometry is None:
+            continue
+        if tolerance:
+            geometry = simplify_geometry(geometry, tolerance)
+        state_code = (row["state"] or "").upper() or None
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": {
+                    "fips": fips,
+                    "name": row["name"],
+                    "state": state_code,
+                    "cbsa_code": row["cbsa_code"],
+                    "locality_code": row["locality_code"],
+                    "rpp_overall": rpp_by_state.get(state_code) if state_code else None,
+                    "postings": int(postings_by_county.get(fips, 0)),
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+def metros_geojson(
+    conn: sqlite3.Connection,
+    *,
+    repo_root: Path,
+    year: int | None = None,
+    tolerance: float | None = DEFAULT_METRO_TOLERANCE,
+) -> dict[str, Any]:
+    """FeatureCollection of CBSA polygons with RPP and postings counts."""
+    resolved_year = year if year is not None else current_reference_year(conn)
+    markers = _marker_dataset(conn, year=resolved_year)
+    postings_by_cbsa = _count_by(markers, "cbsa_code")
+    rpp_by_cbsa = _rpp_lookup(conn, geo_type="cbsa")
+
+    rows = conn.execute(
+        """
+        SELECT cbsa_code, name, cbsa_type, polygon_path
+        FROM metro_areas
+        ORDER BY cbsa_code
+        """
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in rows:
+        cbsa = (row["cbsa_code"] or "").strip()
+        if not cbsa:
+            continue
+        geometry = _load_polygon(row["polygon_path"], repo_root)
+        if geometry is None:
+            continue
+        if tolerance:
+            geometry = simplify_geometry(geometry, tolerance)
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": {
+                    "cbsa_code": cbsa,
+                    "name": row["name"],
+                    "cbsa_type": row["cbsa_type"],
+                    "rpp_overall": rpp_by_cbsa.get(cbsa),
+                    "postings": int(postings_by_cbsa.get(cbsa, 0)),
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ---------- Pay tables and cost of living -----------------------------------
+
+
+def pay_tables(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Every ``pay_scales`` row organized for client-side lookup.
+
+    Shape::
+
+        {
+            "GS": {
+                "2026": {
+                    "BASE": { "13": { "1": 96148.0, ... } },
+                    "CHI":  { "13": { "1": 110803.0, ... } }
+                }
+            }
+        }
+
+    The ``BASE`` key collects rows where ``locality_code = ''`` (the no-
+    locality sentinel used by the schema). Step ``0`` represents pay plans
+    without steps (single-rate plans like ES).
+    """
+    rows = conn.execute(
+        """
+        SELECT pay_plan, year, grade, step, locality_code, annual_rate
+        FROM pay_scales
+        ORDER BY pay_plan, year, locality_code, grade, step
+        """
+    ).fetchall()
+    out: dict[str, Any] = {}
+    for row in rows:
+        plan = (row["pay_plan"] or "").upper()
+        if not plan:
+            continue
+        year = str(int(row["year"]))
+        loc = (row["locality_code"] or "").upper() or "BASE"
+        grade = str(row["grade"])
+        step = str(int(row["step"]))
+        plan_node = out.setdefault(plan, {})
+        year_node = plan_node.setdefault(year, {})
+        loc_node = year_node.setdefault(loc, {})
+        grade_node = loc_node.setdefault(grade, {})
+        try:
+            grade_node[step] = round(float(row["annual_rate"]), 2)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
+    """``{by_state, by_cbsa}`` keyed by code with the latest-year RPP row.
+
+    Latest year is computed per geography so a state with stale data still
+    surfaces alongside a cbsa with newer data; the returned row carries its
+    ``year`` so the client can label it.
+    """
+    rows = conn.execute(
+        """
+        SELECT year, geo_type, geo_code, rpp_overall, rpp_goods, rpp_services,
+               rpp_rents, source
+        FROM cost_of_living_index
+        ORDER BY geo_type, geo_code,
+                 CASE source WHEN 'bea:rpp' THEN 0 ELSE 1 END,
+                 year DESC
+        """
+    ).fetchall()
+    by_state: dict[str, Any] = {}
+    by_cbsa: dict[str, Any] = {}
+    for row in rows:
+        bucket = by_state if row["geo_type"] == "state" else by_cbsa
+        code = (row["geo_code"] or "").strip()
+        if not code or code in bucket:
+            continue
+        bucket[code] = {
+            "year": int(row["year"]),
+            "rpp_overall": _round_or_none(row["rpp_overall"]),
+            "rpp_goods": _round_or_none(row["rpp_goods"]),
+            "rpp_services": _round_or_none(row["rpp_services"]),
+            "rpp_rents": _round_or_none(row["rpp_rents"]),
+            "source": row["source"],
+        }
+    return {"by_state": by_state, "by_cbsa": by_cbsa}
+
+
+# ---------- Reference-year + lookup helpers ---------------------------------
+
+
+def current_reference_year(conn: sqlite3.Connection) -> int:
+    """Pick the most recent year present in any reference-data table.
+
+    Order of preference: ``pay_scales`` (the table we care most about for
+    pay tables), then ``locality_pay_areas``. Falls back to the current
+    calendar year so the rest of the export still runs even before any
+    ingest has populated reference data.
+    """
+    for table in ("pay_scales", "locality_pay_areas"):
+        if not _table_exists(conn, table):
+            continue
+        row = conn.execute(f"SELECT MAX(year) AS y FROM {table}").fetchone()
+        if row and row["y"] is not None:
+            return int(row["y"])
+    return datetime.now(timezone.utc).year
+
+
+def _count_by(markers: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for marker in markers:
+        value = marker.get(key)
+        if value is None or value == "":
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _rpp_lookup(
+    conn: sqlite3.Connection, *, geo_type: str
+) -> dict[str, float]:
+    """Latest BEA RPP overall by ``geo_code`` for the given ``geo_type``.
+
+    Picks the highest year per code and prefers ``bea:rpp`` when multiple
+    sources publish the same year.
+    """
+    rows = conn.execute(
+        """
+        SELECT year, geo_code, rpp_overall, source
+        FROM cost_of_living_index
+        WHERE geo_type = ? AND rpp_overall IS NOT NULL
+        ORDER BY geo_code,
+                 CASE source WHEN 'bea:rpp' THEN 0 ELSE 1 END,
+                 year DESC
+        """,
+        (geo_type,),
+    ).fetchall()
+    out: dict[str, float] = {}
+    for row in rows:
+        code = (row["geo_code"] or "").strip()
+        if not code or code in out:
+            continue
+        try:
+            out[code] = round(float(row["rpp_overall"]), 2)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _state_dominant_locality(
+    conn: sqlite3.Connection, *, state: str, year: int
+) -> str:
+    """Pick the locality area covering the most counties in ``state``.
+
+    Used as a proxy for "most populated locality" since we don't ship
+    population data with the dashboard. Falls back to ``REST_OF_US_CODE``
+    when no locality has any counties in the state.
+    """
+    state_code = (state or "").upper()
+    if not state_code:
+        return REST_OF_US_CODE
+    row = conn.execute(
+        """
+        SELECT lpc.locality_code AS code, COUNT(*) AS cnt
+        FROM locality_pay_counties lpc
+        JOIN counties c ON c.fips = lpc.county_fips
+        WHERE lpc.year = ? AND c.state = ? AND lpc.locality_code <> ?
+        GROUP BY lpc.locality_code
+        ORDER BY cnt DESC, lpc.locality_code
+        LIMIT 1
+        """,
+        (year, state_code, REST_OF_US_CODE),
+    ).fetchone()
+    if row and row["code"]:
+        return str(row["code"]).upper()
+    return REST_OF_US_CODE
+
+
+def _gs13_step1_for_locality(
+    conn: sqlite3.Connection, *, locality_code: str, year: int
+) -> float | None:
+    """Locality-adjusted GS-13 step 1 rate for choropleth pay-vs-COL.
+
+    Honors the same precedence as ``src.pay_calculator``:
+    1. A locality-specific row in ``pay_scales`` for (GS, year, 13, 1, code).
+    2. The base row × (1 + adjustment_pct) when only a base table is loaded.
+
+    Working directly off ``locality_code`` (rather than reverse-resolving a
+    city/state) lets us produce a pay number for every state at choropleth
+    time without depending on each county name appearing in
+    ``locations_geocoded``.
+    """
+    code = (locality_code or "").upper()
+    locality_row = conn.execute(
+        """
+        SELECT annual_rate FROM pay_scales
+        WHERE pay_plan='GS' AND year=? AND grade='13' AND step=1
+              AND locality_code=?
+        """,
+        (year, code),
+    ).fetchone()
+    if locality_row and locality_row["annual_rate"] is not None:
+        return _round_or_none(locality_row["annual_rate"])
+
+    base_row = conn.execute(
+        """
+        SELECT annual_rate FROM pay_scales
+        WHERE pay_plan='GS' AND year=? AND grade='13' AND step=1
+              AND locality_code=''
+        """,
+        (year,),
+    ).fetchone()
+    if not base_row or base_row["annual_rate"] is None:
+        return None
+
+    adjustment_row = conn.execute(
+        "SELECT adjustment_pct FROM locality_pay_areas WHERE code=? AND year=?",
+        (code, year),
+    ).fetchone()
+    adjustment = (
+        float(adjustment_row["adjustment_pct"])
+        if adjustment_row and adjustment_row["adjustment_pct"] is not None
+        else 0.0
+    )
+    rate = float(base_row["annual_rate"]) * (1 + adjustment / 100.0)
+    return round(rate, 2)
+
+
+def _pay_vs_col(pay: float | None, rpp: float | None) -> float | None:
+    if pay is None or rpp is None or rpp <= 0:
+        return None
+    return round((pay / rpp) * 100.0, 2)
+
+
+def _locality_county_fips(
+    conn: sqlite3.Connection, *, locality_code: str, year: int
+) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT county_fips FROM locality_pay_counties
+        WHERE locality_code = ? AND year = ?
+        """,
+        (locality_code, year),
+    ).fetchall()
+    return [row["county_fips"] for row in rows if row["county_fips"]]
+
+
+def _cbsa_codes_for_counties(
+    conn: sqlite3.Connection, county_fips: list[str]
+) -> list[str]:
+    if not county_fips:
+        return []
+    placeholders = ",".join("?" for _ in county_fips)
+    rows = conn.execute(
+        f"SELECT DISTINCT cbsa_code FROM counties WHERE fips IN ({placeholders})",
+        county_fips,
+    ).fetchall()
+    return [row["cbsa_code"] for row in rows if row["cbsa_code"]]
+
+
+# ---------- Polygon I/O + simplification -----------------------------------
+
+
+def _resolve_polygon_path(polygon_path: str | None, repo_root: Path) -> Path | None:
+    if not polygon_path:
+        return None
+    p = Path(polygon_path)
+    if not p.is_absolute():
+        p = repo_root / p
+    return p
+
+
+def _load_polygon(polygon_path: str | None, repo_root: Path) -> dict[str, Any] | None:
+    """Read a stored polygon file and return its geometry dict.
+
+    Returns ``None`` if the path is missing, the file does not exist, or the
+    file is malformed. Logs a warning so the export still proceeds even when
+    one polygon is broken.
+    """
+    resolved = _resolve_polygon_path(polygon_path, repo_root)
+    if resolved is None or not resolved.exists():
+        if polygon_path:
+            logger.warning("polygon file not found: %s", polygon_path)
+        return None
+    try:
+        with resolved.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("could not read polygon %s: %s", resolved, exc)
+        return None
+    if isinstance(data, dict) and data.get("type") == "Feature":
+        return data.get("geometry")
+    if isinstance(data, dict) and data.get("type") in {"Polygon", "MultiPolygon"}:
+        return data
+    return None
+
+
+def simplify_geometry(
+    geometry: dict[str, Any] | None, tolerance: float
+) -> dict[str, Any] | None:
+    """Stdlib Douglas-Peucker simplification for Polygon / MultiPolygon.
+
+    Tolerance is in degrees. Endpoints (and therefore closed-ring closure)
+    are always preserved. ADR-0017 calls for simplified geometry at export
+    time so the public bundle stays small even though the dashboard stores
+    full TIGER detail on disk.
+    """
+    if not geometry or tolerance <= 0:
+        return geometry
+    g_type = geometry.get("type")
+    if g_type == "Polygon":
+        rings = geometry.get("coordinates") or []
+        return {
+            "type": "Polygon",
+            "coordinates": [_simplify_ring(ring, tolerance) for ring in rings],
+        }
+    if g_type == "MultiPolygon":
+        polys = geometry.get("coordinates") or []
+        return {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [_simplify_ring(ring, tolerance) for ring in poly]
+                for poly in polys
+            ],
+        }
+    return geometry
+
+
+def _simplify_ring(ring: list[list[float]], tolerance: float) -> list[list[float]]:
+    if len(ring) < 4:
+        return ring
+    simplified = _douglas_peucker(ring, tolerance)
+    if simplified[0] != simplified[-1]:
+        simplified.append(simplified[0])
+    return simplified
+
+
+def _douglas_peucker(
+    points: list[list[float]], tolerance: float
+) -> list[list[float]]:
+    if len(points) < 3:
+        return list(points)
+    # Iterative implementation to avoid recursion depth issues on long rings.
+    keep = [False] * len(points)
+    keep[0] = True
+    keep[-1] = True
+    stack: list[tuple[int, int]] = [(0, len(points) - 1)]
+    while stack:
+        first, last = stack.pop()
+        if last <= first + 1:
+            continue
+        max_dist = 0.0
+        max_idx = first
+        for i in range(first + 1, last):
+            d = _perpendicular_distance(points[i], points[first], points[last])
+            if d > max_dist:
+                max_dist = d
+                max_idx = i
+        if max_dist > tolerance:
+            keep[max_idx] = True
+            stack.append((first, max_idx))
+            stack.append((max_idx, last))
+    return [points[i] for i in range(len(points)) if keep[i]]
+
+
+def _perpendicular_distance(
+    point: list[float], start: list[float], end: list[float]
+) -> float:
+    sx, sy = start[0], start[1]
+    ex, ey = end[0], end[1]
+    px, py = point[0], point[1]
+    dx = ex - sx
+    dy = ey - sy
+    if dx == 0 and dy == 0:
+        return ((px - sx) ** 2 + (py - sy) ** 2) ** 0.5
+    num = abs(dy * px - dx * py + ex * sy - ey * sx)
+    den = (dx * dx + dy * dy) ** 0.5
+    return num / den
 
 
 # ---------- Helpers ---------------------------------------------------------

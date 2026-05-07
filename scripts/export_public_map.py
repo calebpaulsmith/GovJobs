@@ -22,11 +22,18 @@ from config import load_config  # noqa: E402
 from src.database import connect, init_schema  # noqa: E402
 from src.public_map_export import (  # noqa: E402
     agency_options,
+    cost_of_living,
+    counties_geojson,
+    current_reference_year,
     job_details,
     jobs_geojson,
+    localities_geojson,
     manifest,
+    metros_geojson,
     opm_state_aggregates,
+    pay_tables,
     series_options,
+    states_geojson,
 )
 
 
@@ -65,31 +72,56 @@ def main() -> int:
     conn = connect(cfg.database_path)
     init_schema(conn)
     try:
-        geojson = jobs_geojson(conn)
+        year = current_reference_year(conn)
+        geojson = jobs_geojson(conn, year=year)
         details = job_details(conn)
         opm = opm_state_aggregates(conn)
         agencies = agency_options(conn)
         series = series_options(conn)
+        states = states_geojson(conn, repo_root=REPO, year=year)
+        localities = localities_geojson(conn, repo_root=REPO, year=year)
+        counties = counties_geojson(conn, repo_root=REPO, year=year)
+        metros = metros_geojson(conn, repo_root=REPO, year=year)
+        pay_tables_payload = pay_tables(conn)
+        col_payload = cost_of_living(conn)
+        layer_counts = {
+            "states.geojson": len(states["features"]),
+            "localities.geojson": len(localities["features"]),
+            "counties.geojson": len(counties["features"]),
+            "metros.geojson": len(metros["features"]),
+            "jobs.geojson": len(geojson["features"]),
+        }
         man = manifest(
             conn,
             feature_count=len(geojson["features"]),
             job_count=len(details),
             opm_state_count=len(opm),
+            reference_year=year,
+            layer_counts=layer_counts,
         )
     finally:
         conn.close()
 
+    print(f"Reference year:   {man['reference_year']}")
     print(f"Open postings:    {man['job_count']:,}")
     print(f"Map features:     {man['feature_count']:,} (one per job-location)")
     print(f"OPM states:       {man['opm_state_count']:,}")
     print(f"Agencies:         {len(agencies):,}")
     print(f"Series:           {len(series):,}")
     print(
+        "Polygons:         "
+        f"{layer_counts['states.geojson']:,} states / "
+        f"{layer_counts['localities.geojson']:,} localities / "
+        f"{layer_counts['counties.geojson']:,} counties / "
+        f"{layer_counts['metros.geojson']:,} metros"
+    )
+    print(
         "Geocoding:        "
         f"{man['geocoding']['city_matches']:,} city / "
         f"{man['geocoding']['state_matches']:,} state-centroid / "
         f"{man['geocoding']['unmatched']:,} unmatched"
     )
+    print(f"Data sources:     {len(man['data_sources']):,} tracked")
 
     if args.dry_run:
         print("Dry run — no files written.")
@@ -103,12 +135,18 @@ def main() -> int:
         "opm_states.json": _write_json(output / "opm_states.json", opm),
         "agencies.json": _write_json(output / "agencies.json", agencies),
         "series.json": _write_json(output / "series.json", series),
+        "states.geojson": _write_json(output / "states.geojson", states),
+        "localities.geojson": _write_json(output / "localities.geojson", localities),
+        "counties.geojson": _write_json(output / "counties.geojson", counties),
+        "metros.geojson": _write_json(output / "metros.geojson", metros),
+        "pay_tables.json": _write_json(output / "pay_tables.json", pay_tables_payload),
+        "cost_of_living.json": _write_json(output / "cost_of_living.json", col_payload),
         "manifest.json": _write_json(output / "manifest.json", man),
     }
     print()
     print(f"Wrote bundle to {output}")
     for name, size in sizes.items():
-        print(f"  {name:<20} {size:>10,} bytes")
+        print(f"  {name:<22} {size:>10,} bytes")
     return 0
 
 

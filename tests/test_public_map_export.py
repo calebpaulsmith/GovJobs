@@ -304,8 +304,11 @@ def test_manifest_records_geocoding_summary_and_opm_label(conn):
 
     man = manifest(conn, feature_count=2, job_count=2, opm_state_count=0)
     assert man["opm_label"] == "federal workforce, not postings"
-    assert man["schema_version"] == 1
+    assert man["schema_version"] == 2
     assert "generated_at" in man
+    assert "reference_year" in man
+    assert "layers" in man
+    assert "data_sources" in man
 
 
 def test_record_geocoding_miss_dedupes(conn):

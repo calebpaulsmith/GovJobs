@@ -228,18 +228,20 @@ Files: `src/database.py`, `src/data_source_registry.py`, `src/reference_data.py`
 
 **Exit:** every ingest script runs against a clean DB and lands status=green; admin page lists every source with green status; pay calculator returns locality-row values verbatim and falls back to base × (1 + adjustment%). **Done.**
 
-### Phase A.7 — Polygon and pay-table export *(NEXT)*
+### Phase A.7 — Polygon and pay-table export ✅
 
 Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_public_map_export_polygons.py`.
 
-- [ ] Extend the export to emit `states.geojson`, `localities.geojson`, `counties.geojson`, `metros.geojson`, `pay_tables.json`, `cost_of_living.json`.
-- [ ] Each polygon FeatureCollection joins reference data so the public site can render the choropleth metric switcher without per-feature lookups.
-- [ ] Each marker in `jobs.geojson` carries its `locality_code` so the SvelteKit pay calculator can resolve a pay table client-side.
-- [ ] `manifest.json` lists per-source freshness pulled from `data_source_status`.
+- [x] Extended the export to emit `states.geojson`, `localities.geojson`, `counties.geojson`, `metros.geojson`, `pay_tables.json`, `cost_of_living.json`.
+- [x] Each polygon FeatureCollection joins reference data (postings, OPM workforce, RPP, GS-13 pay, pay-vs-COL) so the public site can render the choropleth metric switcher without per-feature lookups.
+- [x] Each marker in `jobs.geojson` carries its `locality_code` derived from `locations_geocoded.county_fips` → `locality_pay_counties` for the current reference year.
+- [x] `manifest.json` lists per-source freshness pulled from `data_source_status`, plus per-layer feature counts and the resolved `reference_year`.
+- [x] Stdlib Douglas-Peucker `simplify_geometry` runs at export time so on-disk TIGER detail compresses to ~10% before bundling.
+- [x] 16 new tests in `tests/test_public_map_export_polygons.py`; full suite = 158 green.
 
-**Exit:** every output validates as well-formed GeoJSON / JSON; bundle gzipped size ≤ 15 MB; tests cover polygon emit shape and the per-feature pay-vs-COL field.
+**Exit:** every output validates as well-formed GeoJSON / JSON; bundle gzipped size ≤ 15 MB; tests cover polygon emit shape and the per-feature pay-vs-COL field. **Done.**
 
-### Phase B — SvelteKit map skeleton with layered architecture
+### Phase B — SvelteKit map skeleton with layered architecture *(NEXT)*
 
 - [ ] Scaffold SvelteKit (`adapter-static`) under `public_map/`.
 - [ ] Mapbox GL map with `maxzoom: 9` and per-layer `minzoom`/`maxzoom`.
