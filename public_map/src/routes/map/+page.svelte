@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Map from '$lib/Map.svelte';
 	import MetricSwitcher from '$lib/MetricSwitcher.svelte';
-	import DebugPanel from '$lib/DebugPanel.svelte';
+	import FeaturePanel from '$lib/FeaturePanel.svelte';
 	import { mapState } from '$lib/store.svelte';
 </script>
 
@@ -29,7 +29,7 @@
 
 	<Map />
 	<MetricSwitcher />
-	<DebugPanel />
+	<FeaturePanel />
 
 	<footer class="attrib">
 		<span>Data: USAJOBS · OPM · U.S. Census · BEA</span>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import type { Map as MaplibreMap, StyleSpecification } from 'mapbox-gl';
+	import type { GeoJSONSource, Map as MaplibreMap, MapboxGeoJSONFeature, StyleSpecification } from 'mapbox-gl';
 	import { mapboxToken, pickStyle, HAS_MAPBOX_TOKEN } from './basemap';
 	import {
 		loadCounties,
@@ -76,7 +76,7 @@
 				addOrUpdateSource(map, SOURCE_IDS.jobs, jobs, /* cluster */ true);
 
 				addAllLayers(map, mapState.metric);
-				attachDebugClick(map);
+				attachClickHandling(map);
 			} catch (err) {
 				console.error('[public_map] data load failed', err);
 				mapState.dataError = (err as Error).message;
@@ -119,9 +119,7 @@
 		}
 	}
 
-	function attachDebugClick(m: MaplibreMap): void {
-		// Phase B: a single bubble-aware click handler that surfaces whichever
-		// feature was on top. Phase C replaces this with proper popups.
+	function attachClickHandling(m: MaplibreMap): void {
 		const layerOrder = [
 			LAYER_IDS.markers,
 			LAYER_IDS.clusters,
@@ -130,19 +128,27 @@
 			LAYER_IDS.metrosOutline,
 			LAYER_IDS.statesFill
 		];
+
 		m.on('click', (e) => {
 			for (const layerId of layerOrder) {
 				if (!m.getLayer(layerId)) continue;
 				const feats = m.queryRenderedFeatures(e.point, { layers: [layerId] });
-				if (feats.length > 0) {
-					mapState.debugFeature = {
-						source: layerId,
-						properties: feats[0].properties ?? {}
-					};
+				if (feats.length === 0) continue;
+
+				const feature = feats[0];
+				const props = feature.properties ?? {};
+				if (layerId === LAYER_IDS.clusters) {
+					zoomIntoCluster(m, feature);
 					return;
 				}
+				mapState.selectedFeature = {
+					source: layerId,
+					label: labelFor(layerId),
+					properties: props
+				};
+				return;
 			}
-			mapState.debugFeature = null;
+			mapState.selectedFeature = null;
 		});
 
 		for (const id of layerOrder) {
@@ -153,6 +159,35 @@
 				m.getCanvas().style.cursor = '';
 			});
 		}
+	}
+
+	function labelFor(layerId: string): string {
+		switch (layerId) {
+			case LAYER_IDS.markers:
+				return 'Job card';
+			case LAYER_IDS.statesFill:
+				return 'State roundup';
+			case LAYER_IDS.localitiesFill:
+				return 'Locality detail';
+			case LAYER_IDS.countiesOutline:
+				return 'County detail';
+			case LAYER_IDS.metrosOutline:
+				return 'Metro detail';
+			default:
+				return layerId;
+		}
+	}
+
+	function zoomIntoCluster(m: MaplibreMap, feature: MapboxGeoJSONFeature): void {
+		const source = m.getSource(SOURCE_IDS.jobs);
+		const clusterId = feature.properties?.cluster_id;
+		if (!source || !('getClusterExpansionZoom' in source) || clusterId === undefined) return;
+		const coords = feature.geometry.type === 'Point' ? feature.geometry.coordinates : null;
+		if (!coords) return;
+		(source as GeoJSONSource).getClusterExpansionZoom(Number(clusterId), (err, zoom) => {
+			if (err || zoom === undefined || zoom === null) return;
+			m.easeTo({ center: coords as [number, number], zoom: Math.min(zoom, MAXZOOM) });
+		});
 	}
 </script>
 
