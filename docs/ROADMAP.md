@@ -251,11 +251,12 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 **Exit:** `npm run dev` renders the layered map; switcher recolors; markers appear past zoom 7; nothing renders past zoom 9. *(Awaiting visual verification with the local data bundle in `public_map/static/data/`.)*
 
-### Phase C — Popups and click handling
+### Phase C — Popups and click handling *(INITIATED)*
 
-- [ ] `StateRoundup`, `LocalityDetail`, `CountyDetail`, `JobCard` Svelte components.
-- [ ] Click resolution: polygon clicks at low zoom; marker clicks at high zoom.
-- [ ] `JobCard` lazy-loads its detail entry and renders the full locality-adjusted pay table.
+- [x] `StateRoundup`, `LocalityDetail`, `CountyDetail`, `JobCard` Svelte components.
+- [x] Click resolution: polygon clicks at low zoom; marker clicks at high zoom; clusters zoom to expansion level instead of opening a panel.
+- [x] `JobCard` lazy-loads its detail entry and renders the locality-adjusted pay table when matching static pay rows exist.
+- [ ] Visual/data verification against at least three sample features once the polygon/pay bundle is populated locally.
 
 **Exit:** every popup matches reference data exactly for at least three sample features; pay tables match OPM-published values to the cent.
 

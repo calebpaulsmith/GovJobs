@@ -4,7 +4,7 @@ class MapState {
 	metric = $state<MetricKey>(DEFAULT_METRIC);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
-	debugFeature = $state<DebugFeature | null>(null);
+	selectedFeature = $state<SelectedFeature | null>(null);
 }
 
 export interface Manifest {
@@ -20,8 +20,9 @@ export interface Manifest {
 	data_sources: Record<string, { last_success_at: string | null; row_count: number | null }>;
 }
 
-export interface DebugFeature {
+export interface SelectedFeature {
 	source: string;
+	label: string;
 	properties: Record<string, unknown>;
 }
 

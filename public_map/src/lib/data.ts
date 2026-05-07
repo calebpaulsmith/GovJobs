@@ -18,6 +18,39 @@ export interface Feature {
 	properties: Record<string, unknown> | null;
 }
 
+export interface JobLocation {
+	city?: string | null;
+	state?: string | null;
+	location_text?: string | null;
+}
+
+export interface JobDetails {
+	id: number;
+	title: string;
+	agency?: string | null;
+	department?: string | null;
+	agency_code?: string | null;
+	series?: string | null;
+	pay_plan?: string | null;
+	grade_low?: string | null;
+	grade_high?: string | null;
+	salary_min?: number | null;
+	salary_max?: number | null;
+	salary_type?: string | null;
+	remote_status?: string | null;
+	open_date?: string | null;
+	close_date?: string | null;
+	hiring_paths?: string | null;
+	url?: string | null;
+	locality_code?: string | null;
+	locations?: JobLocation[];
+}
+
+export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;
+
+let jobDetailsCache: Record<string, JobDetails> | null = null;
+let payTablesCache: PayTables | null = null;
+
 const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 async function fetchJson<T>(filename: string, fallback: T): Promise<T> {
@@ -45,3 +78,13 @@ export const loadLocalities = () =>
 	fetchJson<FeatureCollection>('localities.geojson', EMPTY_COLLECTION);
 export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY_COLLECTION);
 export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
+
+export async function loadJobDetails(id: string | number): Promise<JobDetails | null> {
+	jobDetailsCache ??= await fetchJson<Record<string, JobDetails>>('jobs_detail.json', {});
+	return jobDetailsCache[String(id)] ?? null;
+}
+
+export async function loadPayTables(): Promise<PayTables> {
+	payTablesCache ??= await fetchJson<PayTables>('pay_tables.json', {});
+	return payTablesCache;
+}
