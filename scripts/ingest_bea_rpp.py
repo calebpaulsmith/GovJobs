@@ -27,11 +27,12 @@ sys.path.insert(0, str(REPO))
 
 from config import load_config  # noqa: E402
 from src.database import utc_now  # noqa: E402
-from src.ingest_common import emit_summary, run_ingest  # noqa: E402
+from src.ingest_common import emit_summary, resolve_or_download, run_ingest  # noqa: E402
 
 SOURCE_KEY = "bea_rpp"
 DISPLAY_NAME = "BEA Regional Price Parities"
 CATEGORY = "col"
+SEED_CSV = REPO / "data" / "external" / "bea_rpp" / "2023.csv"
 
 REQUIRED_COLUMNS = {"year", "geo_type", "geo_code", "rpp_overall"}
 VALID_GEO_TYPES = {"state", "cbsa"}
@@ -39,7 +40,15 @@ VALID_GEO_TYPES = {"state", "cbsa"}
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=None,
+        help=(
+            "Optional CSV. When omitted, falls back to the checked-in seed at "
+            f"{SEED_CSV.relative_to(REPO).as_posix()} per ADR-0027."
+        ),
+    )
     parser.add_argument("--source", default="bea:rpp")
     return parser.parse_args()
 
@@ -114,19 +123,24 @@ def import_rpp_from_csv(
 
 def main() -> int:
     args = _parse_args()
-    if not args.input.exists():
-        sys.stderr.write(f"ERROR: input not found at {args.input}\n")
-        return 1
     cfg = load_config()
+    resolved = resolve_or_download(
+        source_key=SOURCE_KEY,
+        default_url=None,
+        cache_dir=SEED_CSV.parent,
+        filename=SEED_CSV.name,
+        user_input=args.input,
+        seed_path=SEED_CSV,
+    )
     row_count = run_ingest(
         source_key=SOURCE_KEY,
         display_name=DISPLAY_NAME,
         category=CATEGORY,
         database_path=cfg.database_path,
-        notes=f"input={args.input.name}",
+        notes=f"input={resolved.name}",
         work=lambda conn: import_rpp_from_csv(
             conn,
-            input_path=args.input,
+            input_path=resolved,
             source=args.source,
         ),
     )

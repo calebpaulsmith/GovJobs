@@ -128,35 +128,29 @@ def build_steps() -> list[Step]:
         )
     )
 
+    # Per ADR-0027 these ingests fall back to a checked-in seed CSV when no
+    # env var or --input is provided.
     locality_defs = os.environ.get("PUBLIC_MAP_LOCALITY_DEFS_CSV")
+    locality_defs_args = [_python(), "scripts/ingest_locality_definitions.py"]
+    if locality_defs:
+        locality_defs_args.extend(["--input", locality_defs])
     steps.append(
         Step(
             key="ingest_locality_definitions",
             label="OPM locality definitions",
-            args=[
-                _python(),
-                "scripts/ingest_locality_definitions.py",
-                "--input",
-                locality_defs or "",
-            ],
-            enabled=bool(locality_defs),
-            skip_reason="PUBLIC_MAP_LOCALITY_DEFS_CSV not set" if not locality_defs else None,
+            args=locality_defs_args,
         )
     )
 
     locality_pay = os.environ.get("PUBLIC_MAP_LOCALITY_PAY_CSV")
+    locality_pay_args = [_python(), "scripts/ingest_locality_pay.py"]
+    if locality_pay:
+        locality_pay_args.extend(["--input", locality_pay])
     steps.append(
         Step(
             key="ingest_locality_pay",
             label="OPM locality percentages",
-            args=[
-                _python(),
-                "scripts/ingest_locality_pay.py",
-                "--input",
-                locality_pay or "",
-            ],
-            enabled=bool(locality_pay),
-            skip_reason="PUBLIC_MAP_LOCALITY_PAY_CSV not set" if not locality_pay else None,
+            args=locality_pay_args,
         )
     )
 
@@ -173,19 +167,30 @@ def build_steps() -> list[Step]:
         )
     )
 
-    for path in _split_paths(os.environ.get("PUBLIC_MAP_GS_PAY_CSVS")):
+    gs_pay_paths = _split_paths(os.environ.get("PUBLIC_MAP_GS_PAY_CSVS"))
+    if gs_pay_paths:
+        for path in gs_pay_paths:
+            steps.append(
+                Step(
+                    key=f"ingest_gs_pay::{path.name}",
+                    label=f"GS pay table ({path.name})",
+                    args=[
+                        _python(),
+                        "scripts/ingest_gs_pay.py",
+                        "--input",
+                        str(path),
+                        "--source-key",
+                        f"opm_gs_pay_{path.stem}",
+                    ],
+                )
+            )
+    else:
+        # Per ADR-0027, default to the checked-in 2025 GS base table seed.
         steps.append(
             Step(
-                key=f"ingest_gs_pay::{path.name}",
-                label=f"GS pay table ({path.name})",
-                args=[
-                    _python(),
-                    "scripts/ingest_gs_pay.py",
-                    "--input",
-                    str(path),
-                    "--source-key",
-                    f"opm_gs_pay_{path.stem}",
-                ],
+                key="ingest_gs_pay::seed",
+                label="GS pay table (2025 seed)",
+                args=[_python(), "scripts/ingest_gs_pay.py"],
             )
         )
 
@@ -206,13 +211,14 @@ def build_steps() -> list[Step]:
         )
 
     bea_rpp = os.environ.get("PUBLIC_MAP_BEA_RPP_CSV")
+    bea_args = [_python(), "scripts/ingest_bea_rpp.py"]
+    if bea_rpp:
+        bea_args.extend(["--input", bea_rpp])
     steps.append(
         Step(
             key="ingest_bea_rpp",
             label="BEA Regional Price Parities",
-            args=[_python(), "scripts/ingest_bea_rpp.py", "--input", bea_rpp or ""],
-            enabled=bool(bea_rpp),
-            skip_reason="PUBLIC_MAP_BEA_RPP_CSV not set" if not bea_rpp else None,
+            args=bea_args,
         )
     )
 
