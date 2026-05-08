@@ -260,14 +260,34 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 **Exit:** every popup matches reference data exactly for at least three sample features; pay tables match OPM-published values to the cent.
 
-### Phase D — Filters, URL state, styling pass *(INITIATED)*
+### Phase D — Filters, URL state, styling pass *(SUPERSEDED BY D.5 — see below)*
 
 - [x] `FilterPanel.svelte` (keyword, agency, series, grade range, salary minimum, remote, hiring path, pay plan).
 - [x] URL-encoded filter state, debounced replaceState.
 - [x] Filtered marker-source updates plus filtered remote-share recoloring for the state choropleth.
-- [ ] Aesthetic pass: typography, spacing, mobile drawer, layer-transition animations, accessibility audit.
+- [ ] Aesthetic pass: typography, spacing, mobile drawer, layer-transition animations, accessibility audit. *(Folded into D.5.0 layout grid + D.5 visual pass.)*
 
-**Exit:** sharing a filtered URL restores the same view; mobile drawer works; Lighthouse ≥ 90.
+**Exit:** sharing a filtered URL restores the same view; mobile drawer works; Lighthouse ≥ 90. *(Lighthouse target moves to end of D.5.)*
+
+### Phase D.5 — Course correction *(IN PROGRESS, blocks E)*
+
+User review on 2026-05-07 found eleven concrete defects: agency filter is a free-text box, no saved searches, no address/ZIP zoom, no persistent heat layer, polygon layers report zero features so the choropleth has nothing to color, OSM fallback fails without a Mapbox token, panels overlap, missing federal-properties layer, missing county-level COL, missing exact pay tables on every job, and the local corpus is too small to evaluate. Detailed sub-phases, integration map (upstream → exporter → UI), and exit criteria live in the "Phase D.5" section of `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. New ADRs cover the UI invariants (ADR-0024) and the federal-properties layer (ADR-0025). Hard rules added to `CLAUDE.md` under "Public Map V1.5 invariants."
+
+- [ ] D.5.0 — UI layout grid contract (`public_map/src/lib/layout.ts`); zero panel overlap at three breakpoints.
+- [ ] D.5.1 — Persistent posting heat layer at zoom 3–9, filter-aware, toggleable.
+- [ ] D.5.2 — Agency multi-select with code-backed typeahead and aliases (URL state via repeated `agency=` keys).
+- [ ] D.5.3 — Named saved searches in `localStorage` (Save / Apply / Rename / Delete).
+- [ ] D.5.4 — Address / ZIP geocoder with Mapbox primary + Nominatim fallback + offline ZIP centroids.
+- [ ] D.5.5 — Click-state-to-fit-bounds (also locality / county / CBSA at their zoom bands).
+- [ ] D.5.6 — Metric switcher honesty pass: every metric carries `status` (`ready` / `wip` / `under-construction`); auto-demotion when ≥ 50% of features are null.
+- [ ] D.5.7 — Corpus growth: Data Admin presets for federal-wide and top-25 imports + trailing-90-days HistoricJoa overlay; closed postings rendered as faint gray dots.
+- [ ] D.5.8 — OSM fallback hardening (drop `glyphs:`, disable Mapbox telemetry, OSM subdomain rotation, basemap unit test); fall back to MapLibre via ADR-0026 if mapbox-gl v3 won't cooperate.
+- [ ] D.5.9 — Federal Real Property layer: `federal_properties` table, `scripts/ingest_federal_properties.py`, `federal_properties.geojson` export, neutral-diamond layer + popup.
+- [ ] D.5.10 — County-level COL via Census ACS rent (and optional BLS metro CPI) joined into `cost_of_living_index`.
+- [ ] D.5.11 — Exact pay tables on every job: pre-compute `pay_grid` in the exporter with `status: 'exact' | 'approximated' | 'unavailable'`; JobCard shows the grid or a clear "missing source" message linking to admin.
+- [ ] D.5.12 — Verification pass against the twelve exit criteria documented in the plan.
+
+**Exit:** every D.5 exit criterion in the plan is satisfied; `manifest.json.layers` shows non-zero counts for all six layers; the map renders correctly with and without a Mapbox token; tests cover the new components and ingests.
 
 ### Phase E — Deploy
 

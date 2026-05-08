@@ -16,10 +16,14 @@ Local SQLite (data/federal_jobs.sqlite)
   -> scripts/refresh_public_map_data.py  (orchestrator; runs every ingest)
   -> scripts/export_public_map.py        (reads DB + reference data)
   -> public_map/static/data/{
-       jobs.geojson, jobs_detail.json,
+       jobs.geojson, jobs_detail.json,                       # open postings + per-job pay grids
+       closed_jobs.geojson,                                  # trailing-90-days closed-postings overlay (D.5.7)
        states.geojson, localities.geojson, counties.geojson, metros.geojson,
+       federal_properties.geojson,                           # GSA FRPP buildings (D.5.9, ADR-0025)
        pay_tables.json, cost_of_living.json,
-       agencies.json, series.json, manifest.json
+       agencies.json, series.json,
+       zip_centroids.json,                                   # offline ZIP geocode (D.5.4)
+       manifest.json
      }
   -> git commit + git push (auto)
   -> Cloudflare Pages rebuild
@@ -86,7 +90,25 @@ python scripts/ingest_county_polygons.py         # Census TIGER counties
 python scripts/ingest_cbsa_polygons.py           # Census TIGER CBSAs
 python scripts/ingest_bea_rpp.py                 # BEA Regional Price Parities
 python scripts/ingest_other_pay_plans.py         # FW, ES, AD, FP, LE, VN, ...
+python scripts/ingest_zip_centroids.py           # SimpleMaps US ZIPs (D.5.4)
+python scripts/ingest_agency_aliases.py          # curated agency-shorthand list (D.5.2)
+python scripts/ingest_federal_properties.py     # GSA FRPP (D.5.9, ADR-0025)
+python scripts/ingest_acs_county_rents.py        # Census ACS B25064 → county COL (D.5.10)
+python scripts/ingest_bls_metro_cpi.py           # optional metro CPI overlay (D.5.10, behind a flag)
 ```
+
+## Public-map corpus growth (D.5.7)
+
+The map only becomes useful when there are enough postings to populate the heat layer and reveal patterns. Use the **Data Admin → Public Map corpus** presets (added in D.5.7) instead of the older free-form Search box when refreshing the map's job corpus:
+
+```sh
+# Through the dashboard's Data Admin page (preferred, recon-gated):
+#   Federal-wide current postings (paged within USAJOBS Search rate budget)
+#   Top 25 hiring agencies × current
+#   HistoricJoa trailing 90 days (closed-postings overlay)
+```
+
+Each preset goes through `src/data_recon.py` first, writes its recommendation into `docs/DOWNLOAD_STRATEGY.md` per ADR-0003, and uses the standard manifest plumbing so the import is resumable. The export then writes both `jobs.geojson` (open) and `closed_jobs.geojson` (closed-within-90-days).
 
 All idempotent. All write a row to `data_source_status` so the admin page reflects the new state.
 

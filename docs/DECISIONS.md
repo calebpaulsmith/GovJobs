@@ -303,3 +303,39 @@ Status: Accepted
 **Decision.** Add a local deterministic repost detector that blocks by agency and series, then compares normalized titles and long-form text hashes. Results are persisted in `repost_runs`, `repost_groups`, and `repost_group_members` with evidence JSON. Repost alerts use persisted groups when available.
 
 **Consequences.** The user gets auditable possible-repost groups without opaque AI or overclaiming certainty. Thresholds may need tuning as more real data accumulates.
+
+---
+
+## ADR-0024 — Public-map UI invariants (course correction Phase D.5)
+Date: 2026-05-07
+Status: Accepted
+
+**Context.** Phase D shipped a working filter panel and choropleth metric switcher. User review on 2026-05-07 found that the agency filter is a free-text box (so "FEMA" silently substring-matches across multiple fields), there's no way to save a filter set, no way to zoom to an address or ZIP, panels overlap at common viewport sizes, the heat of postings disappears at low zoom, clicking a state opens a popup but does not zoom in, and several choropleth metrics paint nothing because the underlying data is empty. The design problem is not "add features" — it is "stop pretending data exists when it doesn't" while also closing the UX gaps the user actually expects from a map.
+
+**Decision.** The public map adopts thirteen invariants codified in `CLAUDE.md` under "Public Map V1.5 invariants." They cover: agency multi-select with code-backed typeahead and aliases (no free-text agency filter); first-class saved searches in `localStorage`; address / ZIP geocoder with Mapbox primary + Nominatim fallback + offline ZIP centroids; persistent posting heat layer at every zoom; click-state-to-fit-bounds; a metric switcher that declares each metric's `status` (`ready` / `wip` / `under-construction`) and only colors the map when the metric is `ready`; a fixed UI layout grid (`public_map/src/lib/layout.ts`) so panels never overlap; a corpus growth path so the map has enough data to be useful; an OSM fallback that actually boots without a Mapbox token; and a closed-postings overlay for trailing-90-days context. The implementation queue is Phase D.5 of the public-map plan.
+
+**Consequences.** ADR-0017's layered, zoom-driven model is unchanged, but D.5 fills in the layers that Phase D left empty. ADR-0018 still governs how reference data is tracked and refreshed; D.5 adds new sources (ZIP centroids, agency aliases, ACS county rent, optional BLS CPI) under the same status-tracked pattern. Public-map V1 is **not** done until every D.5 invariant is satisfied; Phase E (deploy) is paused until then. The Mapbox basemap remains primary, but if mapbox-gl v3 cannot reliably boot the OSM fallback, ADR-0026 captures a swap to MapLibre GL JS.
+
+---
+
+## ADR-0025 — Federal Real Property layer
+Date: 2026-05-07
+Status: Accepted
+
+**Context.** USAJOBS postings answer "where could I work?" but not "where is the federal government already?" Visualizing federal infrastructure alongside open postings gives applicants a sense of agency footprint, lets them spot duty-station clusters, and lights up agency-specific patterns ("FEMA is hiring near FEMA buildings"). The GSA Federal Real Property Profile (FRPP) is the canonical, federally-published, public-domain dataset for this.
+
+**Decision.** Add a `federal_properties` table and a parallel ingest script (`scripts/ingest_federal_properties.py`) tracked under `data_source_status` source key `gsa_frpp`. The public-map exporter emits `federal_properties.geojson`; the SvelteKit client renders federal properties as small neutral diamonds at zoom ≥ 6 with their own popup component. Agency chip filters apply to both jobs and properties so users can compare hiring against the existing footprint. Disposed and non-georeferenced FRPP rows are dropped at ingest; missing-county-FIPS rows are filled via `zip_centroids` when possible.
+
+**Consequences.** Adds one schema-bumping table and one tracked external dataset, both following the ADR-0018 pattern (admin-managed, status-tracked, manual override available). The map's bundle grows by ≈ 2–3 MB gzipped (≈ 110 K active georeferenced rows after filtering). FRPP refresh is annual, low-effort. If FRPP moves or is paywalled, the fallback documented in `docs/PUBLIC_MAP_DATA_SOURCES.md` is USA.gov "Where the Federal Government Has Buildings."
+
+---
+
+## ADR-0026 — MapLibre GL JS swap *(reserved, not yet invoked)*
+Date: 2026-05-07
+Status: Proposed
+
+**Context.** The OSM raster fallback in `public_map/src/lib/basemap.ts` has been brittle under `mapbox-gl` v3 because the runtime expects a real access token even for non-`mapbox://` sources, and the default `glyphs:` URL points at `fonts.openmaptiles.org` which often returns 401. D.5.8 hardens the configuration; if those steps don't reliably keep the no-token path working across the lifetimes of `mapbox-gl` versions we'll ship, the ergonomics of supporting both paths get expensive.
+
+**Decision.** *(Pending — invoked only if D.5.8 cannot stabilize the no-token path.)* Replace `mapbox-gl` with `maplibre-gl` for the public map. MapLibre is a community-maintained fork with a near-identical JavaScript API, no token requirement, and full support for both Mapbox-style sources (with a Mapbox token) and arbitrary tile sources (without one). The dashboard does not depend on `mapbox-gl`, so the swap is contained to `public_map/`.
+
+**Consequences.** Mapbox vector tile rendering would still require a token; MapLibre treats the token as a per-source configuration rather than a global. Some Mapbox-hosted styles (`mapbox://styles/...`) would need to be replaced with self-hosted style JSON or transpiled. We'd lose Mapbox-only features like 3D Standard buildings, but the public map already declines those (maxZoom 9). Decision will be re-evaluated at the end of D.5.8.

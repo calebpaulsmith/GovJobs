@@ -157,6 +157,22 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Lands in**: same `cost_of_living_index` table, with `source='c2er:cost_index'`.
 - **Activate when**: BEA approximations prove insufficient or the user wants metropolitan/locality-level granularity.
 
+## Federal real property
+
+### `gsa_frpp`
+
+- **Source**: GSA Federal Real Property Profile (FRPP) public open-data CSV. Snapshot of federally-owned and federally-leased buildings, structures, and land reported under 41 CFR 102-84.
+  - Landing page: <https://www.gsa.gov/policy-regulations/policy/real-property-policy/asset-management/federal-real-property-profile-management-system/federal-real-property-public-data-set>
+  - License: U.S. public domain
+  - Format: CSV
+  - Size: ≈ 250 MB raw; ≈ 110 K active georeferenced rows after filtering
+- **Lands in**: `federal_properties` (one row per reported asset). Indexed by `state`, `county_fips`, `reporting_agency_code`.
+- **Ingest**: `scripts/ingest_federal_properties.py` — streams the CSV, drops disposed and non-georeferenced rows, joins each to `counties` via `zip_centroids` for county FIPS, writes status to `data_source_status` under `gsa_frpp`.
+- **Refresh**: annual (FRPP is published once per fiscal year)
+- **Verification**: spot-check that DC has hundreds of properties, that FEMA-reported (`HSCB`) properties exist, that `square_footage` rolls up to within ±5% of the FRPP-published agency totals.
+- **Public-map relevance**: drives `federal_properties.geojson`; agency chip filters apply to both jobs and properties so users can see hiring near existing federal infrastructure.
+- **Fallback**: USA.gov "Where the Federal Government Has Buildings" if FRPP's CSV is paywalled or moved (record the swap and source URL in the `data_source_status` `notes` column).
+
 ## Geocoding
 
 ### `simplemaps_uscities`
@@ -168,6 +184,56 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Refresh**: occasional (when SimpleMaps publishes a new vintage)
 - **Verification**: ~30K rows; major cities present (Chicago, DC, NYC, LA).
 - **Attribution**: required in public footer ("City data © SimpleMaps, CC-BY 4.0").
+
+### `simplemaps_uszips`
+
+- **Source**: SimpleMaps US ZIPs Basic, CC-BY 4.0.
+  - URL: <https://simplemaps.com/data/us-zips>
+- **Lands in**: `zip_centroids` (zip, lat, lon, city, state, county_fips). New table introduced in D.5.4.
+- **Ingest**: `scripts/ingest_zip_centroids.py`. Idempotent; writes status under `simplemaps_uszips`.
+- **Refresh**: occasional.
+- **Public-map relevance**: powers the address / ZIP geocoder's offline path (no network required for ZIP queries) and gives FRPP rows a county FIPS when only a ZIP is reported.
+- **Verification**: ~33K ZCTAs; spot-check `60601` (Chicago Loop), `20002` (NE DC), `99701` (Fairbanks).
+- **Attribution**: required in public footer alongside `simplemaps_uscities`.
+
+### `mapbox_geocoding`
+
+- **Source**: Mapbox Geocoding API v5, `mapbox.places` endpoint. Token-gated (same token as `mapbox_basemap`).
+  - URL: `https://api.mapbox.com/geocoding/v5/mapbox.places/{q}.json`
+- **Lands in**: not stored — called at request time by the public map's address bar.
+- **Token security**: same token, same URL referrer restrictions.
+- **Public-map relevance**: primary geocoder for the address-zoom feature.
+- **Fallback**: when the token is unset, the address bar uses Nominatim (`https://nominatim.openstreetmap.org/search`) with a `User-Agent` header per OSM usage policy. ZIPs always resolve from the static `zip_centroids.json` first.
+
+### `agency_aliases`
+
+- **Source**: curated CSV `data/external/agency_aliases.csv` (checked into the repo; small, plain text). Maps shorthand and acronyms to canonical USAJOBS sub-element codes. Examples: `FEMA → HSCB`, `ICE → HSBA`, `IRS → TR93`, `NASA → NN`.
+- **Lands in**: `code_lists` rows under `list_name='agency_aliases'`. Loaded at schema init and refreshed by the alias ingest script.
+- **Ingest**: `scripts/ingest_agency_aliases.py`. Idempotent; writes status under `agency_aliases`.
+- **Refresh**: as needed when USAJOBS reorganizes agencies.
+- **Public-map relevance**: feeds the typeahead's alias resolution so users do not need to know the cryptic sub-element code to find an agency.
+
+## Cost-of-living augmentation (D.5.10)
+
+### `census_acs_rent`
+
+- **Source**: U.S. Census Bureau, ACS 5-year estimates, table B25064 (Median Gross Rent) at the county level via the Census Data API.
+  - URL: <https://api.census.gov/data/{vintage}/acs/acs5?get=NAME,B25064_001E&for=county:*>
+  - License: U.S. public domain. API key recommended (free).
+- **Lands in**: `cost_of_living_index` rows with `geo_type='county'`, source `census:acs5_b25064`. The `rpp_overall` for county rows is derived as `state_rpp × (county_rent / state_median_rent)` and labeled accordingly.
+- **Ingest**: `scripts/ingest_acs_county_rents.py`.
+- **Refresh**: annual (ACS 5-year vintages publish in late Q4).
+- **Verification**: rural counties show RPP < state RPP; urban-core counties show RPP ≥ state RPP. Compare DC, Cook IL, Maricopa AZ, Travis TX.
+
+### `bls_cpi` *(optional, behind a feature flag)*
+
+- **Source**: U.S. Bureau of Labor Statistics, Consumer Price Index for Urban Consumers (CPI-U), metro-area series.
+  - URL: BLS public time series API.
+  - License: U.S. public domain. API key recommended (free).
+- **Lands in**: `cost_of_living_index` rows with `geo_type='cbsa'`, source `bls:cpi_u`.
+- **Refresh**: monthly (we read the latest annual-average value).
+- **Verification**: SF / NYC / Honolulu series above national average.
+- **Public-map relevance**: optional secondary signal alongside BEA RPP at the metro level. Not required for D.5.10 exit; included so future iterations can compare COL definitions.
 
 ## Basemap
 

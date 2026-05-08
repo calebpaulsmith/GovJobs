@@ -137,6 +137,19 @@ All clickable; all sourced from public, federally-published datasets.
 
 V1 uses BEA Regional Price Parities (free, official, state and metro level). Locality-area COL is derived by averaging across constituent metros and labeled as approximate. C2ER is reserved as a paid upgrade path (~$200/yr) if richer granularity is needed.
 
+### Public-map user stories (V1)
+
+1. *As a visitor,* I see a heat surface of open USAJOBS postings at every zoom from national down to metro so I can scan where activity is concentrated even before I drill in.
+2. *As a visitor,* I type "FEMA" in the agency field and the typeahead surfaces `HSCB — Federal Emergency Management Agency · DHS`; pressing Enter commits a chip. I add `NTSB`; the map narrows to both. The chips can be removed individually and the URL captures every code so I can share the view.
+3. *As a visitor,* I save my current filter set under a name like "FEMA + DC + GS-13 remote." When I return tomorrow the saved view restores my filters, the active metric, the address-zoom target, and the map center+zoom.
+4. *As a visitor,* I paste a ZIP code or street address into the address bar and the map flies to that location with a transient flag pin so I can see what's open near me. The pin is never confused with a job marker.
+5. *As a visitor,* I click a state at low zoom and the map both opens the state roundup *and* fits its bounds so I can immediately see the state in detail. The same gesture works for localities, counties, and CBSAs at their zoom bands. A "back to national" affordance returns me home.
+6. *As a visitor,* I see only choropleth metrics that actually have data — every metric is labeled `ready`, `wip`, or `under construction`, and partial data is never colored as if it were complete.
+7. *As a visitor,* I can toggle a "Federal properties" layer to see GSA-owned buildings as small neutral diamonds; agency chip filters apply to both job markers and properties, so I can see "FEMA postings near FEMA buildings" at a glance.
+8. *As a visitor,* I can toggle a "Recently closed (90 days)" layer to see what's just closed in my region, distinct from open markers, for context on hiring tempo.
+9. *As a visitor,* every job marker reveals a full locality-adjusted pay grid (grade × step) on click, with a citation to the OPM source year. When the underlying pay scale is missing, the card says so plainly and points to the admin page.
+10. *As a visitor,* county and locality popups show cost-of-living to the most precise level available — county-level when ingested, state-level fallback labeled "approximate" otherwise.
+
 ### Out of scope (public map V1)
 
 - User accounts, saved jobs, scoring, recommendations, alerts.
@@ -147,13 +160,19 @@ V1 uses BEA Regional Price Parities (free, official, state and metro level). Loc
 
 ### Definition of done — public map V1
 
-1. Layered Mapbox GL map renders at zoom 3–9 with state, locality, county, and metro polygons plus job markers.
-2. Choropleth metric switcher offers at least: postings, workforce, accessions, separations, pay-vs-COL.
-3. State / locality / county / marker popups all render with correct, sourced data.
-4. Marker detail panel shows a full locality-adjusted pay table for the job's grade range × every step, for every supported pay plan.
-5. Admin dashboard (local, private) lists every external data source with status, last-success time, row count, manual override, and per-source refresh button.
-6. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`.
-7. Footer credits every source and surfaces freshness per source.
-8. `pytest` green; pay tables for at least three localities × three pay plans match published OPM values exactly.
+1. Layered Mapbox GL map (or MapLibre, per ADR-0026 if invoked) renders at zoom 3–9 with state, locality, county, and metro polygons plus job markers and a persistent posting heat layer.
+2. Choropleth metric switcher offers at least: postings, workforce, accessions, separations, pay-vs-COL — each with a `ready` / `wip` / `under construction` status; only `ready` metrics paint the map.
+3. State / locality / county / marker / federal-property / closed-job popups all render with correct, sourced data; clicking any polygon also fits its bounds.
+4. Marker detail panel shows a full locality-adjusted pay grid (grade × step) for every supported pay plan, with an `exact` / `approximated` / `unavailable` chip and an OPM source citation.
+5. Agency filter is a code-backed multi-select (typeahead + chips); URL state and saved searches both round-trip through `agency=CODE` repeated keys.
+6. Address / ZIP geocoder flies the map to a transient pin without creating a fake job marker.
+7. Federal Real Property layer renders ≥ 1,000 georeferenced GSA buildings nationwide with agency-aware filtering.
+8. County-level COL covers ≥ 50% of counties with markers; locality and county popups label precision honestly.
+9. OSM fallback boots cleanly without a Mapbox token; the layer stack matches the Mapbox path.
+10. Admin dashboard (local, private) lists every external data source with status, last-success time, row count, manual override, per-source refresh button, and metric-readiness summary.
+11. UI layout: zero overlapping panels at 1440 × 900, 1024 × 768, and 720 × 1280; layout slots imported from `public_map/src/lib/layout.ts`.
+12. Local corpus ≥ 5,000 open postings; trailing-90-days closed-postings overlay imports successfully.
+13. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`; footer credits every source with freshness.
+14. `pytest` green; pay tables for at least three localities × three pay plans match published OPM values exactly; layout / typeahead / basemap-fallback / pay-grid / federal-properties tests all green.
 
-The full implementation plan lives in `docs/ROADMAP.md` (Public Map Tool track). External datasets are catalogued in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Pipeline operations are documented in `docs/PUBLIC_MAP_PIPELINE.md`.
+The full implementation plan lives in `docs/ROADMAP.md` (Public Map Tool track) and the detailed Phase D.5 sub-phase list in `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. External datasets are catalogued in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Pipeline operations are documented in `docs/PUBLIC_MAP_PIPELINE.md`.

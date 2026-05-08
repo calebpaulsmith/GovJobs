@@ -37,6 +37,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - python-dotenv is in requirements.txt
+    load_dotenv = None  # type: ignore[assignment]
+
+if load_dotenv:
+    load_dotenv(REPO / ".env")
+
 
 @dataclass
 class Step:
