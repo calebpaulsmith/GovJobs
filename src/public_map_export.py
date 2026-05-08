@@ -188,6 +188,90 @@ def open_postings_features(
     ]
 
 
+def recently_closed_features(
+    conn: sqlite3.Connection,
+    *,
+    year: int | None = None,
+    trailing_days: int = 90,
+) -> list[dict[str, Any]]:
+    """Return closed posting point features for the trailing review window."""
+    resolved_year = year if year is not None else current_reference_year(conn)
+    rows = conn.execute(
+        """
+        SELECT
+            j.id              AS job_id,
+            j.title           AS title,
+            j.agency_code     AS agency_code,
+            j.series          AS series,
+            j.grade_low       AS grade_low,
+            j.grade_high      AS grade_high,
+            j.pay_plan        AS pay_plan,
+            j.salary_min      AS salary_min,
+            j.salary_max      AS salary_max,
+            j.remote_status   AS remote_status,
+            j.close_date      AS close_date,
+            jl.city           AS jl_city,
+            jl.state          AS jl_state,
+            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat) AS lat,
+            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon) AS lon,
+            CASE
+                WHEN jl.latitude IS NOT NULL THEN 'source'
+                WHEN city_lookup.lat IS NOT NULL THEN city_lookup.geo_quality
+                WHEN state_lookup.lat IS NOT NULL THEN state_lookup.geo_quality
+                ELSE NULL
+            END AS geo_quality,
+            lpc.locality_code AS locality_code,
+            CAST(julianday('now') - julianday(j.close_date) AS INTEGER) AS closed_within_days
+        FROM jobs j
+        JOIN job_locations jl ON jl.job_id = j.id
+        LEFT JOIN locations_geocoded city_lookup
+            ON city_lookup.city = LOWER(TRIM(COALESCE(jl.city, '')))
+            AND city_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN locations_geocoded state_lookup
+            ON state_lookup.city = ''
+            AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN locality_pay_counties lpc
+            ON lpc.county_fips = city_lookup.county_fips
+            AND lpc.year = ?
+        WHERE j.source LIKE 'usajobs%'
+          AND j.close_date IS NOT NULL
+          AND j.close_date < date('now')
+          AND j.close_date >= date('now', ?)
+        """,
+        (int(resolved_year), f"-{int(trailing_days)} days"),
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in rows:
+        if row["lat"] is None or row["lon"] is None:
+            continue
+        feature = _feature_from_marker(
+            {
+                "job_id": int(row["job_id"]),
+                "title": row["title"],
+                "agency_code": row["agency_code"],
+                "series": row["series"],
+                "grade_low": row["grade_low"],
+                "grade_high": row["grade_high"],
+                "pay_plan": row["pay_plan"],
+                "salary_min": _round_or_none(row["salary_min"]),
+                "salary_max": _round_or_none(row["salary_max"]),
+                "remote_status": row["remote_status"],
+                "close_date": row["close_date"],
+                "city": row["jl_city"],
+                "state": (row["jl_state"] or "").upper() or None,
+                "geo_quality": row["geo_quality"],
+                "lat": float(row["lat"]),
+                "lon": float(row["lon"]),
+                "locality_code": row["locality_code"],
+            }
+        )
+        feature["properties"]["status"] = "closed"
+        feature["properties"]["closed_within_days"] = int(row["closed_within_days"] or 0)
+        features.append(feature)
+    return features
+
+
 def jobs_geojson(
     conn: sqlite3.Connection,
     *,
@@ -197,6 +281,19 @@ def jobs_geojson(
     return {
         "type": "FeatureCollection",
         "features": open_postings_features(conn, year=year),
+    }
+
+
+def closed_jobs_geojson(
+    conn: sqlite3.Connection,
+    *,
+    year: int | None = None,
+    trailing_days: int = 90,
+) -> dict[str, Any]:
+    """Wrap `recently_closed_features` in a GeoJSON FeatureCollection."""
+    return {
+        "type": "FeatureCollection",
+        "features": recently_closed_features(conn, year=year, trailing_days=trailing_days),
     }
 
 

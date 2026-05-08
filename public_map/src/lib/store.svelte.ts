@@ -7,6 +7,8 @@ class MapState {
 	// toggles this by clicking the currently-active metric pill in the
 	// MetricSwitcher (clicking another metric re-enables it).
 	choroplethEnabled = $state<boolean>(true);
+	postingHeatEnabled = $state<boolean>(true);
+	closedJobsEnabled = $state<boolean>(false);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
 	selectedFeature = $state<SelectedFeature | null>(null);

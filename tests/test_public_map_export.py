@@ -13,6 +13,7 @@ from src.database import (
 )
 from src.public_map_export import (
     agency_options,
+    closed_jobs_geojson,
     geocoding_summary,
     job_details,
     jobs_geojson,
@@ -180,6 +181,25 @@ def test_jobs_geojson_excludes_closed_postings(conn):
     upsert_job(conn, _job(close_date="2020-01-01"))
 
     assert jobs_geojson(conn)["features"] == []
+
+
+def test_closed_jobs_geojson_includes_recently_closed_postings(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job(close_date="2026-04-15"))
+
+    features = closed_jobs_geojson(conn, trailing_days=90)["features"]
+    assert len(features) == 1
+    props = features[0]["properties"]
+    assert props["status"] == "closed"
+    assert props["close_date"] == "2026-04-15"
+    assert props["closed_within_days"] >= 0
+
+
+def test_closed_jobs_geojson_excludes_old_closed_postings(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job(close_date="2020-01-01"))
+
+    assert closed_jobs_geojson(conn, trailing_days=90)["features"] == []
 
 
 def test_jobs_geojson_includes_postings_with_no_close_date(conn):

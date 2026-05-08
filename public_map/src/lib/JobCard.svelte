@@ -7,6 +7,7 @@
 	let payTables = $state<PayTables | null>(null);
 	let error = $state<string | null>(null);
 	let loading = $state(false);
+	const isClosed = $derived(String(properties.status ?? detail?.status ?? '').toLowerCase() === 'closed');
 
 	$effect(() => {
 		const id = String(properties.id ?? '');
@@ -43,12 +44,16 @@
 </script>
 
 <section>
-	<p class="eyebrow">Open posting</p>
+	<p class="eyebrow">{isClosed ? 'Closed posting' : 'Open posting'}</p>
 	<h2>{propString(properties, 'title')}</h2>
-	{#if detail?.url ?? properties.url}
+	{#if !isClosed && (detail?.url ?? properties.url)}
 		<a class="apply-btn" href={String(detail?.url ?? properties.url)} target="_blank" rel="noreferrer noopener">
 			Apply on USAJOBS &rarr;
 		</a>
+	{:else if isClosed}
+		<p class="closed-note">
+			Closed on {String(detail?.close_date ?? properties.close_date ?? 'unknown date')} — shown for trailing-90-day context, not an active application.
+		</p>
 	{/if}
 	<dl class="grid">
 		<dt>Agency</dt><dd>{String(detail?.agency ?? properties.agency_code ?? '—')}</dd>
@@ -104,5 +109,6 @@
 	th { text-align: left; color: #94a3b8; font-weight: 500; }
 	td { text-align: right; font-weight: 700; }
 	.note, .error { margin: 0.8rem 0 0; font-size: 12px; line-height: 1.45; color: #94a3b8; }
+	.closed-note { margin: 0 0 0.75rem; padding: 0.55rem 0.65rem; border: 1px solid #3a4556; border-radius: 6px; background: rgba(135, 146, 163, 0.14); color: #cfd9e6; line-height: 1.45; }
 	.error { color: #f1bcbc; }
 </style>

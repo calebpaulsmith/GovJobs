@@ -34,7 +34,9 @@ The public site is read-only. No backend, no API, no auth, no DB online.
 
 ## One-time setup
 
-1. **External datasets directory.** Make sure `data/external/` exists; this is where downloaded raw datasets land. Gitignored.
+Per ADR-0027 (self-bootstrapping ingests, shipped 2026-05-08), the orchestrator runs to completion from a clean checkout with **no environment variables set**. Census polygons download themselves from `www2.census.gov/geo/tiger/GENZ2023/`; OPM locality definitions, OPM locality pay percentages, OPM GS base pay, and BEA RPP all default to checked-in seed CSVs under `data/external/{opm_locality_definitions,opm_locality_pay,opm_gs_pay,bea_rpp}/`. Env vars (`PUBLIC_MAP_*_GEOJSON`, `PUBLIC_MAP_*_CSV`) are now overrides, not enablement gates.
+
+1. **External datasets directory.** `data/external/` already contains the seed CSVs. Other downloads land here on first run; the cached files are reused on subsequent runs. Add new vintages by replacing the seed CSV under each `<source_key>/<year>.csv` path.
 2. **Geocoding seed.** Download SimpleMaps US Cities Basic CSV (CC-BY 4.0) from <https://simplemaps.com/data/us-cities>. Save to `data/external/uscities.csv`. Then:
    ```sh
    python scripts/geocode_locations.py --csv data/external/uscities.csv
@@ -43,13 +45,25 @@ The public site is read-only. No backend, no API, no auth, no DB online.
    ```sh
    python scripts/refresh_public_map_data.py
    ```
-   It pulls every supported reference dataset and updates `data_source_status`. Inspect the admin page to confirm every source is green.
+   With no env vars, it now pulls Census TIGER polygons over HTTPS (cached after first run) and reads the checked-in seed CSVs for OPM and BEA. Every step reports ENABLED. Inspect the admin page to confirm every source is green.
 4. **First export.**
    ```sh
    python scripts/export_public_map.py
    ```
+   You should see polygon counts in the manifest (e.g., 56 states / 38+ localities / 3,235 counties / 935 metros) and `pay_vs_col` populated as a 60–140 purchasing-power index.
 5. **Cloudflare Pages.** Connect the GitHub repo, set the build root to `public_map/`, set the Mapbox token as a build env var, add `thegrandpipeline.com` as a custom domain.
 6. **Mapbox token hardening.** In Mapbox dashboard, restrict the token by URL referrer to `thegrandpipeline.com` and `*.pages.dev`.
+
+### Annual refresh of the OPM / BEA seeds
+
+The shipped seeds are 2025 OPM (locality definitions, locality pay %, GS base table) and 2023 BEA RPP. To refresh:
+
+1. Replace `data/external/opm_locality_definitions/<year>.csv`, `opm_locality_pay/<year>.csv`, and `opm_gs_pay/<year>_base.csv` with files reflecting the new EO and OPM tables. Keep the same column headers (the ingest scripts validate them).
+2. Replace `data/external/bea_rpp/<year>.csv` when BEA publishes a new vintage.
+3. Update the `SEED_CSV` constant at the top of each ingest script to point at the new filename, OR pass `--input <path>` to override at run time.
+4. Re-run `python scripts/refresh_public_map_data.py && python scripts/export_public_map.py`. The exporter's `current_reference_year` picks `MAX(year)` from `pay_scales`, so adding a new year automatically bumps the bundle's reference year.
+
+For public-map V1, this annual refresh is not optional: official 2026 GS base and locality pay tables must be present before deploy, and `public_map/static/data/manifest.json` must report `reference_year: 2026`. Treat the checked-in 2025 OPM rows as bootstrap data for local development only.
 
 ## Admin dashboard (private)
 
@@ -108,9 +122,13 @@ The map only becomes useful when there are enough postings to populate the heat 
 #   HistoricJoa trailing 90 days (closed-postings overlay)
 ```
 
-Each preset goes through `src/data_recon.py` first, writes its recommendation into `docs/DOWNLOAD_STRATEGY.md` per ADR-0003, and uses the standard manifest plumbing so the import is resumable. The export then writes both `jobs.geojson` (open) and `closed_jobs.geojson` (closed-within-90-days).
+Each preset goes through `src/data_recon.py` first, writes its recommendation into `docs/DOWNLOAD_STRATEGY.md` per ADR-0003, and uses the standard `import_manifests` / `job_import_scopes` plumbing so the import is inspectable. The export then writes both `jobs.geojson` (open) and `closed_jobs.geojson` (closed-within-90-days).
 
-All idempotent. All write a row to `data_source_status` so the admin page reflects the new state.
+Targets for calling D.5.7 complete:
+
+- `manifest.json.feature_count >= 5,000` for current open posting locations.
+- `manifest.json.layers["closed_jobs.geojson"] >= 5,000` for trailing-90-day closed context.
+- Current Search credentials are present for the current-postings presets; HistoricJoa trailing-90-day context can run without Search credentials.
 
 ## Nightly cron (Windows Task Scheduler)
 

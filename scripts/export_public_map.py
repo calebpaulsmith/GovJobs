@@ -22,6 +22,7 @@ from config import load_config  # noqa: E402
 from src.database import connect, init_schema  # noqa: E402
 from src.public_map_export import (  # noqa: E402
     agency_options,
+    closed_jobs_geojson,
     cost_of_living,
     counties_geojson,
     current_reference_year,
@@ -74,6 +75,7 @@ def main() -> int:
     try:
         year = current_reference_year(conn)
         geojson = jobs_geojson(conn, year=year)
+        closed_geojson = closed_jobs_geojson(conn, year=year)
         details = job_details(conn)
         opm = opm_state_aggregates(conn)
         agencies = agency_options(conn)
@@ -90,6 +92,7 @@ def main() -> int:
             "counties.geojson": len(counties["features"]),
             "metros.geojson": len(metros["features"]),
             "jobs.geojson": len(geojson["features"]),
+            "closed_jobs.geojson": len(closed_geojson["features"]),
         }
         man = manifest(
             conn,
@@ -104,6 +107,7 @@ def main() -> int:
 
     print(f"Reference year:   {man['reference_year']}")
     print(f"Open postings:    {man['job_count']:,}")
+    print(f"Closed markers:   {layer_counts['closed_jobs.geojson']:,} trailing-90-day locations")
     print(f"Map features:     {man['feature_count']:,} (one per job-location)")
     print(f"OPM states:       {man['opm_state_count']:,}")
     print(f"Agencies:         {len(agencies):,}")
@@ -131,6 +135,7 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=True)
     sizes = {
         "jobs.geojson": _write_json(output / "jobs.geojson", geojson),
+        "closed_jobs.geojson": _write_json(output / "closed_jobs.geojson", closed_geojson),
         "jobs_detail.json": _write_json(output / "jobs_detail.json", details),
         "opm_states.json": _write_json(output / "opm_states.json", opm),
         "agencies.json": _write_json(output / "agencies.json", agencies),

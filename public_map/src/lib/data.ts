@@ -40,6 +40,8 @@ export interface JobDetails {
 	remote_status?: string | null;
 	open_date?: string | null;
 	close_date?: string | null;
+	status?: string | null;
+	closed_within_days?: number | null;
 	hiring_paths?: string | null;
 	url?: string | null;
 	locality_code?: string | null;
@@ -78,6 +80,8 @@ export const loadMetros = () =>
 export const loadLocalities = () =>
 	fetchJson<FeatureCollection>('localities.geojson', EMPTY_COLLECTION);
 export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY_COLLECTION);
+export const loadClosedJobs = () =>
+	fetchJson<FeatureCollection>('closed_jobs.geojson', EMPTY_COLLECTION);
 export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
 
 export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {

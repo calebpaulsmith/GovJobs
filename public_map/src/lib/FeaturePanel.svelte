@@ -8,6 +8,7 @@
 	import JobCard from './JobCard.svelte';
 	import JobList from './JobList.svelte';
 	import { countValue, propString } from './format';
+	import { LAYOUT_SLOTS, slotAttr } from './layout';
 
 	function close() {
 		mapState.selectedFeature = null;
@@ -16,7 +17,12 @@
 </script>
 
 {#if mapState.listView}
-	<aside class="panel" aria-live="polite" transition:fly={{ x: 24, duration: 200 }}>
+	<aside
+		class="panel"
+		aria-live="polite"
+		data-layout-slot={slotAttr(LAYOUT_SLOTS.feature)}
+		transition:fly={{ x: 24, duration: 200 }}
+	>
 		<header>
 			<span class="layer">Job list</span>
 			<button type="button" class="close" onclick={close} aria-label="Close">×</button>
@@ -24,7 +30,12 @@
 		<JobList listView={mapState.listView} />
 	</aside>
 {:else if mapState.selectedFeature}
-	<aside class="panel" aria-live="polite" transition:fly={{ x: 24, duration: 200 }}>
+	<aside
+		class="panel"
+		aria-live="polite"
+		data-layout-slot={slotAttr(LAYOUT_SLOTS.feature)}
+		transition:fly={{ x: 24, duration: 200 }}
+	>
 		<header>
 			<span class="layer">{mapState.selectedFeature.label}</span>
 			<button type="button" class="close" onclick={close} aria-label="Close">×</button>
@@ -63,5 +74,5 @@
 	.grid { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.8rem; margin: 0; }
 	dt { color: #94a3b8; }
 	dd { margin: 0; font-weight: 600; text-align: right; }
-	@media (max-width: 640px) { .panel { top: auto; bottom: 1.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 48vh; } }
+	@media (max-width: 640px) { .panel { top: auto; bottom: 6.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 48vh; } }
 </style>

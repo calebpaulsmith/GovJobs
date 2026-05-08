@@ -3,6 +3,7 @@
 	import MetricSwitcher from '$lib/MetricSwitcher.svelte';
 	import FeaturePanel from '$lib/FeaturePanel.svelte';
 	import FilterPanel from '$lib/FilterPanel.svelte';
+	import { LAYOUT_SLOTS, slotAttr } from '$lib/layout';
 	import { mapState } from '$lib/store.svelte';
 </script>
 
@@ -11,7 +12,7 @@
 </svelte:head>
 
 <div class="root">
-	<header class="masthead">
+	<header class="masthead" data-layout-slot={slotAttr(LAYOUT_SLOTS.masthead)}>
 		<div class="brand">
 			<span class="logo" aria-hidden="true"></span>
 			<div>
@@ -33,7 +34,7 @@
 	<FilterPanel />
 	<FeaturePanel />
 
-	<footer class="attrib">
+	<footer class="attrib" data-layout-slot={slotAttr(LAYOUT_SLOTS.freshness)}>
 		<span>Data: USAJOBS · OPM · U.S. Census · BEA</span>
 		<span>Not affiliated with the U.S. government</span>
 	</footer>

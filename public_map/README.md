@@ -48,5 +48,9 @@ to top the layers are: basemap → states fill → counties outline → metros o
 choropleth metric switcher recolors the state fill (open postings by default;
 also workforce, accessions, separations, remote share, pay-vs-COL).
 
-Phase B is the skeleton — no popups beyond a debug click-through, no filters,
-no URL state. Those land in Phase C and D respectively.
+Phase D.5 is the active implementation queue. The map is not V1-complete until
+it uses official 2026 GS pay tables, supports snap-scoped state/locality search
+windows with Add to Search and global-filter preview toggles, exposes light and
+dark modes, includes the personal compensation/COL comparator, shows
+source-backed urgency/fill badges on job listings, and persists local
+viewed/saved/hidden job state in the browser.

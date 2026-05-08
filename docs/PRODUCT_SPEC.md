@@ -115,11 +115,14 @@ A federal job-search map that is honest about precision and surfaces the questio
 - **Metro / county zoom (7–9)**: county and CBSA outlines plus emerging marker clusters. Click a county or metro for COL and stats.
 - **Maxzoom 9 (cap)**: individual job markers placed by coordinate priority — `source` (authoritative USAJOBS Search lat/lon stored in `job_locations`), then `city` (SimpleMaps centroid), then `state_centroid` (last-resort). The `geo_quality` flag is surfaced in the UI so users can see how precise each marker is. The map never goes to street level — even when source coords exist, the maxzoom cap keeps the public surface uniform.
 
+The click model is snap-scoped: clicking a state or locality fits the map to that polygon and opens a compact action window. The future city polygon layer uses the same contract. The window can search only that geography, optionally include remote jobs, add the geography to the current search, and preview counts with global filters applied or temporarily ignored. Geography chips are additive: multiple geographic scopes are ORed with each other and ANDed with the rest of the user's filters.
+
 ### Pay-table fidelity
 
 Pay data must be **exquisite**. Every USAJOBS pay plan we encounter (GS first, then Federal Wage System, ES, AD, FP, LE, VN, others incrementally) is supported with:
 
 - Annual pay scales sourced from OPM, stored per pay plan / year / grade / step / locality
+- Official 2026 GS base and locality pay tables as the public-map V1 reference year; older checked-in seeds are development fallbacks only
 - Locality-adjusted rates derived for every job from its (city, state) → county → locality chain
 - A full pay table (every step) shown in the marker detail card
 - Year-over-year diffs visible in the admin dashboard so import errors are caught before they reach the public site
@@ -137,6 +140,8 @@ All clickable; all sourced from public, federally-published datasets.
 
 V1 uses BEA Regional Price Parities (free, official, state and metro level). Locality-area COL is derived by averaging across constituent metros and labeled as approximate. C2ER is reserved as a paid upgrade path (~$200/yr) if richer granularity is needed.
 
+The map also includes a personal compensation comparator. A visitor can enter a GS grade/step plus locality, or a custom annual wage, and optionally a current comparison city. The output expresses purchasing-power equivalents such as "GS-13 Step 2 in Denver is equivalent to making $X in Chicago." Every comparison labels the source vintage and whether the city/locality COL value is exact, derived, or a fallback.
+
 ### Public-map user stories (V1)
 
 1. *As a visitor,* I see a heat surface of open USAJOBS postings at every zoom from national down to metro so I can scan where activity is concentrated even before I drill in.
@@ -150,9 +155,18 @@ V1 uses BEA Regional Price Parities (free, official, state and metro level). Loc
 9. *As a visitor,* every job marker reveals a full locality-adjusted pay grid (grade × step) on click, with a citation to the OPM source year. When the underlying pay scale is missing, the card says so plainly and points to the admin page.
 10. *As a visitor,* county and locality popups show cost-of-living to the most precise level available — county-level when ingested, state-level fallback labeled "approximate" otherwise.
 
+11. *As a visitor,* I click Illinois or the Chicago locality and the map snaps there, opens a small window for that geography, and lets me search only that area, include remote jobs, add the area to my current search, or temporarily ignore my global filters while previewing.
+12. *As a visitor,* I can switch between light and dark mode; the map, panels, controls, and overlays remain legible and remember my choice.
+13. *As a visitor,* I enter my expected grade/step and locality, or a custom wage, and compare it to my current city so I can see the cost-of-living equivalent before I relocate.
+14. *As a visitor,* job cards warn me when a posting is closing soon or when a known applicant/opening signal suggests the job is filling up, without pretending counts exist when USAJOBS does not provide them.
+15. *As a visitor,* jobs I have opened show a "viewed" marker across the map and lists, so I do not keep rereading the same announcement.
+16. *As a visitor,* I can Save Job from a card or list row and later return to my saved jobs from a local profile area.
+17. *As a visitor,* I can Hide Job from a card or list row, removing it from map markers, heat/list counts, and scoped search results by default, while still being able to restore it from Hidden Jobs in my local profile.
+18. *As a visitor,* I can open a profile area that contains Saved Jobs, Hidden Jobs, and jobs I viewed that have since closed.
+
 ### Out of scope (public map V1)
 
-- User accounts, saved jobs, scoring, recommendations, alerts.
+- Server-side user accounts, cloud sync, scoring, recommendations, alerts. Local browser profile state for viewed/saved/hidden jobs is in scope for V1.
 - Application submission. The public map only links out to canonical USAJOBS URLs; we never host applications.
 - Live API. The public map is a static snapshot. No backend, no auth, no DB online.
 - Street-level zoom.
@@ -172,7 +186,13 @@ V1 uses BEA Regional Price Parities (free, official, state and metro level). Loc
 10. Admin dashboard (local, private) lists every external data source with status, last-success time, row count, manual override, per-source refresh button, and metric-readiness summary.
 11. UI layout: zero overlapping panels at 1440 × 900, 1024 × 768, and 720 × 1280; layout slots imported from `public_map/src/lib/layout.ts`.
 12. Local corpus ≥ 5,000 open postings; trailing-90-days closed-postings overlay imports successfully.
-13. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`; footer credits every source with freshness.
-14. `pytest` green; pay tables for at least three localities × three pay plans match published OPM values exactly; layout / typeahead / basemap-fallback / pay-grid / federal-properties tests all green.
+13. Official 2026 GS base and locality tables are ingested; `manifest.json.reference_year` is 2026; sampled GS rows match OPM-published values exactly.
+14. State and locality scoped windows support snap/focus, scoped search, remote inclusion, Add to Search, and a with/without-global-filters preview; the city layer has the same contract documented for its later implementation.
+15. Light and dark modes are toggleable, persisted, and visually verified.
+16. Compensation comparator returns sourced COL-adjusted equivalents for GS grade/step/locality and custom-wage inputs.
+17. Job cards show closing-soon and source-backed fill/applicant badges when data exists.
+18. Viewed/saved/hidden state persists locally; hidden jobs are excluded from default map/list/search views and recoverable from Hidden Jobs; viewed jobs that later close appear in the local profile.
+19. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`; footer credits every source with freshness.
+20. `pytest` green; pay tables for at least three localities x three pay plans match published OPM values exactly; layout / typeahead / basemap-fallback / pay-grid / federal-properties / scoped-search / compensation-comparison / local-profile-state tests all green.
 
 The full implementation plan lives in `docs/ROADMAP.md` (Public Map Tool track) and the detailed Phase D.5 sub-phase list in `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. External datasets are catalogued in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Pipeline operations are documented in `docs/PUBLIC_MAP_PIPELINE.md`.

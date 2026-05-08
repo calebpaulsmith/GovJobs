@@ -11,6 +11,7 @@
 		writeFiltersToSearchParams,
 		type JobFilters
 	} from './filters';
+	import { LAYOUT_SLOTS, slotAttr } from './layout';
 
 	let expanded = $state(false);
 	let hydratedFromUrl = false;
@@ -76,7 +77,12 @@
 	}
 </script>
 
-<section class="filters" class:expanded aria-label="Map filters">
+<section
+	class="filters"
+	class:expanded
+	aria-label="Map filters"
+	data-layout-slot={slotAttr(LAYOUT_SLOTS.filters)}
+>
 	<button
 		type="button"
 		class="toggle"
@@ -308,7 +314,7 @@
 		.filters {
 			left: 0.5rem;
 			top: auto;
-			bottom: 4.1rem;
+			bottom: 6.5rem;
 		}
 		.row,
 		.row.three {

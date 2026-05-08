@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { GeoJSONSource, Map as MaplibreMap, MapboxGeoJSONFeature, StyleSpecification } from 'mapbox-gl';
-	import { mapboxToken, pickStyle, HAS_MAPBOX_TOKEN } from './basemap';
+	import { configureMapboxRuntime, pickStyle, HAS_MAPBOX_TOKEN } from './basemap';
 	import {
+		loadClosedJobs,
 		loadCounties,
 		loadJobs,
 		loadLocalities,
@@ -19,7 +20,9 @@
 		SOURCE_IDS,
 		addAllLayers,
 		addOrUpdateSource,
+		setClosedJobsVisible,
 		setChoroplethVisible,
+		setPostingHeatVisible,
 		setStateFillMetric
 	} from './layers';
 	import { mapState, type Manifest } from './store.svelte';
@@ -29,6 +32,7 @@
 	let mounted = false;
 	let allStates: FeatureCollection | null = null;
 	let allJobs: FeatureCollection | null = null;
+	let allClosedJobs: FeatureCollection | null = null;
 	let jobDetails: Record<string, JobDetails> = {};
 
 	const MAXZOOM = 9;
@@ -39,10 +43,7 @@
 		const mapboxgl = (await import('mapbox-gl')).default;
 		await import('mapbox-gl/dist/mapbox-gl.css');
 
-		// Mapbox GL JS requires accessToken to be set even when using non-Mapbox
-		// sources (OSM raster fallback). Set a placeholder so the map initializes;
-		// the placeholder never reaches Mapbox servers in the OSM path.
-		mapboxgl.accessToken = HAS_MAPBOX_TOKEN ? mapboxToken() : 'pk.placeholder';
+		configureMapboxRuntime(mapboxgl);
 
 		const style = pickStyle();
 		map = new mapboxgl.Map({
@@ -62,12 +63,13 @@
 		map.on('load', async () => {
 			if (!map) return;
 			try {
-				const [states, counties, metros, localities, jobs, details, manifest] = await Promise.all([
+				const [states, counties, metros, localities, jobs, closedJobs, details, manifest] = await Promise.all([
 					loadStates(),
 					loadCounties(),
 					loadMetros(),
 					loadLocalities(),
 					loadJobs(),
+					loadClosedJobs(),
 					loadJobDetailsIndex(),
 					loadManifest()
 				]);
@@ -75,10 +77,12 @@
 				mapState.manifest = manifest as Manifest | null;
 				allStates = cloneCollection(states);
 				allJobs = jobs;
+				allClosedJobs = closedJobs;
 				jobDetails = details;
 				mapState.totalJobCount = jobs.features.length;
 
 				const filteredJobs = filterJobs(jobs, mapState.filters, jobDetails);
+				const filteredClosedJobs = filterJobs(closedJobs, mapState.filters, jobDetails);
 				const displayStates = cloneCollection(allStates);
 
 				// Stamp client-derived `remote_share` onto each state feature so the
@@ -90,6 +94,8 @@
 				addOrUpdateSource(map, SOURCE_IDS.counties, counties);
 				addOrUpdateSource(map, SOURCE_IDS.metros, metros);
 				addOrUpdateSource(map, SOURCE_IDS.localities, localities);
+				addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
+				addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
 				addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 
 				addAllLayers(map, mapState.metric);
@@ -105,19 +111,26 @@
 		// React to metric changes and the on/off shading toggle.
 		const m = mapState.metric;
 		const shadingOn = mapState.choroplethEnabled;
+		const heatOn = mapState.postingHeatEnabled;
+		const closedOn = mapState.closedJobsEnabled;
 		if (mounted && map && map.isStyleLoaded()) {
 			setStateFillMetric(map, m);
 			setChoroplethVisible(map, shadingOn);
+			setPostingHeatVisible(map, heatOn);
+			setClosedJobsVisible(map, closedOn);
 		}
 	});
 
 	$effect(() => {
 		const filters = mapState.filters;
-		if (!mounted || !map || !allJobs || !allStates || !map.isStyleLoaded()) return;
+		if (!mounted || !map || !allJobs || !allClosedJobs || !allStates || !map.isStyleLoaded()) return;
 		const filteredJobs = filterJobs(allJobs, filters, jobDetails);
+		const filteredClosedJobs = filterJobs(allClosedJobs, filters, jobDetails);
 		const displayStates = cloneCollection(allStates);
 		deriveRemoteShare(displayStates, filteredJobs);
 		mapState.filteredJobCount = filteredJobs.features.length;
+		addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
+		addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
 		addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 		addOrUpdateSource(map, SOURCE_IDS.states, displayStates);
 		setStateFillMetric(map, mapState.metric);
@@ -171,6 +184,7 @@
 		const layerOrder = [
 			LAYER_IDS.markers,
 			LAYER_IDS.clusters,
+			LAYER_IDS.closedMarkers,
 			LAYER_IDS.localitiesFill,
 			LAYER_IDS.countiesOutline,
 			LAYER_IDS.metrosOutline,
@@ -180,6 +194,7 @@
 		m.on('click', (e) => {
 			for (const layerId of layerOrder) {
 				if (!m.getLayer(layerId)) continue;
+				if (layerId === LAYER_IDS.closedMarkers && !mapState.closedJobsEnabled) continue;
 				const feats = m.queryRenderedFeatures(e.point, { layers: [layerId] });
 				if (feats.length === 0) continue;
 
@@ -213,6 +228,8 @@
 		switch (layerId) {
 			case LAYER_IDS.markers:
 				return 'Job card';
+			case LAYER_IDS.closedMarkers:
+				return 'Closed posting';
 			case LAYER_IDS.statesFill:
 				return 'State roundup';
 			case LAYER_IDS.localitiesFill:

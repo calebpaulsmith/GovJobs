@@ -120,11 +120,11 @@ These tables copy evidence out of structured fields and long-form announcement t
 | `job_qualification_requirements` | Qualifications and specialized-experience evidence snippets, including parsed GS grade references when present. |
 | `job_duties` | Duty bullets or paragraphs copied from the announcement. |
 | `job_evaluation_factors` | Evaluation / category-rating / assessment factor bullets or paragraphs copied from the announcement. |
-| `job_openings` | Vacancy/opening counts, including location-level and total-opening counts when provided. |
+| `job_openings` | Vacancy/opening counts, including location-level and total-opening counts when provided. Used by public-map urgency/fill badges only when source-backed. |
 | `job_contacts` | Public contact name/email/phone/url rows when available. |
 | `job_security_clearances` | Clearance, position sensitivity, and adjudication fields. |
 | `job_travel_requirements` | Travel requirement and travel-percentage fields. |
-| `job_application_options` | Apply URL and application-option flags such as uploaded-resume/document acceptance. |
+| `job_application_options` | Apply URL and application-option flags such as uploaded-resume/document acceptance. `show_application_count` only means the source says counts may be displayed; do not invent applicant counts unless USAJOBS provides the numeric count in a captured payload. |
 
 ---
 

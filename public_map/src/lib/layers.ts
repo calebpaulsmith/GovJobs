@@ -14,6 +14,8 @@ export const SOURCE_IDS = {
 	counties: 'counties',
 	metros: 'metros',
 	localities: 'localities',
+	jobsHeat: 'jobs-heat',
+	closedJobs: 'closed-jobs',
 	jobs: 'jobs'
 } as const;
 
@@ -24,6 +26,8 @@ export const LAYER_IDS = {
 	metrosOutline: 'metros-outline',
 	localitiesFill: 'localities-fill',
 	localitiesOutline: 'localities-outline',
+	postingHeat: 'posting-heat',
+	closedMarkers: 'closed-job-markers',
 	clusters: 'job-clusters',
 	clusterCount: 'job-cluster-count',
 	markers: 'job-markers'
@@ -100,7 +104,46 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
-	// 2. Counties outline — visible 7-9.
+	// 2. Posting heat surface — visible 3-9 and fed by active filters.
+	map.addLayer({
+		id: LAYER_IDS.postingHeat,
+		type: 'heatmap',
+		source: SOURCE_IDS.jobsHeat,
+		minzoom: 3,
+		maxzoom: 9,
+		paint: {
+			'heatmap-weight': [
+				'interpolate',
+				['linear'],
+				['to-number', ['get', 'salary_min'], 0],
+				0,
+				0.65,
+				150000,
+				1.1
+			],
+			'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 0.7, 7, 1.4, 9, 1.0],
+			'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 18, 7, 28, 9, 20],
+			'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.25, 9, 0.25],
+			'heatmap-color': [
+				'interpolate',
+				['linear'],
+				['heatmap-density'],
+				0,
+				'rgba(28, 42, 64, 0)',
+				0.2,
+				'#2c5b8a',
+				0.45,
+				'#4979b3',
+				0.7,
+				'#7bd0f2',
+				1,
+				'#fff2a8'
+			]
+		}
+	});
+	map.moveLayer(LAYER_IDS.statesOutline);
+
+	// 3. Counties outline — visible 7-9.
 	map.addLayer({
 		id: LAYER_IDS.countiesOutline,
 		type: 'line',
@@ -155,6 +198,21 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 	});
 
 	// 5. Marker clusters — visible past zoom 7 per Phase B exit criteria.
+	map.addLayer({
+		id: LAYER_IDS.closedMarkers,
+		type: 'circle',
+		source: SOURCE_IDS.closedJobs,
+		minzoom: 7,
+		filter: ['!', ['has', 'point_count']],
+		paint: {
+			'circle-color': '#8792a3',
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 2.5, 9, 4],
+			'circle-stroke-color': '#1f2937',
+			'circle-stroke-width': 0.8,
+			'circle-opacity': 0
+		}
+	});
+
 	map.addLayer({
 		id: LAYER_IDS.clusters,
 		type: 'circle',
@@ -220,6 +278,23 @@ export function setStateFillMetric(map: MaplibreMap, metricKey: MetricKey): void
 		LAYER_IDS.statesFill,
 		'fill-color',
 		fillColorExpression(metric) as unknown as ExpressionSpecification
+	);
+}
+
+export function setClosedJobsVisible(map: MaplibreMap, visible: boolean): void {
+	if (!map.getLayer(LAYER_IDS.closedMarkers)) return;
+	map.setPaintProperty(LAYER_IDS.closedMarkers, 'circle-opacity', visible ? 0.5 : 0);
+}
+
+export function setPostingHeatVisible(map: MaplibreMap, visible: boolean): void {
+	if (!map.getLayer(LAYER_IDS.postingHeat)) return;
+	const opacity: ExpressionSpecification | number = visible
+		? (['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.25, 9, 0.25] as ExpressionSpecification)
+		: 0;
+	map.setPaintProperty(
+		LAYER_IDS.postingHeat,
+		'heatmap-opacity',
+		opacity as unknown as ExpressionSpecification
 	);
 }
 

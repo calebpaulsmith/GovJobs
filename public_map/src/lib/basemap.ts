@@ -16,7 +16,11 @@ export const OSM_FALLBACK_STYLE: object = {
 	sources: {
 		osm: {
 			type: 'raster',
-			tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+			tiles: [
+				'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+				'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+				'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+			],
 			tileSize: 256,
 			attribution: '© OpenStreetMap contributors',
 			maxzoom: 19
@@ -39,8 +43,7 @@ export const OSM_FALLBACK_STYLE: object = {
 				'raster-brightness-max': 0.8
 			}
 		}
-	],
-	glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf'
+	]
 };
 
 export function pickStyle(): string | object {
@@ -49,4 +52,18 @@ export function pickStyle(): string | object {
 
 export function mapboxToken(): string {
 	return MAPBOX_TOKEN;
+}
+
+export function configureMapboxRuntime(mapboxgl: unknown): void {
+	const runtime = mapboxgl as {
+		accessToken?: string;
+		config?: { SEND_EVENTS?: boolean; REQUIRE_ACCESS_TOKEN?: boolean };
+	};
+
+	runtime.accessToken = HAS_MAPBOX_TOKEN ? MAPBOX_TOKEN : 'pk.placeholder';
+
+	if (!HAS_MAPBOX_TOKEN && runtime.config) {
+		runtime.config.SEND_EVENTS = false;
+		runtime.config.REQUIRE_ACCESS_TOKEN = false;
+	}
 }

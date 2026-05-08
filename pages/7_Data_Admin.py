@@ -5,6 +5,7 @@ import streamlit as st
 from config import load_config
 from src.exports import dataframe_to_csv_bytes, dataframe_to_xlsx_bytes
 from src.opm_data import import_opm_file
+from src.public_map_corpus import PUBLIC_MAP_CORPUS_PRESETS, run_public_map_corpus_preset, run_public_map_recon
 from src.usajobs_announcement_text_api import import_announcement_text_filters
 from src.usajobs_historic_api import import_historic
 from src.ui_data import (
@@ -155,6 +156,43 @@ if run_opm:
 opm_sets = opm_datasets_dataframe(conn)
 if not opm_sets.empty:
     st.dataframe(opm_sets, use_container_width=True, hide_index=True)
+
+st.subheader("Public Map Corpus")
+st.caption(
+    "D.5.7 growth presets run reconnaissance first and write the latest recommendation "
+    "to docs/DOWNLOAD_STRATEGY.md before importing."
+)
+corpus_cols = st.columns([1, 1, 1])
+with corpus_cols[0]:
+    current_pages = st.number_input("Current pages per scope", min_value=1, max_value=50, value=2, step=1)
+with corpus_cols[1]:
+    historic_pages = st.number_input("Historic pages", min_value=1, max_value=200, value=10, step=5)
+with corpus_cols[2]:
+    if st.button("Run Corpus Recon Only", use_container_width=True):
+        with st.spinner("Running public-map corpus reconnaissance"):
+            recommendations = run_public_map_recon(cfg)
+        modes = ", ".join(rec.mode for rec in recommendations)
+        st.success(f"Recon complete. Recommended modes: {modes}")
+
+preset_options = {f"{preset.label} — {preset.description}": preset.key for preset in PUBLIC_MAP_CORPUS_PRESETS}
+selected_preset_label = st.selectbox("Corpus preset", list(preset_options))
+if st.button("Run Selected Corpus Preset", type="primary", use_container_width=True):
+    preset_key = preset_options[selected_preset_label]
+    with st.spinner("Running recon, then importing the selected public-map corpus preset"):
+        try:
+            result = run_public_map_corpus_preset(
+                conn,
+                cfg,
+                preset_key,
+                current_max_pages=int(current_pages),
+                historic_max_pages=int(historic_pages),
+            )
+            st.success(
+                f"Imported {result.records_imported:,} record(s) across "
+                f"{result.pages_completed:,} page(s). Manifest IDs: {result.manifest_ids}"
+            )
+        except Exception as exc:
+            st.error(str(exc))
 
 st.subheader("Filter-Scoped Historic Import")
 left, dept, mid, ids = st.columns([1, 1, 1, 1])

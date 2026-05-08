@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { METRIC_ORDER, METRICS, formatMetricValue } from './metrics';
+	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { mapState } from './store.svelte';
 
 	function selectMetric(key: typeof METRIC_ORDER[number]) {
@@ -17,6 +18,14 @@
 		mapState.choroplethEnabled = !mapState.choroplethEnabled;
 	}
 
+	function toggleHeat() {
+		mapState.postingHeatEnabled = !mapState.postingHeatEnabled;
+	}
+
+	function toggleClosedJobs() {
+		mapState.closedJobsEnabled = !mapState.closedJobsEnabled;
+	}
+
 	function gradientCss(key: typeof METRIC_ORDER[number]): string {
 		return METRICS[key].colorStops.map(([, color]) => color).join(', ');
 	}
@@ -31,7 +40,12 @@
 	}
 </script>
 
-<div class="switcher" role="radiogroup" aria-label="Choropleth metric">
+<div
+	class="switcher"
+	role="radiogroup"
+	aria-label="Choropleth metric"
+	data-layout-slot={slotAttr(LAYOUT_SLOTS.metric)}
+>
 	<div class="title-row">
 		<div class="title">Color states by</div>
 		<button
@@ -45,6 +59,28 @@
 				: 'Shading is off — click to turn on'}
 		>
 			Shade {mapState.choroplethEnabled ? 'on' : 'off'}
+		</button>
+		<button
+			type="button"
+			class="shade-toggle"
+			class:on={mapState.postingHeatEnabled}
+			onclick={toggleHeat}
+			aria-pressed={mapState.postingHeatEnabled}
+			title={mapState.postingHeatEnabled ? 'Posting heat is on' : 'Posting heat is off'}
+		>
+			Heat {mapState.postingHeatEnabled ? 'on' : 'off'}
+		</button>
+		<button
+			type="button"
+			class="shade-toggle"
+			class:on={mapState.closedJobsEnabled}
+			onclick={toggleClosedJobs}
+			aria-pressed={mapState.closedJobsEnabled}
+			title={mapState.closedJobsEnabled
+				? 'Trailing-90-day closed postings are on'
+				: 'Trailing-90-day closed postings are off'}
+		>
+			Closed {mapState.closedJobsEnabled ? 'on' : 'off'}
 		</button>
 	</div>
 	<div class="buttons">
@@ -93,9 +129,11 @@
 <style>
 	.switcher {
 		position: absolute;
-		top: 1rem;
+		bottom: 1rem;
 		left: 1rem;
+		right: 1rem;
 		max-width: 26rem;
+		margin: 0 auto;
 		padding: 0.75rem 0.9rem;
 		background: rgba(14, 23, 38, 0.92);
 		border: 1px solid #2a3a52;
@@ -107,7 +145,7 @@
 	.title-row {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-start;
 		gap: 0.5rem;
 		margin-bottom: 0.5rem;
 	}
@@ -201,7 +239,7 @@
 	}
 	@media (max-width: 640px) {
 		.switcher {
-			top: 7.5rem;
+			bottom: 0.5rem;
 			left: 0.5rem;
 			right: 0.5rem;
 			max-width: none;

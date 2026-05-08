@@ -76,6 +76,24 @@ Structured import order:
 
 ---
 
+## Public map corpus target
+
+D.5.7 target for meaningful public-map review:
+
+```text
+Open postings target:          >= 5,000 current USAJOBS postings
+Closed-postings target:        >= 5,000 HistoricJoa records closed within trailing 90 days
+Current import presets:        federal-wide current; top-25 agencies current
+Historical context preset:     trailing-90-days closed by Start/EndPositionCloseDate
+Recon gate:                    Every preset calls src.data_recon.run_recon first and rewrites this document before importing
+Initial safe caps:             2 current pages per scope; 10 HistoricJoa pages
+Operator path:                 Data Admin -> Public Map Corpus
+```
+
+The presets are intentionally capped for the first run. Increase page caps only after the recon log and USAJOBS rate-limit behavior look acceptable. Current Search requires credentials in `.env`; HistoricJoa trailing-90-day context does not.
+
+---
+
 ## USAJOBS Announcement Text
 
 ```text

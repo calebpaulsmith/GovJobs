@@ -70,6 +70,7 @@ Refresh cadences:
 - **Ingest**: `scripts/ingest_locality_definitions.py` (parses the OPM web page; supports manual CSV override per ADR-0018)
 - **Refresh**: annual (Jan)
 - **Verification**: ~58 localities × ~1–500 counties each. Spot-check that "CHI" includes Cook County (FIPS 17031).
+- **Default seed (per ADR-0027)**: `data/external/opm_locality_definitions/2025.csv` (curated, checked in). Contains ~426 locality-county rows for ~38 of the most populated localities. Refresh by replacing this file with the full annual OPM CSV when published.
 
 ### `opm_locality_pay`
 
@@ -79,6 +80,7 @@ Refresh cadences:
 - **Ingest**: `scripts/ingest_locality_pay.py`
 - **Refresh**: annual (Jan)
 - **Verification**: 2026 Chicago should be ≈32–34% (locality % updates annually).
+- **Default seed (per ADR-0027)**: `data/external/opm_locality_pay/2025.csv` (curated, checked in). 60 rows covering the published 2025 EO percentages for ~58 localities + RUS.
 
 ### `opm_locality_polygons`
 
@@ -106,6 +108,7 @@ Pay data must be **exquisite**. Every row stores `source` and `source_url`. The 
 - **Ingest**: `scripts/ingest_gs_pay.py --table=base`
 - **Refresh**: annual (Jan)
 - **Verification**: 150 rows per year; GS-13 step 1 (2026) should match the published value to the cent.
+- **Default seed (per ADR-0027)**: `data/external/opm_gs_pay/2025_base.csv` (curated, checked in). All 150 (15 grade x 10 step) cells of the 2025 GS base table. This is bootstrap/dev data only. Public-map V1 requires an official 2026 GS base seed/source and must export `reference_year: 2026`. Replace annually with the official OPM-published table.
 
 ### `opm_gs_locality`
 
@@ -150,6 +153,7 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Refresh**: annual (typically Q4 of year+1; e.g., 2024 RPP releases in late 2025)
 - **Verification**: state RPP for CA/NY/HI > 100; for MS/AR/WV < 100. Latest year present.
 - **Limitations**: BEA does not publish locality-pay-area-level RPP. We average across constituent metros for the locality popup; the popup labels this as approximate. C2ER reserved as a paid backup with finer granularity.
+- **Default seed (per ADR-0027)**: `data/external/bea_rpp/2023.csv` (curated, checked in). 51 rows covering all 50 states + DC for the 2023 RPP vintage (most recent published as of 2026-05). Replace when BEA releases a newer vintage.
 
 ### `c2er_cost_index` (paid backup, not active)
 
