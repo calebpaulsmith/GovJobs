@@ -56,9 +56,37 @@ DEFAULT_FEATURESERVICE_URL = (
 )
 
 
+def _resolve_year(conn: sqlite3.Connection, requested: int | None) -> int:
+    """Resolve which year to ingest polygons for.
+
+    If ``requested`` is given, use it. Otherwise pick the most recent year
+    present in ``locality_pay_counties`` (the canonical membership table per
+    ADR-0019). Falls back to the current calendar year only when that table
+    is empty — that situation will fail the dissolve path with a clear error.
+    """
+    if requested is not None:
+        return int(requested)
+    row = conn.execute(
+        "SELECT MAX(year) AS y FROM locality_pay_counties"
+    ).fetchone()
+    if row and row["y"] is not None:
+        return int(row["y"])
+    import datetime as _dt
+
+    return _dt.date.today().year
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--year", type=int, required=True)
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help=(
+            "Year of locality definitions to use. When omitted, picks the "
+            "most recent year present in locality_pay_counties (per ADR-0027)."
+        ),
+    )
     parser.add_argument(
         "--input",
         type=Path,
@@ -311,9 +339,11 @@ def import_polygons_via_dissolve(
 def main() -> int:
     args = _parse_args()
     cfg = load_config()
-    notes_parts: list[str] = [f"year={args.year}"]
+    notes_parts: list[str] = []
 
     def work(conn: sqlite3.Connection) -> int:
+        year = _resolve_year(conn, args.year)
+        notes_parts.append(f"year={year}")
         if args.input:
             if not args.input.exists():
                 raise FileNotFoundError(f"input not found at {args.input}")
@@ -321,7 +351,7 @@ def main() -> int:
             notes_parts.append("path=local")
             return import_polygons(
                 conn,
-                year=args.year,
+                year=year,
                 fc=fc,
                 code_property=args.code_property,
                 name_property=args.name_property,
@@ -331,16 +361,22 @@ def main() -> int:
         if not args.force_fallback:
             try:
                 fc = fetch_feature_collection(args.featureserver_url)
-                notes_parts.append("path=arcgis")
-                return import_polygons(
+                written = import_polygons(
                     conn,
-                    year=args.year,
+                    year=year,
                     fc=fc,
                     code_property=args.code_property,
                     name_property=args.name_property,
                     output_dir=args.output_dir,
                     source="opm_arcgis",
                 )
+                if written > 0:
+                    notes_parts.append("path=arcgis")
+                    return written
+                # ArcGIS returned features but none had a recognized
+                # `locality_code` — fall through to the dissolve path so
+                # we never silently land at zero polygons.
+                notes_parts.append("arcgis_zero_recognized")
             except Exception as exc:
                 sys.stderr.write(
                     f"FeatureServer fetch failed ({type(exc).__name__}: {exc}); "
@@ -350,7 +386,7 @@ def main() -> int:
         notes_parts.append("path=dissolve")
         return import_polygons_via_dissolve(
             conn,
-            year=args.year,
+            year=year,
             output_dir=args.output_dir,
         )
 

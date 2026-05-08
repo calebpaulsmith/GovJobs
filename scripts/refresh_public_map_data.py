@@ -154,16 +154,14 @@ def build_steps() -> list[Step]:
         )
     )
 
+    locality_poly_args = [_python(), "scripts/ingest_locality_polygons.py"]
+    if os.environ.get("PUBLIC_MAP_LOCALITY_YEAR"):
+        locality_poly_args.extend(["--year", str(year)])
     steps.append(
         Step(
             key="ingest_locality_polygons",
             label="OPM locality polygons",
-            args=[
-                _python(),
-                "scripts/ingest_locality_polygons.py",
-                "--year",
-                str(year),
-            ],
+            args=locality_poly_args,
         )
     )
 

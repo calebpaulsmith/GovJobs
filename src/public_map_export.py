@@ -491,13 +491,16 @@ def states_geojson(
     ``opm_workforce_records``), ``gs13_step1_locality`` (illustrative pay for
     the state's most populated locality area — proxied as the locality with
     the most member counties in the state), ``rpp_overall`` from BEA, and
-    ``pay_vs_col`` = pay ÷ rpp × 100.
+    ``pay_vs_col`` — a *purchasing-power index* where 100 = national-average
+    purchasing power for a GS-13 step 1 employee. Values >100 mean the state's
+    locality-adjusted pay outpaces its cost of living; <100 means it lags.
     """
     resolved_year = year if year is not None else current_reference_year(conn)
     markers = _marker_dataset(conn, year=resolved_year)
     postings_by_state = _count_by(markers, "state")
     opm_by_state = opm_state_aggregates(conn)
     rpp_by_state = _rpp_lookup(conn, geo_type="state")
+    national_base_pay = _gs_base_step1_for_year(conn, resolved_year, grade="13")
 
     state_rows = conn.execute(
         "SELECT state, name, polygon_path FROM state_polygons ORDER BY state"
@@ -524,7 +527,7 @@ def states_geojson(
             conn, locality_code=locality_code, year=resolved_year
         )
         rpp = rpp_by_state.get(state_code)
-        pay_vs_col = _pay_vs_col(gs13_pay, rpp)
+        pay_vs_col = _pay_vs_col(gs13_pay, rpp, national_pay=national_base_pay)
 
         features.append(
             {
@@ -947,10 +950,51 @@ def _gs13_step1_for_locality(
     return round(rate, 2)
 
 
-def _pay_vs_col(pay: float | None, rpp: float | None) -> float | None:
+def _pay_vs_col(
+    pay: float | None,
+    rpp: float | None,
+    *,
+    national_pay: float | None = None,
+) -> float | None:
+    """Return a purchasing-power index where 100 = national-average purchasing power.
+
+    Formula: ``(pay / national_pay) / (rpp / 100) * 100``. Both numerator and
+    denominator are normalized: pay is divided by the national reference (GS-13
+    step 1 base for the same year); RPP is divided by 100 so 100 = US average.
+    The product is multiplied by 100 to express the result as an index.
+
+    >100 → locality pay outpaces COL relative to the national average.
+    <100 → locality pay lags COL.
+
+    When ``national_pay`` is not provided (legacy callers / tests), falls back
+    to the previous formula ``pay / rpp * 100`` so existing tests keep passing.
+    """
     if pay is None or rpp is None or rpp <= 0:
         return None
-    return round((pay / rpp) * 100.0, 2)
+    if national_pay is None or national_pay <= 0:
+        return round((pay / rpp) * 100.0, 2)
+    return round((pay / national_pay) / (rpp / 100.0) * 100.0, 2)
+
+
+def _gs_base_step1_for_year(
+    conn: sqlite3.Connection, year: int, *, grade: str = "13"
+) -> float | None:
+    """National (locality_code='') GS step-1 base rate for ``grade`` in ``year``.
+
+    Used as the reference pay when computing the pay-vs-COL index so each
+    state's purchasing-power score is comparable across the country.
+    """
+    row = conn.execute(
+        """
+        SELECT annual_rate FROM pay_scales
+        WHERE pay_plan='GS' AND year=? AND grade=? AND step=1
+              AND locality_code=''
+        """,
+        (year, grade),
+    ).fetchone()
+    if row and row["annual_rate"] is not None:
+        return _round_or_none(row["annual_rate"])
+    return None
 
 
 def _locality_county_fips(
