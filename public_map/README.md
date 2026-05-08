@@ -40,7 +40,7 @@ npm run build
 `@sveltejs/adapter-static` writes a SPA into `build/`. Cloudflare Pages serves it
 verbatim.
 
-## Layer model (Phase B)
+## Layer model
 
 Per ADR-0017 the map is layered and zoom-driven, capped at zoom 9. From bottom
 to top the layers are: basemap → states fill → counties outline → metros outline
@@ -48,5 +48,13 @@ to top the layers are: basemap → states fill → counties outline → metros o
 choropleth metric switcher recolors the state fill (open postings by default;
 also workforce, accessions, separations, remote share, pay-vs-COL).
 
-Phase B is the skeleton — no popups beyond a debug click-through, no filters,
-no URL state. Those land in Phase C and D respectively.
+Current implementation includes the Phase C click/popup components and Phase D filter URL state. Phase F operations/polish has started with an `/about` route, attribution/disclaimer content, social-preview metadata, `robots.txt`, and `sitemap.xml`.
+
+## Operations and public metadata
+
+The static site now ships the first Phase F public-surface assets:
+
+- `/about` documents data sources, precision limits, and the no-affiliation disclaimer.
+- `robots.txt` allows indexing and points crawlers to `sitemap.xml`.
+- `sitemap.xml` lists `/map` and `/about`.
+- `og-image.svg` plus Open Graph/Twitter metadata provide a share preview for the public map.

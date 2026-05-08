@@ -44,7 +44,7 @@ The public site is read-only. No backend, no API, no auth, no DB online.
    ```sh
    python scripts/export_public_map.py
    ```
-5. **Cloudflare Pages.** Connect the GitHub repo, set the build root to `public_map/`, set the Mapbox token as a build env var, add `thegrandpipeline.com` as a custom domain.
+5. **Cloudflare Pages.** Connect the GitHub repo, set the build root to `public_map/`, set the Mapbox token as a build env var, add `thegrandpipeline.com` as a custom domain. Confirm `/map`, `/about`, `/robots.txt`, `/sitemap.xml`, and `/og-image.svg` resolve after the first deploy.
 6. **Mapbox token hardening.** In Mapbox dashboard, restrict the token by URL referrer to `thegrandpipeline.com` and `*.pages.dev`.
 
 ## Admin dashboard (private)
@@ -91,6 +91,8 @@ python scripts/ingest_other_pay_plans.py         # FW, ES, AD, FP, LE, VN, ...
 All idempotent. All write a row to `data_source_status` so the admin page reflects the new state.
 
 ## Nightly cron (Windows Task Scheduler)
+
+Before enabling the scheduled data push, confirm the public static metadata is present in `public_map/static/`: `robots.txt`, `sitemap.xml`, and `og-image.svg`.
 
 - **Action:** Start a program
 - **Program/script:** `cmd.exe`

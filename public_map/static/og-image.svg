@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">The Grand Pipeline Federal Job Map</title>
+  <desc id="desc">Preview card for a federal job-search map focused on postings, workforce, locality pay, and cost of living.</desc>
+  <defs>
+    <radialGradient id="glow" cx="25%" cy="25%" r="70%">
+      <stop offset="0" stop-color="#7bd0f2" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#2c5b8a" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#0a0f1a"/>
+    </radialGradient>
+    <linearGradient id="line" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#7bd0f2"/>
+      <stop offset="1" stop-color="#95d06a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0a0f1a"/>
+  <circle cx="920" cy="110" r="330" fill="url(#glow)" opacity="0.55"/>
+  <path d="M80 470 C260 330 360 500 525 360 S815 245 1080 330" fill="none" stroke="url(#line)" stroke-width="18" stroke-linecap="round" opacity="0.9"/>
+  <g fill="#14243a" stroke="#315f78" stroke-width="2" opacity="0.78">
+    <path d="M100 180h210l34 70-56 82H120l-42-78z"/>
+    <path d="M365 130h240l42 80-70 95H400l-58-70z"/>
+    <path d="M675 250h260l70 85-64 112H720l-82-98z"/>
+  </g>
+  <text x="82" y="118" fill="#7bd0f2" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="4">THE GRAND PIPELINE</text>
+  <text x="80" y="225" fill="#e5edf5" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="78" font-weight="800">Federal Job Map</text>
+  <text x="82" y="298" fill="#cfd9e6" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="35">Postings · workforce · locality pay · cost of living</text>
+  <text x="82" y="548" fill="#94a3b8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24">Not affiliated with the U.S. government</text>
+</svg>

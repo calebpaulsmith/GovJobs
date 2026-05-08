@@ -36,6 +36,7 @@
 	<footer class="attrib">
 		<span>Data: USAJOBS · OPM · U.S. Census · BEA</span>
 		<span>Not affiliated with the U.S. government</span>
+		<a href="/about">About & attributions</a>
 	</footer>
 </div>
 
@@ -104,8 +105,17 @@
 		gap: 0.9rem;
 		font-size: 10px;
 		color: #64748b;
-		pointer-events: none;
+		pointer-events: auto;
 		z-index: 4;
+	}
+	.attrib a {
+		color: #94a3b8;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.attrib a:hover,
+	.attrib a:focus-visible {
+		color: #cfd9e6;
 	}
 
 	@media (max-width: 640px) {

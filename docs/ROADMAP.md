@@ -277,10 +277,11 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 **Exit:** `https://thegrandpipeline.com/map` resolves over HTTPS and matches local build.
 
-### Phase F — Operations and polish
+### Phase F — Operations and polish *(INITIATED)*
 
-- [ ] Cloudflare Web Analytics, `robots.txt`, sitemap, OG image, share-preview meta.
-- [ ] `/about` page with attributions: USAJOBS, OPM, Census, BEA, OpenStreetMap, SimpleMaps. "Not affiliated with the U.S. government."
+- [ ] Cloudflare Web Analytics.
+- [x] `robots.txt`, `sitemap.xml`, OG image, and share-preview meta.
+- [x] `/about` page with attributions: USAJOBS, OPM, Census, BEA, OpenStreetMap, SimpleMaps. "Not affiliated with the U.S. government."
 - [ ] Windows Task Scheduler nightly job runs `refresh_public_map_data.py` + `export_public_map.py` + `git push`.
 - [ ] Update runbook in `docs/PUBLIC_MAP_PIPELINE.md`.
 
