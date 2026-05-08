@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
 	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { METRIC_ORDER, type MetricKey } from './metrics';
@@ -69,7 +70,7 @@
 	</button>
 
 	{#if expanded}
-		<div class="body">
+		<div class="body" transition:slide={{ duration: 180 }}>
 			<label>
 				<span>Keyword</span>
 				<input

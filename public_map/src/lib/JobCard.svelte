@@ -46,8 +46,9 @@
 	<p class="eyebrow">Open posting</p>
 	<h2>{propString(properties, 'title')}</h2>
 	{#if detail?.url ?? properties.url}
-		<a class="source" href={String(detail?.url ?? properties.url)} target="_blank" rel="noreferrer">Open source record</a>
-		<p class="raw-url">{String(detail?.url ?? properties.url)}</p>
+		<a class="apply-btn" href={String(detail?.url ?? properties.url)} target="_blank" rel="noreferrer noopener">
+			Apply on USAJOBS &rarr;
+		</a>
 	{/if}
 	<dl class="grid">
 		<dt>Agency</dt><dd>{String(detail?.agency ?? properties.agency_code ?? '—')}</dd>
@@ -91,8 +92,8 @@
 <style>
 	.eyebrow { margin: 0 0 0.25rem; color: #7bd0f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 	h2 { margin: 0 0 0.75rem; font-size: 20px; line-height: 1.15; }
-	.source { display: block; text-align: center; color: #06111f; background: #7bd0f2; border-radius: 6px; padding: 0.55rem 0.7rem; font-weight: 700; text-decoration: none; margin-bottom: 0.4rem; }
-	.raw-url { margin: 0 0 0.75rem; overflow-wrap: anywhere; color: #94a3b8; font-size: 11px; }
+	.apply-btn { display: block; text-align: center; color: #06111f; background: #7bd0f2; border-radius: 6px; padding: 0.55rem 0.7rem; font-weight: 700; text-decoration: none; margin-bottom: 0.75rem; transition: background 120ms ease; }
+	.apply-btn:hover { background: #a8e0f5; }
 	.grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 0.8rem; margin: 0; }
 	dt { color: #94a3b8; }
 	dd { margin: 0; font-weight: 600; }

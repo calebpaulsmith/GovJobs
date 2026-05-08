@@ -235,7 +235,12 @@
 	}
 </script>
 
-<div class="map-container" bind:this={container}></div>
+<div
+	class="map-container"
+	bind:this={container}
+	role="application"
+	aria-label="Interactive map of federal job postings across the United States"
+></div>
 
 {#if !HAS_MAPBOX_TOKEN}
 	<div class="token-banner" role="status">

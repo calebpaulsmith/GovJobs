@@ -1,9 +1,22 @@
 <script lang="ts">
-	import { METRIC_ORDER, METRICS } from './metrics';
+	import { METRIC_ORDER, METRICS, formatMetricValue } from './metrics';
 	import { mapState } from './store.svelte';
 
 	function selectMetric(key: typeof METRIC_ORDER[number]) {
 		mapState.metric = key;
+	}
+
+	function gradientCss(key: typeof METRIC_ORDER[number]): string {
+		return METRICS[key].colorStops.map(([, color]) => color).join(', ');
+	}
+
+	function scaleLabels(key: typeof METRIC_ORDER[number]): [string, string, string] {
+		const stops = METRICS[key].colorStops;
+		const metric = METRICS[key];
+		const lo = formatMetricValue(metric, stops[0][0]);
+		const mid = formatMetricValue(metric, stops[Math.floor(stops.length / 2)][0]);
+		const hi = formatMetricValue(metric, stops[stops.length - 1][0]);
+		return [lo, mid, hi];
 	}
 </script>
 
@@ -25,6 +38,18 @@
 				{metric.short}
 			</button>
 		{/each}
+	</div>
+	<div class="legend">
+		<div
+			class="gradient"
+			style="background: linear-gradient(to right, {gradientCss(mapState.metric)})"
+			role="presentation"
+		></div>
+		<div class="scale">
+			{#each scaleLabels(mapState.metric) as label, i (i)}
+				<span>{label}</span>
+			{/each}
+		</div>
 	</div>
 	<div class="caption">
 		{METRICS[mapState.metric].description}
@@ -83,8 +108,23 @@
 		outline: 2px solid #7bd0f2;
 		outline-offset: 2px;
 	}
+	.legend {
+		margin-top: 0.6rem;
+	}
+	.gradient {
+		height: 8px;
+		border-radius: 4px;
+		width: 100%;
+	}
+	.scale {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 3px;
+		font-size: 10px;
+		color: #64748b;
+	}
 	.caption {
-		margin-top: 0.55rem;
+		margin-top: 0.45rem;
 		font-size: 11px;
 		line-height: 1.5;
 		color: #94a3b8;
@@ -94,5 +134,17 @@
 		margin-top: 2px;
 		color: #64748b;
 		font-size: 10px;
+	}
+	@media (max-width: 640px) {
+		.switcher {
+			top: 7.5rem;
+			left: 0.5rem;
+			right: 0.5rem;
+			max-width: none;
+		}
+		.legend,
+		.caption {
+			display: none;
+		}
 	}
 </style>

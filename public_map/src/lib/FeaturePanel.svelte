@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { fly } from 'svelte/transition';
 	import { mapState } from './store.svelte';
 	import { LAYER_IDS } from './layers';
 	import StateRoundup from './StateRoundup.svelte';
@@ -13,7 +14,7 @@
 </script>
 
 {#if mapState.selectedFeature}
-	<aside class="panel" aria-live="polite">
+	<aside class="panel" aria-live="polite" transition:fly={{ x: 24, duration: 200 }}>
 		<header>
 			<span class="layer">{mapState.selectedFeature.label}</span>
 			<button type="button" class="close" onclick={close} aria-label="Close">×</button>
