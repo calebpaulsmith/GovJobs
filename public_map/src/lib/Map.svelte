@@ -38,9 +38,10 @@
 		const mapboxgl = (await import('mapbox-gl')).default;
 		await import('mapbox-gl/dist/mapbox-gl.css');
 
-		if (HAS_MAPBOX_TOKEN) {
-			mapboxgl.accessToken = mapboxToken();
-		}
+		// Mapbox GL JS requires accessToken to be set even when using non-Mapbox
+		// sources (OSM raster fallback). Set a placeholder so the map initializes;
+		// the placeholder never reaches Mapbox servers in the OSM path.
+		mapboxgl.accessToken = HAS_MAPBOX_TOKEN ? mapboxToken() : 'pk.placeholder';
 
 		const style = pickStyle();
 		map = new mapboxgl.Map({
