@@ -6,14 +6,24 @@
 	import LocalityDetail from './LocalityDetail.svelte';
 	import CountyDetail from './CountyDetail.svelte';
 	import JobCard from './JobCard.svelte';
+	import JobList from './JobList.svelte';
 	import { countValue, propString } from './format';
 
 	function close() {
 		mapState.selectedFeature = null;
+		mapState.listView = null;
 	}
 </script>
 
-{#if mapState.selectedFeature}
+{#if mapState.listView}
+	<aside class="panel" aria-live="polite" transition:fly={{ x: 24, duration: 200 }}>
+		<header>
+			<span class="layer">Job list</span>
+			<button type="button" class="close" onclick={close} aria-label="Close">×</button>
+		</header>
+		<JobList listView={mapState.listView} />
+	</aside>
+{:else if mapState.selectedFeature}
 	<aside class="panel" aria-live="polite" transition:fly={{ x: 24, duration: 200 }}>
 		<header>
 			<span class="layer">{mapState.selectedFeature.label}</span>

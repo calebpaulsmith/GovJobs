@@ -15,6 +15,9 @@
 	let expanded = $state(false);
 	let hydratedFromUrl = false;
 	let replaceTimer: ReturnType<typeof setTimeout> | null = null;
+	// Remember whether the user manually opened the panel so we can restore it
+	// after a feature panel closes — without overriding their intent.
+	let userManuallyExpanded = $state(false);
 
 	onMount(() => {
 		if (!browser) return;
@@ -27,6 +30,23 @@
 		hydratedFromUrl = true;
 		if (activeFilterCount(mapState.filters) > 0) expanded = true;
 	});
+
+	// Auto-collapse when a feature panel opens so the two don't fight for
+	// horizontal real estate on narrower viewports. The user can re-expand
+	// from the toggle at any time; doing so flips userManuallyExpanded so
+	// closing the feature panel later doesn't reopen the filters again.
+	$effect(() => {
+		const featureOpen = mapState.selectedFeature !== null || mapState.listView !== null;
+		if (featureOpen && expanded) {
+			expanded = false;
+			userManuallyExpanded = false;
+		}
+	});
+
+	function toggleExpanded() {
+		expanded = !expanded;
+		userManuallyExpanded = expanded;
+	}
 
 	$effect(() => {
 		const filters = mapState.filters;
@@ -61,7 +81,7 @@
 		type="button"
 		class="toggle"
 		aria-expanded={expanded}
-		onclick={() => (expanded = !expanded)}
+		onclick={toggleExpanded}
 	>
 		<span>Filters</span>
 		{#if activeFilterCount(mapState.filters) > 0}

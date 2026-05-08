@@ -3,7 +3,18 @@
 	import { mapState } from './store.svelte';
 
 	function selectMetric(key: typeof METRIC_ORDER[number]) {
+		// Click the already-active metric → toggle shading off.
+		// Click any other metric → switch to it AND re-enable shading.
+		if (key === mapState.metric && mapState.choroplethEnabled) {
+			mapState.choroplethEnabled = false;
+			return;
+		}
 		mapState.metric = key;
+		mapState.choroplethEnabled = true;
+	}
+
+	function toggleShading() {
+		mapState.choroplethEnabled = !mapState.choroplethEnabled;
 	}
 
 	function gradientCss(key: typeof METRIC_ORDER[number]): string {
@@ -21,25 +32,43 @@
 </script>
 
 <div class="switcher" role="radiogroup" aria-label="Choropleth metric">
-	<div class="title">Color states by</div>
+	<div class="title-row">
+		<div class="title">Color states by</div>
+		<button
+			type="button"
+			class="shade-toggle"
+			class:on={mapState.choroplethEnabled}
+			onclick={toggleShading}
+			aria-pressed={mapState.choroplethEnabled}
+			title={mapState.choroplethEnabled
+				? 'Shading is on — click to turn off'
+				: 'Shading is off — click to turn on'}
+		>
+			Shade {mapState.choroplethEnabled ? 'on' : 'off'}
+		</button>
+	</div>
 	<div class="buttons">
 		{#each METRIC_ORDER as key (key)}
 			{@const metric = METRICS[key]}
-			{@const active = mapState.metric === key}
+			{@const active = mapState.metric === key && mapState.choroplethEnabled}
 			<button
 				type="button"
 				role="radio"
 				aria-checked={active}
 				class="pill"
 				class:active
-				title={metric.description}
+				title={mapState.metric === key && !mapState.choroplethEnabled
+					? `${metric.description} (click to turn shading on)`
+					: mapState.metric === key
+						? `${metric.description} (click again to turn shading off)`
+						: metric.description}
 				onclick={() => selectMetric(key)}
 			>
 				{metric.short}
 			</button>
 		{/each}
 	</div>
-	<div class="legend">
+	<div class="legend" class:dim={!mapState.choroplethEnabled}>
 		<div
 			class="gradient"
 			style="background: linear-gradient(to right, {gradientCss(mapState.metric)})"
@@ -52,8 +81,12 @@
 		</div>
 	</div>
 	<div class="caption">
-		{METRICS[mapState.metric].description}
-		<span class="src">Source: {METRICS[mapState.metric].source}</span>
+		{#if mapState.choroplethEnabled}
+			{METRICS[mapState.metric].description}
+			<span class="src">Source: {METRICS[mapState.metric].source}</span>
+		{:else}
+			Choropleth shading is off. Markers and polygon outlines still respond to filters; click any pill above to re-enable shading.
+		{/if}
 	</div>
 </div>
 
@@ -71,12 +104,43 @@
 		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 		z-index: 5;
 	}
+	.title-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
 	.title {
 		font-size: 11px;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: #94a3b8;
-		margin-bottom: 0.5rem;
+	}
+	.shade-toggle {
+		appearance: none;
+		border: 1px solid #2c4870;
+		background: rgba(28, 42, 64, 0.4);
+		color: #94a3b8;
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 0.2rem 0.55rem;
+		border-radius: 999px;
+		cursor: pointer;
+		transition: all 120ms ease;
+	}
+	.shade-toggle.on {
+		background: #4979b3;
+		border-color: #7bd0f2;
+		color: #fff;
+	}
+	.shade-toggle:hover {
+		border-color: #7bd0f2;
+	}
+	.legend.dim {
+		opacity: 0.35;
+		filter: grayscale(0.7);
 	}
 	.buttons {
 		display: flex;

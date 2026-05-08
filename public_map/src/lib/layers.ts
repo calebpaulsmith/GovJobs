@@ -222,3 +222,17 @@ export function setStateFillMetric(map: MaplibreMap, metricKey: MetricKey): void
 		fillColorExpression(metric) as unknown as ExpressionSpecification
 	);
 }
+
+/**
+ * Toggle the choropleth shading on/off without removing the source. When off
+ * we keep state outlines visible (so polygon hit-testing for clicks still
+ * works) but drop the fill opacity to zero. The fade-in expression remains
+ * intact for when the user re-enables shading.
+ */
+export function setChoroplethVisible(map: MaplibreMap, visible: boolean): void {
+	if (!map.getLayer(LAYER_IDS.statesFill)) return;
+	const opacity: ExpressionSpecification | number = visible
+		? (FADE(0, 5, 0.85) as ExpressionSpecification)
+		: 0;
+	map.setPaintProperty(LAYER_IDS.statesFill, 'fill-opacity', opacity as unknown as ExpressionSpecification);
+}

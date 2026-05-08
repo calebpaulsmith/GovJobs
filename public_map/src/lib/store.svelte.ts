@@ -3,12 +3,29 @@ import { DEFAULT_FILTERS, type JobFilters } from './filters';
 
 class MapState {
 	metric = $state<MetricKey>(DEFAULT_METRIC);
+	// When false, the choropleth state-fill renders at zero opacity. The user
+	// toggles this by clicking the currently-active metric pill in the
+	// MetricSwitcher (clicking another metric re-enables it).
+	choroplethEnabled = $state<boolean>(true);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
 	selectedFeature = $state<SelectedFeature | null>(null);
+	// When set, the FeaturePanel renders a JobList for the matching scope
+	// (e.g. {scope: 'state', state: 'IL'}) instead of the current
+	// selectedFeature detail view. Set by clicking "View N postings" inside a
+	// roundup popup. Cleared when the user closes the panel or picks a marker.
+	listView = $state<ListView | null>(null);
 	filters = $state<JobFilters>({ ...DEFAULT_FILTERS });
 	filteredJobCount = $state(0);
 	totalJobCount = $state(0);
+}
+
+export interface ListView {
+	scope: 'state' | 'locality' | 'county' | 'cbsa';
+	// 2-letter state postal, OPM locality code, 5-digit county FIPS, etc.
+	code: string;
+	// Display label for the panel header.
+	label: string;
 }
 
 export interface Manifest {

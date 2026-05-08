@@ -19,6 +19,7 @@
 		SOURCE_IDS,
 		addAllLayers,
 		addOrUpdateSource,
+		setChoroplethVisible,
 		setStateFillMetric
 	} from './layers';
 	import { mapState, type Manifest } from './store.svelte';
@@ -101,10 +102,12 @@
 	});
 
 	$effect(() => {
-		// React to metric changes.
+		// React to metric changes and the on/off shading toggle.
 		const m = mapState.metric;
+		const shadingOn = mapState.choroplethEnabled;
 		if (mounted && map && map.isStyleLoaded()) {
 			setStateFillMetric(map, m);
+			setChoroplethVisible(map, shadingOn);
 		}
 	});
 
