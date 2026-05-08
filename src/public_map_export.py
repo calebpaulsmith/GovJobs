@@ -545,6 +545,91 @@ def data_sources_freshness(conn: sqlite3.Connection) -> dict[str, dict[str, Any]
     return out
 
 
+def posting_coverage_summary(
+    conn: sqlite3.Connection,
+    *,
+    job_count: int,
+    feature_count: int,
+) -> dict[str, Any]:
+    """Return counts that explain public-map posting coverage.
+
+    The public map is a static export of whatever USAJOBS rows are present in
+    the local SQLite database. These diagnostics make that boundary explicit so
+    a small seeded/sample corpus is not mistaken for the full live USAJOBS
+    inventory.
+    """
+    counts = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total_usajobs_jobs,
+            SUM(CASE WHEN j.source = 'usajobs_search' THEN 1 ELSE 0 END) AS total_current_search_jobs,
+            SUM(CASE WHEN j.source = 'usajobs_historic' THEN 1 ELSE 0 END) AS total_historic_jobs,
+            SUM(CASE
+                WHEN (j.close_date IS NULL OR j.close_date >= date('now'))
+                 AND COALESCE(j.url, '') <> ''
+                THEN 1 ELSE 0 END) AS open_usajobs_jobs,
+            SUM(CASE
+                WHEN j.source = 'usajobs_search'
+                 AND (j.close_date IS NULL OR j.close_date >= date('now'))
+                 AND COALESCE(j.url, '') <> ''
+                THEN 1 ELSE 0 END) AS open_current_search_jobs,
+            SUM(CASE
+                WHEN j.source = 'usajobs_historic'
+                 AND (j.close_date IS NULL OR j.close_date >= date('now'))
+                 AND COALESCE(j.url, '') <> ''
+                THEN 1 ELSE 0 END) AS open_historic_jobs
+        FROM jobs j
+        WHERE j.source LIKE 'usajobs%'
+        """
+    ).fetchone()
+    latest_current = conn.execute(
+        """
+        SELECT completed_at, actual_records, pages_completed, filters_json
+        FROM import_manifests
+        WHERE source = 'usajobs_search'
+          AND status = 'completed'
+        ORDER BY completed_at DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    summary = {
+        "scope": "local_static_snapshot",
+        "live_usajobs_total": None,
+        "job_count": int(job_count),
+        "feature_count": int(feature_count),
+        "total_usajobs_jobs_in_db": int(counts["total_usajobs_jobs"] or 0),
+        "total_current_search_jobs_in_db": int(counts["total_current_search_jobs"] or 0),
+        "total_historic_jobs_in_db": int(counts["total_historic_jobs"] or 0),
+        "open_usajobs_jobs_in_db": int(counts["open_usajobs_jobs"] or 0),
+        "open_current_search_jobs_in_db": int(counts["open_current_search_jobs"] or 0),
+        "open_historic_jobs_in_db": int(counts["open_historic_jobs"] or 0),
+        "last_current_import_completed_at": None,
+        "last_current_import_records": None,
+        "last_current_import_pages": None,
+        "last_current_import_filters": None,
+    }
+    if latest_current is not None:
+        summary.update(
+            {
+                "last_current_import_completed_at": latest_current["completed_at"],
+                "last_current_import_records": latest_current["actual_records"],
+                "last_current_import_pages": latest_current["pages_completed"],
+                "last_current_import_filters": _safe_json(latest_current["filters_json"]),
+            }
+        )
+    return summary
+
+
+def _safe_json(raw: str | None) -> Any:
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
 def manifest(
     conn: sqlite3.Connection,
     *,
@@ -568,6 +653,9 @@ def manifest(
         "geocoding": geocoding_summary(conn),
         "layers": dict(layer_counts or {}),
         "data_sources": data_sources_freshness(conn),
+        "posting_coverage": posting_coverage_summary(
+            conn, job_count=job_count, feature_count=feature_count
+        ),
     }
 
 

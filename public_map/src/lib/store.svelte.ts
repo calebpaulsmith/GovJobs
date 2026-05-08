@@ -41,6 +41,22 @@ export interface Manifest {
 	geocoding: { city_matches: number; state_matches: number; unmatched: number; source_matches?: number };
 	layers: Record<string, number>;
 	data_sources: Record<string, { last_success_at: string | null; row_count: number | null }>;
+	posting_coverage?: {
+		scope: string;
+		live_usajobs_total: number | null;
+		job_count: number;
+		feature_count: number;
+		total_usajobs_jobs_in_db: number;
+		total_current_search_jobs_in_db: number;
+		total_historic_jobs_in_db: number;
+		open_usajobs_jobs_in_db: number;
+		open_current_search_jobs_in_db: number;
+		open_historic_jobs_in_db: number;
+		last_current_import_completed_at: string | null;
+		last_current_import_records: number | null;
+		last_current_import_pages: number | null;
+		last_current_import_filters: Record<string, unknown> | string | null;
+	};
 }
 
 export interface SelectedFeature {

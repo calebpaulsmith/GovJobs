@@ -23,7 +23,7 @@
 		{#if mapState.manifest}
 			<div class="manifest">
 				<span>Reference year {mapState.manifest.reference_year}</span>
-				<span>{mapState.manifest.job_count.toLocaleString()} open postings</span>
+				<span>{mapState.manifest.job_count.toLocaleString()} local snapshot postings</span>
 				<span>Updated {new Date(mapState.manifest.generated_at).toLocaleDateString()}</span>
 			</div>
 		{/if}
