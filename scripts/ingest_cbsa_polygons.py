@@ -1,14 +1,18 @@
 """Ingest CBSA (metro / micro) polygons into the ``metro_areas`` table.
 
-Source: Census TIGER cartographic boundary GeoJSON. Convert the shapefile
-once and pass the resulting GeoJSON via ``--input``.
+Source: Census TIGER cartographic boundary file. By default the script
+downloads ``cb_2023_us_cbsa_500k.zip`` (~390 metro + ~540 micro CBSAs) from
+the Census public CDN, converts it to GeoJSON via ``pyshp``, and caches both
+files under ``data/external/census_cbsa/``. Pass ``--input`` to override
+with a local GeoJSON or shapefile ZIP. Per ADR-0027.
 
 Expected properties: ``CBSAFP`` or ``GEOID`` (5-digit CBSA code), ``NAME``,
 and either ``LSAD`` (e.g. 'M1' for metro, 'M2' for micro) or a ``CBSA_TYPE``
 field. Unknown types are stored verbatim.
 
 Run:
-    python scripts/ingest_cbsa_polygons.py --input data/external/cbsa.geojson
+    python scripts/ingest_cbsa_polygons.py
+    python scripts/ingest_cbsa_polygons.py --input data/external/my_cbsa.geojson
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ from config import load_config  # noqa: E402
 from src.database import utc_now  # noqa: E402
 from src.ingest_common import (  # noqa: E402
     emit_summary,
+    ensure_geojson_input,
     load_geojson_input,
     relative_to_repo,
     run_ingest,
@@ -34,6 +39,10 @@ SOURCE_KEY = "census_cbsa"
 DISPLAY_NAME = "Census CBSA polygons"
 CATEGORY = "geometry"
 DEFAULT_OUTPUT = REPO / "data" / "external" / "metro_polygons"
+DEFAULT_URL = (
+    "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_cbsa_500k.zip"
+)
+KEEP_PROPERTIES = {"CBSAFP", "GEOID", "NAME", "NAMELSAD", "LSAD"}
 
 LSAD_MAP = {
     "M1": "metro",
@@ -45,7 +54,15 @@ LSAD_MAP = {
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=None,
+        help=(
+            "Optional local GeoJSON or Census TIGER shapefile ZIP. "
+            "When omitted, the script downloads the default Census CB file."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--source", default="census:tiger")
     return parser.parse_args()
@@ -103,19 +120,22 @@ def import_cbsa_from_geojson(
 
 def main() -> int:
     args = _parse_args()
-    if not args.input.exists():
-        sys.stderr.write(f"ERROR: input not found at {args.input}\n")
-        return 1
     cfg = load_config()
+    resolved_input = ensure_geojson_input(
+        source_key=SOURCE_KEY,
+        default_url=DEFAULT_URL,
+        user_input=args.input,
+        properties_to_keep=KEEP_PROPERTIES,
+    )
     row_count = run_ingest(
         source_key=SOURCE_KEY,
         display_name=DISPLAY_NAME,
         category=CATEGORY,
         database_path=cfg.database_path,
-        notes=f"input={args.input.name}",
+        notes=f"input={resolved_input.name}",
         work=lambda conn: import_cbsa_from_geojson(
             conn,
-            input_path=args.input,
+            input_path=resolved_input,
             output_dir=args.output_dir,
             source=args.source,
         ),

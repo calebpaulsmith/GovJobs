@@ -10,6 +10,9 @@ openpyxl>=3.1,<4.0
 
 # Geo helpers for the map. Folium gives us pan/zoom viewport bounds in Streamlit.
 # Plotly remains for state choropleths and charts. No geopandas in V1.
+# pyshp reads Census TIGER shapefiles to GeoJSON without a GDAL system dependency
+# (used by scripts/ingest_*_polygons.py per ADR-0027 self-bootstrapping ingests).
+pyshp>=2.3,<3.0
 
 # Dev / test
 pytest>=8.0,<10.0

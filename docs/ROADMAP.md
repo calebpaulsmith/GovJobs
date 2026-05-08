@@ -273,6 +273,7 @@ Files: `src/public_map_export.py`, `scripts/export_public_map.py`, `tests/test_p
 
 User review on 2026-05-07 found eleven concrete defects: agency filter is a free-text box, no saved searches, no address/ZIP zoom, no persistent heat layer, polygon layers report zero features so the choropleth has nothing to color, OSM fallback fails without a Mapbox token, panels overlap, missing federal-properties layer, missing county-level COL, missing exact pay tables on every job, and the local corpus is too small to evaluate. Detailed sub-phases, integration map (upstream → exporter → UI), and exit criteria live in the "Phase D.5" section of `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. New ADRs cover the UI invariants (ADR-0024) and the federal-properties layer (ADR-0025). Hard rules added to `CLAUDE.md` under "Public Map V1.5 invariants."
 
+- [ ] D.5.-1 — Self-bootstrapping ingest pipeline: every reference-data ingest defaults to a known URL or checked-in seed CSV; `refresh_public_map_data.py` enables every step from a clean checkout with no env vars set; `manifest.json.layers` reports non-zero polygon counts after one orchestrator + export run.
 - [ ] D.5.0 — UI layout grid contract (`public_map/src/lib/layout.ts`); zero panel overlap at three breakpoints.
 - [ ] D.5.1 — Persistent posting heat layer at zoom 3–9, filter-aware, toggleable.
 - [ ] D.5.2 — Agency multi-select with code-backed typeahead and aliases (URL state via repeated `agency=` keys).

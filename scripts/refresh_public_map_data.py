@@ -89,36 +89,42 @@ def build_steps() -> list[Step]:
 
     steps: list[Step] = []
 
+    # Per ADR-0027, polygon ingests are self-bootstrapping. Env vars become
+    # overrides — no env var means "use the default Census TIGER URL," not
+    # "skip this step."
     state_geo = os.environ.get("PUBLIC_MAP_STATE_GEOJSON")
+    state_args = [_python(), "scripts/ingest_state_polygons.py"]
+    if state_geo:
+        state_args.extend(["--input", state_geo])
     steps.append(
         Step(
             key="ingest_state_polygons",
             label="State polygons",
-            args=[_python(), "scripts/ingest_state_polygons.py", "--input", state_geo or ""],
-            enabled=bool(state_geo),
-            skip_reason="PUBLIC_MAP_STATE_GEOJSON not set" if not state_geo else None,
+            args=state_args,
         )
     )
 
     county_geo = os.environ.get("PUBLIC_MAP_COUNTY_GEOJSON")
+    county_args = [_python(), "scripts/ingest_county_polygons.py"]
+    if county_geo:
+        county_args.extend(["--input", county_geo])
     steps.append(
         Step(
             key="ingest_county_polygons",
             label="County polygons",
-            args=[_python(), "scripts/ingest_county_polygons.py", "--input", county_geo or ""],
-            enabled=bool(county_geo),
-            skip_reason="PUBLIC_MAP_COUNTY_GEOJSON not set" if not county_geo else None,
+            args=county_args,
         )
     )
 
     cbsa_geo = os.environ.get("PUBLIC_MAP_CBSA_GEOJSON")
+    cbsa_args = [_python(), "scripts/ingest_cbsa_polygons.py"]
+    if cbsa_geo:
+        cbsa_args.extend(["--input", cbsa_geo])
     steps.append(
         Step(
             key="ingest_cbsa_polygons",
             label="CBSA polygons",
-            args=[_python(), "scripts/ingest_cbsa_polygons.py", "--input", cbsa_geo or ""],
-            enabled=bool(cbsa_geo),
-            skip_reason="PUBLIC_MAP_CBSA_GEOJSON not set" if not cbsa_geo else None,
+            args=cbsa_args,
         )
     )
 

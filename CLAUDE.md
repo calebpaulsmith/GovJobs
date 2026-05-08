@@ -87,6 +87,7 @@ These rules apply to every change inside `public_map/` and to the data flowing i
     - bottom-right: native Mapbox controls
     On screens < 720 px, the filter and feature panels collapse into a single bottom drawer. Any new component must declare its grid cell in `public_map/src/lib/layout.ts` (a new module added in D.5.0); ad-hoc absolute positioning is not allowed.
 13. **The map needs a real corpus to evaluate.** Until the dashboard reliably holds ≥ 5,000 open USAJOBS postings, every public-map review session is meaningless. A corpus-growth task is part of D.5 (D.5.7): expanded import scopes from the dashboard's Data Admin page, OPM workforce file ingestion, and a "recently closed" overlay built from HistoricJoa for the trailing 90 days. Closed historical postings are rendered as faint gray dots distinct from open markers and labeled "closed within 90 days, not applicable."
+14. **Ingest scripts are self-bootstrapping (per ADR-0027).** Every reference-data ingest must run successfully from a clean checkout without the operator setting any environment variable. Env vars (`PUBLIC_MAP_*_GEOJSON`, `PUBLIC_MAP_BEA_RPP_CSV`, etc.) are **override** paths, not **enablement gates**. The orchestrator (`scripts/refresh_public_map_data.py`) enables every supported source by default and either downloads from a known canonical URL (Census TIGER, BEA RPP) or reads a small checked-in seed CSV (`data/external/opm_locality_definitions/<year>.csv`, etc.). A "skipped: env var not set" line is a bug, not a feature.
 
 ## Build order (strict)
 

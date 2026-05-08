@@ -339,3 +339,21 @@ Status: Proposed
 **Decision.** *(Pending — invoked only if D.5.8 cannot stabilize the no-token path.)* Replace `mapbox-gl` with `maplibre-gl` for the public map. MapLibre is a community-maintained fork with a near-identical JavaScript API, no token requirement, and full support for both Mapbox-style sources (with a Mapbox token) and arbitrary tile sources (without one). The dashboard does not depend on `mapbox-gl`, so the swap is contained to `public_map/`.
 
 **Consequences.** Mapbox vector tile rendering would still require a token; MapLibre treats the token as a per-source configuration rather than a global. Some Mapbox-hosted styles (`mapbox://styles/...`) would need to be replaced with self-hosted style JSON or transpiled. We'd lose Mapbox-only features like 3D Standard buildings, but the public map already declines those (maxZoom 9). Decision will be re-evaluated at the end of D.5.8.
+
+---
+
+## ADR-0027 — Self-bootstrapping ingests
+Date: 2026-05-07
+Status: Accepted
+
+**Context.** The orchestrator `scripts/refresh_public_map_data.py` was designed so each ingest step is gated by an environment variable that points at a pre-downloaded local file (e.g., `PUBLIC_MAP_STATE_GEOJSON`). That made sense during early development when datasets were being audited by hand, but it means a clean checkout of the repo cannot produce a complete public-map bundle without the operator first downloading and exporting six environment variables. The cost: a fresh map with empty polygon layers and a "color states by" switcher with nothing to color. The user verified this on 2026-05-07.
+
+**Decision.** Every public-map ingest script must run successfully from a clean checkout with no environment variable set. Each script defaults to one of three sources, in priority order:
+
+1. **A canonical public URL.** Census TIGER cartographic boundary ZIPs, BEA Regional Price Parities CSV, OPM published GS pay XML/CSV. The script downloads it on first run, caches it under `data/external/<source_key>/<vintage>/`, and reuses the cached file thereafter.
+2. **A small curated CSV checked into the repository.** For sources that publish only HTML pages with no stable machine-readable artifact (currently OPM locality area definitions and OPM annual locality pay percentages), the operator commits a curated CSV under `data/external/<source_key>/<year>.csv`. Files are public-domain and small (a few KB each).
+3. **An operator-supplied path via `--input` or an environment variable.** This becomes an *override* — it never gates whether a step runs.
+
+The orchestrator's `build_steps()` enables every supported source by default. `--skip <key>` remains the only way to disable a step. The "ENABLED / SKIP" status now reflects the operator's choice, not whether they remembered to set six env vars.
+
+**Consequences.** A fresh checkout produces a complete bundle in one command. The repository grows by a few hundred KB of seed CSVs (annual OPM definitions and locality pay) — small enough to check in, large enough to keep the ingest scripts honest. `requirements.txt` gains `pyshp` for shapefile-to-GeoJSON conversion without a GDAL system dependency. ADR-0018's per-source status tracking is unchanged: every run still writes to `data_source_status` so the admin page reflects what actually happened, regardless of which source path was used. Operators who prefer fully manual control still can: `--input` and the env vars override the default behavior.

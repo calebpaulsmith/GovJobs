@@ -1,14 +1,18 @@
 """Ingest US state polygons into the ``state_polygons`` table.
 
-Source: Census TIGER cartographic boundary GeoJSON. The Census Bureau
-publishes shapefiles natively; convert once with mapshaper, QGIS, or
-``ogr2ogr`` and pass the resulting GeoJSON via ``--input``.
+Source: Census TIGER cartographic boundary file. By default the script
+downloads the 1:5,000,000 ``cb_2023_us_state_5m.zip`` shapefile from the
+Census public CDN, converts it to GeoJSON in pure Python via ``pyshp``, and
+caches both files under ``data/external/census_states/``. Pass ``--input`` to
+override with a local GeoJSON or shapefile ZIP. Per ADR-0027, the script runs
+end-to-end from a clean checkout with no environment variables.
 
 Expected feature properties (case-insensitive): ``STUSPS`` (2-letter state
-code) and ``NAME``. Other property names are accepted as fallbacks.
+code) and ``NAME``.
 
 Run:
-    python scripts/ingest_state_polygons.py --input data/external/states.geojson
+    python scripts/ingest_state_polygons.py
+    python scripts/ingest_state_polygons.py --input data/external/my_states.geojson
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ from config import load_config  # noqa: E402
 from src.database import utc_now  # noqa: E402
 from src.ingest_common import (  # noqa: E402
     emit_summary,
+    ensure_geojson_input,
     load_geojson_input,
     relative_to_repo,
     run_ingest,
@@ -35,6 +40,10 @@ SOURCE_KEY = "census_states"
 DISPLAY_NAME = "Census state polygons"
 CATEGORY = "geometry"
 DEFAULT_OUTPUT = REPO / "data" / "external" / "state_polygons"
+DEFAULT_URL = (
+    "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_state_5m.zip"
+)
+KEEP_PROPERTIES = {"STUSPS", "NAME", "GEOID", "STATEFP"}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -42,8 +51,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        required=True,
-        help="GeoJSON FeatureCollection of state polygons.",
+        default=None,
+        help=(
+            "Optional local GeoJSON or Census TIGER shapefile ZIP. "
+            "When omitted, the script downloads the default Census CB file."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -119,19 +131,22 @@ def import_states_from_geojson(
 
 def main() -> int:
     args = _parse_args()
-    if not args.input.exists():
-        sys.stderr.write(f"ERROR: input not found at {args.input}\n")
-        return 1
     cfg = load_config()
+    resolved_input = ensure_geojson_input(
+        source_key=SOURCE_KEY,
+        default_url=DEFAULT_URL,
+        user_input=args.input,
+        properties_to_keep=KEEP_PROPERTIES,
+    )
     row_count = run_ingest(
         source_key=SOURCE_KEY,
         display_name=DISPLAY_NAME,
         category=CATEGORY,
         database_path=cfg.database_path,
-        notes=f"input={args.input.name}",
+        notes=f"input={resolved_input.name}",
         work=lambda conn: import_states_from_geojson(
             conn,
-            input_path=args.input,
+            input_path=resolved_input,
             output_dir=args.output_dir,
             source=args.source,
         ),
