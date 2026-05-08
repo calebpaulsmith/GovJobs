@@ -19,6 +19,7 @@ from src.public_map_export import (
     jobs_geojson,
     manifest,
     opm_state_aggregates,
+    posting_coverage_summary,
     series_options,
 )
 
@@ -329,6 +330,46 @@ def test_manifest_records_geocoding_summary_and_opm_label(conn):
     assert "reference_year" in man
     assert "layers" in man
     assert "data_sources" in man
+    assert man["posting_coverage"]["scope"] == "local_static_snapshot"
+    assert man["posting_coverage"]["job_count"] == 2
+
+
+def test_posting_coverage_summary_explains_local_snapshot_scope(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job(source="usajobs_search", source_endpoint="/api/Search"))
+    upsert_job(
+        conn,
+        _job(
+            source="usajobs_historic",
+            position_id="HIST-OPEN",
+            announcement_number="HIST-OPEN",
+            usajobs_control_number="100000088",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO import_manifests (
+            source, endpoint, download_mode, filters_json, actual_records,
+            pages_completed, status, started_at, completed_at
+        ) VALUES (
+            'usajobs_search', '/api/Search', 'FULL_DOWNLOAD',
+            '{"ResultsPerPage": 500}', 1, 1, 'completed',
+            '2026-05-08T12:00:00+00:00', '2026-05-08T12:01:00+00:00'
+        )
+        """
+    )
+    conn.commit()
+
+    summary = posting_coverage_summary(conn, job_count=2, feature_count=2)
+
+    assert summary["scope"] == "local_static_snapshot"
+    assert summary["live_usajobs_total"] is None
+    assert summary["open_usajobs_jobs_in_db"] == 2
+    assert summary["open_current_search_jobs_in_db"] == 1
+    assert summary["open_historic_jobs_in_db"] == 1
+    assert summary["last_current_import_records"] == 1
+    assert summary["last_current_import_pages"] == 1
+    assert summary["last_current_import_filters"] == {"ResultsPerPage": 500}
 
 
 def test_record_geocoding_miss_dedupes(conn):
