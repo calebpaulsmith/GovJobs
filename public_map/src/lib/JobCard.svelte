@@ -4,6 +4,7 @@
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { jobProfile } from './jobProfile.svelte';
 	import { mapState } from './store.svelte';
+	import PostingIntelligence from './PostingIntelligence.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
 	let { properties }: { properties: Record<string, unknown> } = $props();
@@ -252,6 +253,8 @@
 			</p>
 		{/if}
 	{/if}
+
+	<PostingIntelligence jobProperties={properties} />
 </section>
 
 <style>
