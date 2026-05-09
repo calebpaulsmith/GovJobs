@@ -130,6 +130,23 @@ Targets for calling D.5.7 complete:
 - `manifest.json.layers["closed_jobs.geojson"] >= 5,000` for trailing-90-day closed context.
 - Current Search credentials are present for the current-postings presets; HistoricJoa trailing-90-day context can run without Search credentials.
 
+## D.5.2 agency filter verification
+
+D.5.2 starts the next public-map step after the heat-layer and corpus-growth
+partials. Before marking it complete, verify the exported agency catalog and the
+browser filter use the same canonical codes:
+
+1. Exported metadata contains each selectable agency with `code`, `name`, and
+   optional aliases, with no duplicate codes.
+2. Loading `/map/?agency=HSCB&agency=AG11` restores both selected agencies in the
+   typeahead and preserves the repeated query keys after UI edits.
+3. Selecting agencies updates the marker source, persistent heat source, feature
+   panels, and `JobList.svelte` rows from the same normalized filter state.
+4. Typing a known alias selects the canonical agency code; typing an unsupported
+   value shows validation copy and leaves the active results unchanged.
+5. Clearing all agencies returns to the unfiltered corpus without leaving stale
+   URL parameters.
+
 ## Nightly cron (Windows Task Scheduler)
 
 - **Action:** Start a program
