@@ -3,6 +3,7 @@
 	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
 	import { jobProfile } from './jobProfile.svelte';
 	import { mapState } from './store.svelte';
+	import QuickAdd from './QuickAdd.svelte';
 
 	let { properties }: { properties: Record<string, unknown> } = $props();
 	let detail = $state<JobDetails | null>(null);
@@ -107,11 +108,39 @@
 		</p>
 	{/if}
 	<dl class="grid">
-		<dt>Agency</dt><dd>{String(detail?.agency ?? properties.agency_code ?? '—')}</dd>
+		<dt>Agency</dt>
+		<dd>
+			<QuickAdd
+				type="agency"
+				value={String(detail?.agency_code ?? properties.agency_code ?? '')}
+				label={String(detail?.agency ?? properties.agency_code ?? '—')}
+			/>
+		</dd>
 		<dt>Department</dt><dd>{String(detail?.department ?? '—')}</dd>
-		<dt>Series/grade</dt><dd>{gradeRange(detail?.pay_plan ?? properties.pay_plan, detail?.grade_low ?? properties.grade_low, detail?.grade_high ?? properties.grade_high)} · {String(detail?.series ?? properties.series ?? '—')}</dd>
+		<dt>Pay plan</dt>
+		<dd>
+			<QuickAdd type="payPlan" value={String(detail?.pay_plan ?? properties.pay_plan ?? '')} />
+		</dd>
+		<dt>Series</dt>
+		<dd>
+			<QuickAdd type="series" value={String(detail?.series ?? properties.series ?? '')} />
+		</dd>
+		<dt>Grade</dt>
+		<dd>
+			<QuickAdd
+				type="grade"
+				value={String(detail?.grade_low ?? properties.grade_low ?? '')}
+				label={gradeRange(detail?.pay_plan ?? properties.pay_plan, detail?.grade_low ?? properties.grade_low, detail?.grade_high ?? properties.grade_high)}
+			/>
+		</dd>
 		<dt>Salary</dt><dd>{salaryRange(detail?.salary_min ?? properties.salary_min, detail?.salary_max ?? properties.salary_max, detail?.salary_type)}</dd>
 		<dt>Remote</dt><dd>{String(detail?.remote_status ?? properties.remote_status ?? '—')}</dd>
+		{#if detail?.hiring_paths}
+			<dt>Hiring path</dt>
+			<dd>
+				<QuickAdd type="hiringPath" value={String(detail.hiring_paths)} />
+			</dd>
+		{/if}
 		<dt>Close date</dt><dd>{String(detail?.close_date ?? properties.close_date ?? '—')}</dd>
 		<dt>Clicked location</dt><dd>{propString(properties, 'city')} {propString(properties, 'state', '')}</dd>
 		<dt>Locality code</dt><dd>{propString(properties, 'locality_code')}</dd>
@@ -146,29 +175,29 @@
 </section>
 
 <style>
-	.eyebrow { margin: 0 0 0.25rem; color: #7bd0f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-	h2 { margin: 0 0 0.5rem; font-size: 20px; line-height: 1.15; }
+	.eyebrow { margin: 0 0 0.25rem; color: var(--c-accent, #7bd0f2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+	h2 { margin: 0 0 0.5rem; font-size: 20px; line-height: 1.15; color: var(--c-text, #e5edf5); }
 	.urgency-badge { display: inline-block; margin: 0 0 0.5rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-	.urgency-critical { background: rgba(220, 80, 80, 0.18); border: 1px solid #dc5050; color: #f7a0a0; }
-	.urgency-soon { background: rgba(220, 160, 50, 0.18); border: 1px solid #e0a030; color: #f0c878; }
+	.urgency-critical { background: rgba(220, 80, 80, 0.18); border: 1px solid #dc5050; color: var(--c-danger, #f7a0a0); }
+	.urgency-soon { background: rgba(220, 160, 50, 0.18); border: 1px solid #e0a030; color: var(--c-warn, #f0c878); }
 	.profile-actions { display: flex; gap: 0.4rem; margin: 0 0 0.6rem; flex-wrap: wrap; }
-	.profile-btn { appearance: none; border: 1px solid #2c4870; background: rgba(28,42,64,0.4); color: #cfd9e6; padding: 0.22rem 0.65rem; border-radius: 999px; font-size: 12px; cursor: pointer; transition: all 120ms ease; }
-	.profile-btn:hover { border-color: #7bd0f2; color: #7bd0f2; }
-	.profile-btn.active { background: #4979b3; border-color: #7bd0f2; color: #fff; }
-	.profile-btn.danger { border-color: #6b2020; color: #f7a0a0; }
-	.profile-btn.danger:hover { border-color: #dc5050; }
-	.apply-btn { display: block; text-align: center; color: #06111f; background: #7bd0f2; border-radius: 6px; padding: 0.55rem 0.7rem; font-weight: 700; text-decoration: none; margin-bottom: 0.75rem; transition: background 120ms ease; }
-	.apply-btn:hover { background: #a8e0f5; }
+	.profile-btn { appearance: none; border: 1px solid var(--c-border-input, #2c4870); background: var(--c-row-bg, rgba(28,42,64,0.4)); color: var(--c-text-2, #cfd9e6); padding: 0.22rem 0.65rem; border-radius: 999px; font-size: 12px; cursor: pointer; transition: all 120ms ease; }
+	.profile-btn:hover { border-color: var(--c-accent, #7bd0f2); color: var(--c-accent, #7bd0f2); }
+	.profile-btn.active { background: var(--c-accent-dim, #4979b3); border-color: var(--c-accent, #7bd0f2); color: #fff; }
+	.profile-btn.danger { border-color: var(--c-danger-border, #6b2020); color: var(--c-danger, #f7a0a0); }
+	.profile-btn.danger:hover { border-color: var(--c-danger, #dc5050); }
+	.apply-btn { display: block; text-align: center; color: var(--c-apply-text, #06111f); background: var(--c-apply-bg, #7bd0f2); border-radius: 6px; padding: 0.55rem 0.7rem; font-weight: 700; text-decoration: none; margin-bottom: 0.75rem; transition: background 120ms ease; }
+	.apply-btn:hover { background: var(--c-apply-hover, #a8e0f5); }
 	.grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 0.8rem; margin: 0; }
-	dt { color: #94a3b8; }
-	dd { margin: 0; font-weight: 600; }
-	h3 { margin: 0.9rem 0 0.4rem; font-size: 13px; color: #e5edf5; }
-	ul { margin: 0; padding-left: 1.1rem; color: #cfd9e6; }
+	dt { color: var(--c-muted, #94a3b8); }
+	dd { margin: 0; font-weight: 600; color: var(--c-text-2, #cfd9e6); }
+	h3 { margin: 0.9rem 0 0.4rem; font-size: 13px; color: var(--c-text, #e5edf5); }
+	ul { margin: 0; padding-left: 1.1rem; color: var(--c-text-2, #cfd9e6); }
 	table { width: 100%; border-collapse: collapse; font-size: 12px; }
-	th, td { padding: 0.35rem 0.2rem; border-bottom: 1px solid #2a3a52; }
-	th { text-align: left; color: #94a3b8; font-weight: 500; }
-	td { text-align: right; font-weight: 700; }
-	.note, .error { margin: 0.8rem 0 0; font-size: 12px; line-height: 1.45; color: #94a3b8; }
-	.closed-note { margin: 0 0 0.75rem; padding: 0.55rem 0.65rem; border: 1px solid #3a4556; border-radius: 6px; background: rgba(135, 146, 163, 0.14); color: #cfd9e6; line-height: 1.45; }
-	.error { color: #f1bcbc; }
+	th, td { padding: 0.35rem 0.2rem; border-bottom: 1px solid var(--c-border, #2a3a52); }
+	th { text-align: left; color: var(--c-muted, #94a3b8); font-weight: 500; }
+	td { text-align: right; font-weight: 700; color: var(--c-text, #e5edf5); }
+	.note, .error { margin: 0.8rem 0 0; font-size: 12px; line-height: 1.45; color: var(--c-muted, #94a3b8); }
+	.closed-note { margin: 0 0 0.75rem; padding: 0.55rem 0.65rem; border: 1px solid var(--c-border, #3a4556); border-radius: 6px; background: var(--c-row-bg, rgba(135,146,163,0.14)); color: var(--c-text-2, #cfd9e6); line-height: 1.45; }
+	.error { color: var(--c-danger, #f1bcbc); }
 </style>

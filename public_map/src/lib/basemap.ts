@@ -46,7 +46,51 @@ export const OSM_FALLBACK_STYLE: object = {
 	]
 };
 
+export const MAPBOX_LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
+
+export const OSM_LIGHT_FALLBACK_STYLE: object = {
+	version: 8,
+	name: 'osm-light-fallback',
+	sources: {
+		osm: {
+			type: 'raster',
+			tiles: [
+				'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+				'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+				'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+			],
+			tileSize: 256,
+			attribution: '© OpenStreetMap contributors',
+			maxzoom: 19
+		}
+	},
+	layers: [
+		{
+			id: 'background',
+			type: 'background',
+			paint: { 'background-color': '#e8ecf1' }
+		},
+		{
+			id: 'osm',
+			type: 'raster',
+			source: 'osm',
+			paint: {
+				'raster-opacity': 0.75,
+				'raster-saturation': -0.2,
+				'raster-contrast': 0.05
+			}
+		}
+	]
+};
+
 export function pickStyle(): string | object {
+	return HAS_MAPBOX_TOKEN ? MAPBOX_DARK_STYLE : OSM_FALLBACK_STYLE;
+}
+
+export function pickStyleForTheme(theme: 'light' | 'dark'): string | object {
+	if (theme === 'light') {
+		return HAS_MAPBOX_TOKEN ? MAPBOX_LIGHT_STYLE : OSM_LIGHT_FALLBACK_STYLE;
+	}
 	return HAS_MAPBOX_TOKEN ? MAPBOX_DARK_STYLE : OSM_FALLBACK_STYLE;
 }
 

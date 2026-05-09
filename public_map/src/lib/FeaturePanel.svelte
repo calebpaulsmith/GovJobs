@@ -8,6 +8,7 @@
 	import JobCard from './JobCard.svelte';
 	import JobList from './JobList.svelte';
 	import PointJobList from './PointJobList.svelte';
+	import ScopedAreaActions from './ScopedAreaActions.svelte';
 	import { countValue, propString } from './format';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 
@@ -91,8 +92,18 @@
 			{/if}
 			<JobCard properties={mapState.selectedFeature.properties} />
 		{:else if mapState.selectedFeature.source === LAYER_IDS.statesFill}
+			<ScopedAreaActions
+				type="state"
+				code={String(mapState.selectedFeature.properties.state ?? '')}
+				label={String(mapState.selectedFeature.properties.name ?? mapState.selectedFeature.properties.state ?? '')}
+			/>
 			<StateRoundup properties={mapState.selectedFeature.properties} />
 		{:else if mapState.selectedFeature.source === LAYER_IDS.localitiesFill}
+			<ScopedAreaActions
+				type="locality"
+				code={String(mapState.selectedFeature.properties.code ?? '')}
+				label={String(mapState.selectedFeature.properties.name ?? mapState.selectedFeature.properties.code ?? '')}
+			/>
 			<LocalityDetail properties={mapState.selectedFeature.properties} />
 		{:else if mapState.selectedFeature.source === LAYER_IDS.countiesOutline}
 			<CountyDetail properties={mapState.selectedFeature.properties} />
@@ -113,19 +124,19 @@
 {/if}
 
 <style>
-	.panel { position: absolute; right: 1rem; top: 5.25rem; width: min(24rem, calc(100vw - 2rem)); max-height: calc(100vh - 7.5rem); overflow: auto; background: rgba(14, 23, 38, 0.96); border: 1px solid #2a3a52; border-radius: 10px; padding: 0.8rem 0.95rem; font-size: 12px; color: #cfd9e6; z-index: 5; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); backdrop-filter: blur(8px); }
+	.panel { position: absolute; right: 1rem; top: 5.25rem; width: min(24rem, calc(100vw - 2rem)); max-height: calc(100vh - 7.5rem); overflow: auto; background: var(--c-panel, rgba(14, 23, 38, 0.96)); border: 1px solid var(--c-border, #2a3a52); border-radius: 10px; padding: 0.8rem 0.95rem; font-size: 12px; color: var(--c-text-2, #cfd9e6); z-index: 5; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); backdrop-filter: blur(8px); }
 	header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
-	.layer, .eyebrow { color: #7bd0f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-	.close { appearance: none; background: transparent; border: none; color: #94a3b8; font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
-	.close:hover { color: #e5edf5; }
-	.stack-nav { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.35rem; align-items: center; margin-bottom: 0.65rem; padding: 0.4rem; border: 1px solid #22344c; border-radius: 8px; background: rgba(8, 13, 22, 0.55); }
-	.stack-nav button { appearance: none; border: 1px solid #2c4870; border-radius: 999px; background: rgba(28, 42, 64, 0.75); color: #d8e6f3; cursor: pointer; font: inherit; font-size: 11px; padding: 0.25rem 0.55rem; }
-	.stack-nav button:hover { border-color: #7bd0f2; color: #7bd0f2; }
-	.stack-nav button:focus-visible { outline: 2px solid #7bd0f2; outline-offset: 2px; }
-	.stack-nav span { color: #94a3b8; font-size: 11px; text-align: center; }
-	h2 { margin: 0 0 0.75rem; font-size: 20px; line-height: 1.15; }
+	.layer, .eyebrow { color: var(--c-accent, #7bd0f2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+	.close { appearance: none; background: transparent; border: none; color: var(--c-muted, #94a3b8); font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
+	.close:hover { color: var(--c-text, #e5edf5); }
+	.stack-nav { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.35rem; align-items: center; margin-bottom: 0.65rem; padding: 0.4rem; border: 1px solid var(--c-border-subtle, #22344c); border-radius: 8px; background: var(--c-row-bg, rgba(8, 13, 22, 0.55)); }
+	.stack-nav button { appearance: none; border: 1px solid var(--c-border-input, #2c4870); border-radius: 999px; background: var(--c-row-hover, rgba(28, 42, 64, 0.75)); color: var(--c-text-2, #d8e6f3); cursor: pointer; font: inherit; font-size: 11px; padding: 0.25rem 0.55rem; }
+	.stack-nav button:hover { border-color: var(--c-accent, #7bd0f2); color: var(--c-accent, #7bd0f2); }
+	.stack-nav button:focus-visible { outline: 2px solid var(--c-accent, #7bd0f2); outline-offset: 2px; }
+	.stack-nav span { color: var(--c-muted, #94a3b8); font-size: 11px; text-align: center; }
+	h2 { margin: 0 0 0.75rem; font-size: 20px; line-height: 1.15; color: var(--c-text, #e5edf5); }
 	.grid { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.8rem; margin: 0; }
-	dt { color: #94a3b8; }
-	dd { margin: 0; font-weight: 600; text-align: right; }
+	dt { color: var(--c-muted, #94a3b8); }
+	dd { margin: 0; font-weight: 600; text-align: right; color: var(--c-text-2, #cfd9e6); }
 	@media (max-width: 640px) { .panel { top: auto; bottom: 6.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 48vh; } }
 </style>

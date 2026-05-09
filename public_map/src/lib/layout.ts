@@ -5,7 +5,9 @@ export type LayoutSlot =
 	| 'feature'
 	| 'metric'
 	| 'freshness'
-	| 'map-controls';
+	| 'map-controls'
+	| 'scoped-window'
+	| 'theme-toggle';
 
 export const LAYOUT_SLOTS: Record<LayoutSlot, LayoutSlot> = {
 	masthead: 'masthead',
@@ -14,7 +16,9 @@ export const LAYOUT_SLOTS: Record<LayoutSlot, LayoutSlot> = {
 	feature: 'feature',
 	metric: 'metric',
 	freshness: 'freshness',
-	'map-controls': 'map-controls'
+	'map-controls': 'map-controls',
+	'scoped-window': 'scoped-window',
+	'theme-toggle': 'theme-toggle'
 };
 
 export const slotAttr = (slot: LayoutSlot): string => slot;

@@ -3,6 +3,7 @@
 	import { METRICS, METRIC_ORDER } from './metrics';
 	import { countValue, metricValue, propString } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
+	import QuickAdd from './QuickAdd.svelte';
 
 	let { properties }: { properties: Record<string, unknown> } = $props();
 
@@ -45,7 +46,12 @@
 
 <section>
 	<p class="eyebrow">State roundup</p>
-	<h2>{stateName} <span>{stateCode}</span></h2>
+	<h2>
+		{stateName}
+		<span>
+			<QuickAdd type="geography" value="state:{stateCode}" label={stateCode} />
+		</span>
+	</h2>
 	<div class="hero">
 		<strong>{metricValue(properties, mapState.metric)}</strong>
 		<span>{METRICS[mapState.metric].label}</span>

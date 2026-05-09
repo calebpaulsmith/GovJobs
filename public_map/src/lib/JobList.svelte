@@ -8,6 +8,7 @@
 	import { filterJobs } from './filters';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
+	import QuickAdd from './QuickAdd.svelte';
 
 	let { listView }: { listView: ListView } = $props();
 	let allJobs = $state<{ type: 'FeatureCollection'; features: Feature[] } | null>(null);
@@ -97,11 +98,17 @@
 							<div class="row-title">{propString(props, 'title')}</div>
 							{#if urg.level}<span class="urgency-badge urgency-{urg.level}">{urg.text}</span>{/if}
 						</div>
-						<div class="row-agency">{String(detail?.agency ?? props.agency_code ?? 'Agency unknown')}</div>
+						<div class="row-agency">
+							<QuickAdd
+								type="agency"
+								value={String(detail?.agency_code ?? props.agency_code ?? '')}
+								label={String(detail?.agency ?? props.agency_code ?? 'Agency unknown')}
+							/>
+						</div>
 						<div class="row-dept">{String(detail?.department ?? 'Department unknown')}</div>
 						<div class="row-meta">
 							<span>{gradeRange(detail?.pay_plan ?? props.pay_plan, detail?.grade_low ?? props.grade_low, detail?.grade_high ?? props.grade_high)}</span>
-							<span>Series {String(detail?.series ?? props.series ?? '-')}</span>
+							<span>Series <QuickAdd type="series" value={String(detail?.series ?? props.series ?? '')} /></span>
 						</div>
 						<div class="row-meta">
 							<span>{salaryRange(detail?.salary_min ?? props.salary_min, detail?.salary_max ?? props.salary_max, detail?.salary_type)}</span>
@@ -185,8 +192,8 @@
 		width: 100%;
 		text-align: left;
 		appearance: none;
-		background: rgba(20, 32, 50, 0.55);
-		border: 1px solid #22344c;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		border: 1px solid var(--c-border-subtle, #22344c);
 		border-radius: 6px;
 		padding: 0.5rem 0.65rem;
 		color: inherit;
@@ -194,11 +201,11 @@
 		transition: border-color 120ms ease, background 120ms ease;
 	}
 	.row:hover {
-		border-color: #4979b3;
-		background: rgba(28, 42, 64, 0.85);
+		border-color: var(--c-accent-dim, #4979b3);
+		background: var(--c-row-hover, rgba(28, 42, 64, 0.85));
 	}
 	.row:focus-visible {
-		outline: 2px solid #7bd0f2;
+		outline: 2px solid var(--c-accent, #7bd0f2);
 		outline-offset: 2px;
 	}
 	.row-header {
@@ -210,7 +217,7 @@
 	.row-title {
 		font-weight: 600;
 		font-size: 12.5px;
-		color: #e5edf5;
+		color: var(--c-text, #e5edf5);
 		line-height: 1.3;
 		flex: 1 1 auto;
 	}
@@ -237,13 +244,13 @@
 	}
 	.row-agency {
 		margin-top: 0.2rem;
-		color: #cfd9e6;
+		color: var(--c-text-2, #cfd9e6);
 		font-size: 11px;
 		font-weight: 600;
 	}
 	.row-dept {
 		margin-top: 0.15rem;
-		color: #94a3b8;
+		color: var(--c-muted, #94a3b8);
 		font-size: 10.5px;
 	}
 	.row-meta {
@@ -251,7 +258,7 @@
 		display: flex;
 		gap: 0.35rem 0.55rem;
 		flex-wrap: wrap;
-		color: #94a3b8;
+		color: var(--c-muted, #94a3b8);
 		font-size: 11px;
 	}
 </style>
