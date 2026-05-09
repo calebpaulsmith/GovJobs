@@ -220,7 +220,7 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		id: LAYER_IDS.clusters,
 		type: 'circle',
 		source: SOURCE_IDS.jobs,
-		minzoom: 7,
+		minzoom: 3,
 		filter: ['has', 'point_count'],
 		paint: {
 			'circle-color': [
@@ -232,17 +232,17 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 				100,
 				'#7bd0f2'
 			],
-			'circle-radius': ['step', ['get', 'point_count'], 12, 25, 18, 100, 26],
+			'circle-radius': ['step', ['get', 'point_count'], 12, 2, 14, 5, 16, 10, 18, 25, 22, 100, 26],
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1.5,
-			'circle-opacity': FADE(7, 9, 0.9)
+			'circle-opacity': 0.92
 		}
 	});
 	map.addLayer({
 		id: LAYER_IDS.clusterCount,
 		type: 'symbol',
 		source: SOURCE_IDS.jobs,
-		minzoom: 7,
+		minzoom: 3,
 		filter: ['has', 'point_count'],
 		layout: {
 			'text-field': ['get', 'point_count_abbreviated'],

@@ -236,8 +236,8 @@
 
 	function attachClickHandling(m: MaplibreMap): void {
 		const layerOrder = [
-			LAYER_IDS.markers,
 			LAYER_IDS.clusters,
+			LAYER_IDS.markers,
 			LAYER_IDS.closedMarkers,
 			LAYER_IDS.localitiesFill,
 			LAYER_IDS.countiesOutline,
@@ -359,6 +359,31 @@
 		].join('|');
 	}
 
+	function openFeatureStack(features: FeatureCollection['features'], label: string): void {
+		const items = features
+			.map((candidate) => ({ properties: candidate.properties ?? {} }))
+			.sort((a, b) => stackSortKey(a.properties).localeCompare(stackSortKey(b.properties)));
+		if (items.length <= 1) {
+			const item = items[0];
+			if (!item) return;
+			mapState.jobStack = null;
+			mapState.listView = null;
+			mapState.selectedFeature = {
+				source: LAYER_IDS.markers,
+				label: labelFor(LAYER_IDS.markers),
+				properties: item.properties
+			};
+			return;
+		}
+		mapState.selectedFeature = null;
+		mapState.listView = null;
+		mapState.jobStack = {
+			label,
+			selectedIndex: 0,
+			items
+		};
+	}
+
 	function fitFocusedFeature(m: MaplibreMap, layerId: string, feature: MapboxGeoJSONFeature): void {
 		const zoomByLayer: Record<string, number> = {
 			[LAYER_IDS.statesFill]: 6,
@@ -419,8 +444,46 @@
 		if (!coords) return;
 		(source as GeoJSONSource).getClusterExpansionZoom(Number(clusterId), (err, zoom) => {
 			if (err || zoom === undefined || zoom === null) return;
-			m.easeTo({ center: coords as [number, number], zoom: Math.min(zoom, MAXZOOM) });
+			const targetZoom = Math.min(zoom, MAXZOOM);
+			const shouldZoom = targetZoom > m.getZoom() + 0.1;
+			if (shouldZoom) {
+				m.easeTo({ center: coords as [number, number], zoom: targetZoom });
+				if (zoom > MAXZOOM) {
+					window.setTimeout(() => openClusterStack(source as GeoJSONSource, Number(clusterId), feature), 725);
+				}
+				return;
+			}
+			openClusterStack(source as GeoJSONSource, Number(clusterId), feature);
 		});
+	}
+
+	function openClusterStack(source: GeoJSONSource, clusterId: number, feature: MapboxGeoJSONFeature): void {
+		const pointCount = Number(feature.properties?.point_count ?? 100);
+		const sourceWithLeaves = source as GeoJSONSource & {
+			getClusterLeaves?: (
+				clusterId: number,
+				limit: number,
+				offset: number,
+				callback: (err: Error | null, features?: GeoJSON.Feature[]) => void
+			) => void;
+		};
+		if (!sourceWithLeaves.getClusterLeaves) return;
+		sourceWithLeaves.getClusterLeaves(clusterId, Math.max(pointCount, 100), 0, (err, leaves) => {
+			if (err || !leaves) return;
+			const label = clusterStackLabel(leaves, pointCount);
+			openFeatureStack(leaves.map((leaf) => ({
+				type: 'Feature',
+				geometry: leaf.geometry ?? null,
+				properties: leaf.properties ?? {}
+			})), label);
+		});
+	}
+
+	function clusterStackLabel(leaves: GeoJSON.Feature[], pointCount: number): string {
+		const first = leaves[0]?.properties as Record<string, unknown> | null | undefined;
+		const place = pointStackLabel(first ?? null);
+		if (place !== 'Selected map point') return place;
+		return `${pointCount.toLocaleString()} postings`;
 	}
 </script>
 
