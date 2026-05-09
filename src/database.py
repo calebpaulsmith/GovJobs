@@ -2481,6 +2481,8 @@ def _seed_core_codes(conn: sqlite3.Connection) -> None:
         ("priority_series", "0343", "Management and Program Analysis", None, "manual_seed", now),
         ("priority_series", "1109", "Grants Management", None, "manual_seed", now),
         ("department", "HS", "Department of Homeland Security", None, "manual_seed", now),
+        ("agency_aliases", "FEMA", "HSCB", "Federal Emergency Management Agency", "manual_seed", now),
+        ("agency_aliases", "FEDERAL EMERGENCY MANAGEMENT AGENCY", "HSCB", None, "manual_seed", now),
     ]
     conn.executemany(
         """

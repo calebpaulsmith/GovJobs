@@ -420,24 +420,59 @@ def agency_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         """
         SELECT
             COALESCE(j.agency_code, '') AS code,
-            COALESCE(MAX(j.agency), '') AS label,
+            COALESCE(ac.name, MAX(j.agency), '') AS name,
+            COALESCE(ac.department_code, MAX(j.department_code), '') AS department_code,
+            COALESCE(ac.department_name, MAX(j.department), '') AS department_name,
             COUNT(DISTINCT j.id) AS postings
         FROM jobs j
+        LEFT JOIN agency_codes ac ON ac.code = j.agency_code
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
           AND COALESCE(j.agency_code, j.agency) IS NOT NULL
         GROUP BY COALESCE(j.agency_code, '')
-        ORDER BY postings DESC, label
+        ORDER BY postings DESC, name
         """
     ).fetchall()
+    aliases_by_code = _agency_aliases(conn)
     return [
         {
             "code": row["code"] or None,
-            "label": row["label"] or row["code"] or "Unknown",
+            "name": row["name"] or row["code"] or "Unknown",
+            # Keep `label` for older bundles/UI code; D.5.2's typeahead uses
+            # `name` as the canonical display field.
+            "label": row["name"] or row["code"] or "Unknown",
+            "department_code": row["department_code"] or None,
+            "department_name": row["department_name"] or None,
+            "aliases": aliases_by_code.get((row["code"] or "").upper(), []),
             "postings": int(row["postings"]),
         }
         for row in rows
     ]
+
+
+def _agency_aliases(conn: sqlite3.Connection) -> dict[str, list[str]]:
+    if not _table_exists(conn, "code_lists"):
+        return {}
+    rows = conn.execute(
+        """
+        SELECT UPPER(TRIM(code)) AS alias, UPPER(TRIM(label)) AS canonical_code
+        FROM code_lists
+        WHERE list_name='agency_aliases'
+          AND TRIM(COALESCE(code, '')) <> ''
+          AND TRIM(COALESCE(label, '')) <> ''
+        ORDER BY alias
+        """
+    ).fetchall()
+    aliases: dict[str, list[str]] = {}
+    for row in rows:
+        canonical = row["canonical_code"]
+        alias = row["alias"]
+        if canonical == alias:
+            continue
+        bucket = aliases.setdefault(canonical, [])
+        if alias not in bucket:
+            bucket.append(alias)
+    return aliases
 
 
 def series_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:

@@ -17,7 +17,7 @@ class MapState {
 	// selectedFeature detail view. Set by clicking "View N postings" inside a
 	// roundup popup. Cleared when the user closes the panel or picks a marker.
 	listView = $state<ListView | null>(null);
-	filters = $state<JobFilters>({ ...DEFAULT_FILTERS });
+	filters = $state<JobFilters>({ ...DEFAULT_FILTERS, agencies: [] });
 	filteredJobCount = $state(0);
 	totalJobCount = $state(0);
 }

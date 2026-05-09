@@ -295,6 +295,8 @@ def test_agency_and_series_options_sorted_by_postings(conn):
 
     agencies = agency_options(conn)
     assert agencies[0]["code"] == "HSCB"
+    assert agencies[0]["name"] == "Federal Emergency Management Agency"
+    assert agencies[0]["aliases"] == ["FEDERAL EMERGENCY MANAGEMENT AGENCY", "FEMA"]
     assert agencies[0]["postings"] == 2
 
     series = series_options(conn)
