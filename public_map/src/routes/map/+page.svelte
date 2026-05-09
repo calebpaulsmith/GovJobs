@@ -5,6 +5,7 @@
 	import MetricSwitcher from '$lib/MetricSwitcher.svelte';
 	import FeaturePanel from '$lib/FeaturePanel.svelte';
 	import FilterPanel from '$lib/FilterPanel.svelte';
+	import ActiveFilterStrip from '$lib/ActiveFilterStrip.svelte';
 	import SavedSearchMenu from '$lib/SavedSearchMenu.svelte';
 	import AddressSearch from '$lib/AddressSearch.svelte';
 	import ProfileDrawer from '$lib/ProfileDrawer.svelte';
@@ -93,6 +94,7 @@
 	<AddressSearch />
 	<SavedSearchMenu />
 	<FilterPanel />
+	<ActiveFilterStrip />
 	<FeaturePanel />
 
 	<footer class="attrib" data-layout-slot={slotAttr(LAYOUT_SLOTS.freshness)}>

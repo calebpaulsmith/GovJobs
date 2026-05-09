@@ -1,6 +1,8 @@
 <!--
 	Filtered list of job postings inside a polygon scope (state, locality,
 	county, CBSA). Honors the active filter chips so the list matches the map.
+	Paginated at 20/page with a sort selector so large lists (e.g. a state
+	with thousands of postings) stay responsive.
 -->
 <script lang="ts">
 	import { mapState, type ListView } from './store.svelte';
@@ -16,6 +18,11 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
+	type SortKey = 'closing_soon' | 'closing_late' | 'salary_high' | 'salary_low' | 'title' | 'agency';
+	let sortKey = $state<SortKey>('closing_soon');
+	let page = $state(0);
+	const PAGE_SIZE = 20;
+
 	$effect(() => {
 		loading = true;
 		Promise.all([loadJobs(), loadJobDetailsIndex()])
@@ -25,6 +32,15 @@
 			})
 			.catch((err) => (error = (err as Error).message))
 			.finally(() => (loading = false));
+	});
+
+	// Reset to first page when scope, filters, or sort changes.
+	$effect(() => {
+		void listView.scope;
+		void listView.code;
+		void mapState.filters;
+		void sortKey;
+		page = 0;
 	});
 
 	function inScope(feature: Feature): boolean {
@@ -37,14 +53,13 @@
 			case 'county':
 				return String(details[String(props.id ?? '')]?.locations?.[0]?.state ?? '') === listView.code;
 			case 'cbsa':
-				// No CBSA tag on markers yet; fall back to no match until D.5 wires it.
 				return false;
 			default:
 				return false;
 		}
 	}
 
-	const visible = $derived.by(() => {
+	const inScopeFiltered = $derived.by(() => {
 		if (!allJobs) return [] as Feature[];
 		const filtered = filterJobs(allJobs, mapState.filters, details);
 		return filtered.features.filter(inScope);
@@ -53,6 +68,57 @@
 	function detailFor(props: Record<string, unknown>): JobDetails | undefined {
 		return details[String(props.id ?? '')];
 	}
+
+	function titleOf(feature: Feature): string {
+		const props = feature.properties ?? {};
+		return String(detailFor(props)?.title ?? props.title ?? '').trim().toLowerCase();
+	}
+
+	function agencyOf(feature: Feature): string {
+		const props = feature.properties ?? {};
+		return String(detailFor(props)?.agency ?? props.agency_code ?? '').trim().toLowerCase();
+	}
+
+	function salaryOf(feature: Feature): number {
+		const props = feature.properties ?? {};
+		const v = Number(detailFor(props)?.salary_min ?? props.salary_min ?? 0);
+		return Number.isFinite(v) ? v : 0;
+	}
+
+	function closeDateOf(feature: Feature): number {
+		// Higher number = sooner (use negative epoch-days so closing_soon = ascending).
+		const props = feature.properties ?? {};
+		const raw = String(detailFor(props)?.close_date ?? props.close_date ?? '');
+		const t = Date.parse(raw);
+		return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+	}
+
+	const sorted = $derived.by(() => {
+		const list = inScopeFiltered.slice();
+		switch (sortKey) {
+			case 'closing_soon':
+				return list.sort((a, b) => closeDateOf(a) - closeDateOf(b));
+			case 'closing_late':
+				return list.sort((a, b) => closeDateOf(b) - closeDateOf(a));
+			case 'salary_high':
+				return list.sort((a, b) => salaryOf(b) - salaryOf(a));
+			case 'salary_low':
+				return list.sort((a, b) => salaryOf(a) - salaryOf(b));
+			case 'title':
+				return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
+			case 'agency':
+				return list.sort((a, b) => agencyOf(a).localeCompare(agencyOf(b)));
+			default:
+				return list;
+		}
+	});
+
+	const totalCount = $derived(sorted.length);
+	const totalPages = $derived(Math.max(1, Math.ceil(totalCount / PAGE_SIZE)));
+	const pageSafe = $derived(Math.min(page, Math.max(0, totalPages - 1)));
+	const pageStart = $derived(pageSafe * PAGE_SIZE);
+	const pageEnd = $derived(Math.min(pageStart + PAGE_SIZE, totalCount));
+	const visible = $derived(sorted.slice(pageStart, pageEnd));
 
 	function pickJob(feature: Feature) {
 		mapState.selectedFeature = {
@@ -65,6 +131,13 @@
 
 	function backToRoundup() {
 		mapState.listView = null;
+	}
+
+	function prevPage() {
+		page = Math.max(0, pageSafe - 1);
+	}
+	function nextPage() {
+		page = Math.min(totalPages - 1, pageSafe + 1);
 	}
 </script>
 
@@ -83,10 +156,30 @@
 		<p class="note">Loading postings...</p>
 	{:else if error}
 		<p class="error">{error}</p>
-	{:else if visible.length === 0}
+	{:else if totalCount === 0}
 		<p class="note">No postings match the current filters in {listView.label}. Adjust your filter chips and try again.</p>
 	{:else}
-		<p class="count">{visible.length.toLocaleString()} posting{visible.length === 1 ? '' : 's'} match the current filters.</p>
+		<div class="toolbar">
+			<span class="count">
+				{#if totalCount > PAGE_SIZE}
+					{pageStart + 1}–{pageEnd} of {totalCount.toLocaleString()}
+				{:else}
+					{totalCount.toLocaleString()} posting{totalCount === 1 ? '' : 's'}
+				{/if}
+			</span>
+			<label class="sort">
+				<span class="sort-label">Sort</span>
+				<select bind:value={sortKey}>
+					<option value="closing_soon">Closing soonest</option>
+					<option value="closing_late">Closing latest</option>
+					<option value="salary_high">Salary (high → low)</option>
+					<option value="salary_low">Salary (low → high)</option>
+					<option value="title">Title (A → Z)</option>
+					<option value="agency">Agency (A → Z)</option>
+				</select>
+			</label>
+		</div>
+
 		<ul>
 			{#each visible as feature, i (feature.properties?.id ?? i)}
 				{@const props = feature.properties ?? {}}
@@ -95,7 +188,7 @@
 				<li>
 					<button type="button" class="row" onclick={() => pickJob(feature)}>
 						<div class="row-header">
-							<div class="row-title">{propString(props, 'title')}</div>
+							<div class="row-title">{detail?.title ?? propString(props, 'title', 'Loading…')}</div>
 							{#if urg.level}<span class="urgency-badge urgency-{urg.level}">{urg.text}</span>{/if}
 						</div>
 						<div class="row-agency">
@@ -123,6 +216,18 @@
 				</li>
 			{/each}
 		</ul>
+
+		{#if totalPages > 1}
+			<nav class="pager" aria-label="Posting list pages">
+				<button type="button" onclick={prevPage} disabled={pageSafe === 0} aria-label="Previous page">
+					‹ Prev
+				</button>
+				<span class="page-indicator">Page {pageSafe + 1} of {totalPages}</span>
+				<button type="button" onclick={nextPage} disabled={pageSafe >= totalPages - 1} aria-label="Next page">
+					Next ›
+				</button>
+			</nav>
+		{/if}
 	{/if}
 </section>
 
@@ -174,10 +279,41 @@
 	.error {
 		color: #f1bcbc;
 	}
-	.count {
+	.toolbar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.5rem;
 		margin: 0 0 0.5rem;
 		font-size: 11px;
+	}
+	.count {
 		color: #94a3b8;
+	}
+	.sort {
+		display: inline-flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.sort-label {
+		color: #94a3b8;
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.sort select {
+		appearance: none;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text, #e5edf5);
+		border: 1px solid var(--c-border-input, #2c4870);
+		border-radius: 4px;
+		padding: 0.2rem 0.45rem;
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.sort select:focus-visible {
+		outline: 2px solid var(--c-accent, #7bd0f2);
+		outline-offset: 1px;
 	}
 	ul {
 		list-style: none;
@@ -260,5 +396,36 @@
 		flex-wrap: wrap;
 		color: var(--c-muted, #94a3b8);
 		font-size: 11px;
+	}
+	.pager {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0.7rem 0 0.4rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--c-border-subtle, #22344c);
+		font-size: 11px;
+	}
+	.pager button {
+		appearance: none;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text, #e5edf5);
+		border: 1px solid var(--c-border-input, #2c4870);
+		border-radius: 4px;
+		padding: 0.25rem 0.6rem;
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.pager button:hover:not(:disabled) {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.pager button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.page-indicator {
+		color: var(--c-muted, #94a3b8);
 	}
 </style>

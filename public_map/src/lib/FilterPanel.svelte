@@ -39,17 +39,15 @@
 		if (activeFilterCount(mapState.filters) > 0) expanded = true;
 	});
 
-	// Auto-collapse when a feature panel opens so the two don't fight for
-	// horizontal real estate on narrower viewports. The user can re-expand
-	// from the toggle at any time; doing so flips userManuallyExpanded so
-	// closing the feature panel later doesn't reopen the filters again.
-	$effect(() => {
-		const featureOpen = mapState.selectedFeature !== null || mapState.listView !== null;
-		if (featureOpen && expanded) {
-			expanded = false;
-			userManuallyExpanded = false;
-		}
-	});
+	// (2026-05-09) Removed: auto-collapse on featureOpen.
+	// The previous effect closed the FilterPanel any time
+	// `mapState.selectedFeature` or `mapState.listView` became non-null. In
+	// practice this fired during normal pan/zoom because Mapbox treats the
+	// pinch-to-zoom or scroll-then-click sequence as a polygon click,
+	// silently selecting a state polygon and snapping the filter drawer
+	// shut. With the always-visible ActiveFilterStrip across the top, the
+	// user never loses sight of active filters, so collapse-on-feature-open
+	// is no longer needed for visibility. Users close the panel manually.
 
 	$effect(() => {
 		if (mapState.savedSearchesOpen && expanded) {

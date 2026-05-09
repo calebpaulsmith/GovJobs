@@ -53,7 +53,7 @@
 				{@const detail = detailFor(props)}
 				<li>
 					<button type="button" class="row" onclick={() => openJob(i)}>
-						<span class="title">{propString(props, 'title')}</span>
+						<span class="title">{detail?.title ?? propString(props, 'title', 'Loading…')}</span>
 						<span class="agency">{String(detail?.agency ?? props.agency_code ?? 'Agency unknown')}</span>
 						<span class="dept">{String(detail?.department ?? 'Department unknown')}</span>
 						<span class="meta">

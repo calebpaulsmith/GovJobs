@@ -1,5 +1,6 @@
 export type LayoutSlot =
 	| 'masthead'
+	| 'chip-strip'
 	| 'search'
 	| 'filters'
 	| 'feature'
@@ -11,6 +12,7 @@ export type LayoutSlot =
 
 export const LAYOUT_SLOTS: Record<LayoutSlot, LayoutSlot> = {
 	masthead: 'masthead',
+	'chip-strip': 'chip-strip',
 	search: 'search',
 	filters: 'filters',
 	feature: 'feature',

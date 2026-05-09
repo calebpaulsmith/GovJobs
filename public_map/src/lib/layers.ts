@@ -256,20 +256,23 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
-	// 6. Individual markers — also past zoom 7. At higher zoom the cluster
-	//    radius shrinks and these reveal naturally.
+	// 6. Individual (non-clustered) markers. Visible at every zoom so a
+	//    narrowly filtered set (e.g. one agency with 24 postings spread
+	//    across 50 states) doesn't disappear at low zoom: those points
+	//    are too sparse to cluster within 40 px and would otherwise have
+	//    nothing to render. Size interpolates so low-zoom dots stay tiny.
 	map.addLayer({
 		id: LAYER_IDS.markers,
 		type: 'circle',
 		source: SOURCE_IDS.jobs,
-		minzoom: 7,
+		minzoom: 3,
 		filter: ['!', ['has', 'point_count']],
 		paint: {
 			'circle-color': '#7bd0f2',
-			'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 9, 6],
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 5, 3, 7, 4, 9, 6],
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1,
-			'circle-opacity': FADE(7, 9, 0.95)
+			'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.85, 9, 0.95]
 		}
 	});
 
