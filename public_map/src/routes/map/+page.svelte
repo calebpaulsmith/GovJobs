@@ -5,8 +5,18 @@
 	import FilterPanel from '$lib/FilterPanel.svelte';
 	import SavedSearchMenu from '$lib/SavedSearchMenu.svelte';
 	import AddressSearch from '$lib/AddressSearch.svelte';
+	import ProfileDrawer from '$lib/ProfileDrawer.svelte';
 	import { LAYOUT_SLOTS, slotAttr } from '$lib/layout';
 	import { mapState } from '$lib/store.svelte';
+	import { jobProfile } from '$lib/jobProfile.svelte';
+
+	const savedCount = $derived(jobProfile.savedJobs.length);
+
+	// Seed mapState hidden/saved sets from persisted profile on startup.
+	$effect(() => {
+		mapState.hiddenJobIds = jobProfile.hiddenIds;
+		mapState.savedJobIds = jobProfile.savedJobs.reduce((s, j) => { s.add(j.id); return s; }, new Set<string>());
+	});
 </script>
 
 <svelte:head>
@@ -29,7 +39,18 @@
 				<span>Updated {new Date(mapState.manifest.generated_at).toLocaleDateString()}</span>
 			</div>
 		{/if}
+		<button
+			type="button"
+			class="profile-btn"
+			onclick={() => (mapState.profileOpen = true)}
+			aria-label="Open my jobs profile"
+			title="My saved and hidden jobs"
+		>
+			My Jobs{#if savedCount > 0}<span class="profile-count">{savedCount}</span>{/if}
+		</button>
 	</header>
+
+	<ProfileDrawer />
 
 	<Map />
 	<MetricSwitcher />
@@ -100,6 +121,33 @@
 	}
 	.manifest span {
 		white-space: nowrap;
+	}
+	.profile-btn {
+		appearance: none;
+		pointer-events: all;
+		border: 1px solid #2c4870;
+		background: rgba(28, 42, 64, 0.6);
+		color: #cfd9e6;
+		font-size: 11px;
+		padding: 0.25rem 0.65rem;
+		border-radius: 999px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		white-space: nowrap;
+		transition: border-color 120ms ease, color 120ms ease;
+		border-left: none;
+		margin-left: 0.5rem;
+	}
+	.profile-btn:hover { border-color: #7bd0f2; color: #7bd0f2; }
+	.profile-count {
+		background: #4979b3;
+		color: #fff;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 0.05rem 0.4rem;
+		border-radius: 999px;
 	}
 	.attrib {
 		position: absolute;

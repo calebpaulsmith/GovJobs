@@ -26,6 +26,7 @@
 		setStateFillMetric
 	} from './layers';
 	import { mapState, type Manifest } from './store.svelte';
+	import { METRICS, METRIC_ORDER, type MetricKey } from './metrics';
 
 	let container: HTMLDivElement;
 	let map: MaplibreMap | null = null;
@@ -83,13 +84,15 @@
 				jobDetails = details;
 				mapState.totalJobCount = jobs.features.length;
 
-				const filteredJobs = filterJobs(jobs, mapState.filters, jobDetails);
+				const filteredJobs = excludeHidden(filterJobs(jobs, mapState.filters, jobDetails));
 				const filteredClosedJobs = filterJobs(closedJobs, mapState.filters, jobDetails);
 				const displayStates = cloneCollection(allStates);
 
 				// Stamp client-derived `remote_share` onto each state feature so the
 				// metric switcher's "remote share" option has data to color.
 				deriveRemoteShare(displayStates, filteredJobs);
+				// D.5.6: demote any metric whose property is null for ≥50% of states.
+				computeMetricDemotion(displayStates);
 				mapState.filteredJobCount = filteredJobs.features.length;
 
 				addOrUpdateSource(map, SOURCE_IDS.states, displayStates);
@@ -126,9 +129,11 @@
 	});
 
 	$effect(() => {
+		// React to filter changes AND hidden-job set changes.
 		const filters = mapState.filters;
+		void mapState.hiddenJobIds;
 		if (!mounted || !map || !allJobs || !allClosedJobs || !allStates || !map.isStyleLoaded()) return;
-		const filteredJobs = filterJobs(allJobs, filters, jobDetails);
+		const filteredJobs = excludeHidden(filterJobs(allJobs, filters, jobDetails));
 		const filteredClosedJobs = filterJobs(allClosedJobs, filters, jobDetails);
 		const displayStates = cloneCollection(allStates);
 		deriveRemoteShare(displayStates, filteredJobs);
@@ -178,6 +183,35 @@
 				properties: { ...(feature.properties ?? {}) }
 			}))
 		};
+	}
+
+	function excludeHidden(collection: FeatureCollection): FeatureCollection {
+		const hiddenIds = mapState.hiddenJobIds;
+		if (hiddenIds.size === 0) return collection;
+		return {
+			...collection,
+			features: collection.features.filter(
+				(f) => !hiddenIds.has(String((f.properties ?? {}).id ?? ''))
+			)
+		};
+	}
+
+	function computeMetricDemotion(states: FeatureCollection): void {
+		const features = states.features;
+		if (features.length === 0) return;
+		const demoted = new Set<MetricKey>();
+		for (const key of METRIC_ORDER) {
+			const prop = METRICS[key].property;
+			const nullCount = features.filter((f) => (f.properties ?? {})[prop] == null).length;
+			if (nullCount / features.length >= 0.5) {
+				demoted.add(key);
+			}
+		}
+		mapState.demotedMetrics = demoted;
+		// If the active metric just became demoted, turn off choropleth shading.
+		if (demoted.has(mapState.metric)) {
+			mapState.choroplethEnabled = false;
+		}
 	}
 
 	function deriveRemoteShare(states: FeatureCollection, jobs: FeatureCollection): void {
