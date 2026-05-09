@@ -365,10 +365,42 @@ def test_counties_geojson_joins_locality_and_state_rpp(conn, tmp_path):
     assert props["state"] == "IL"
     assert props["cbsa_code"] == "16980"
     assert props["locality_code"] == "CHI"
-    # RPP fallback is state-level per the plan (BEA does not publish
-    # county RPP).
+    # No ACS county row seeded — must fall back to state-level RPP and
+    # flag the source so the client can label it.
     assert props["rpp_overall"] == 99.5
+    assert props["rpp_overall_source"] == "state"
+    assert props["rpp_state"] == 99.5
+    assert props["rent_median"] is None
     assert props["postings"] == 1
+
+
+def test_counties_geojson_prefers_acs_county_col_when_available(conn, tmp_path):
+    """When an ACS county row exists, the county feature must use it instead
+    of the state RPP and surface ``rpp_overall_source='county'`` plus the
+    raw median rent so CountyDetail can label the calculation."""
+    _seed_full_chicago_fixture(conn, tmp_path)
+    # Inject a county-level COL row (Cook County, derived index 96.7,
+    # median rent $1,300).
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cost_of_living_index (
+            year, geo_type, geo_code, rpp_overall, rpp_goods, rpp_services,
+            rpp_rents, source, imported_at
+        ) VALUES (2023, 'county', '17031', 96.7, NULL, NULL, 1300, 'census:acs5_b25064', ?)
+        """,
+        (utc_now(),),
+    )
+    conn.commit()
+
+    fc = counties_geojson(conn, repo_root=tmp_path, year=YEAR, tolerance=0.0)
+    props = fc["features"][0]["properties"]
+    assert props["rpp_overall"] == 96.7
+    assert props["rpp_overall_source"] == "county"
+    assert props["rpp_state"] == 99.5  # state RPP still exposed for tooltip math
+    assert props["rent_median"] == 1300
+    # gs13 + pay_vs_col now exist on county features for InfoTooltip math.
+    assert props["gs13_step1_locality"] is not None
+    assert props["pay_vs_col"] is not None
 
 
 def test_counties_postings_match_marker_county_fips(conn, tmp_path):
@@ -481,6 +513,33 @@ def test_cost_of_living_returns_latest_year_per_geo(conn):
     assert col["by_state"]["IL"]["year"] == 2024
     assert col["by_state"]["IL"]["rpp_overall"] == 99.5
     assert col["by_cbsa"]["16980"]["rpp_overall"] == 104.2
+    assert col["by_county"] == {}
+
+
+def _seed_county_col(
+    conn, *, geo_code, year, col_index, rent_median, source="census:acs5_b25064"
+):
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cost_of_living_index (
+            year, geo_type, geo_code, rpp_overall, rpp_goods, rpp_services,
+            rpp_rents, source, imported_at
+        ) VALUES (?, 'county', ?, ?, NULL, NULL, ?, ?, ?)
+        """,
+        (year, geo_code, col_index, rent_median, source, utc_now()),
+    )
+    conn.commit()
+
+
+def test_cost_of_living_includes_by_county_with_rent_median(conn):
+    _seed_county_col(conn, geo_code="17031", year=2023, col_index=99.5, rent_median=1300)
+    _seed_county_col(conn, geo_code="06037", year=2023, col_index=120.4, rent_median=1880)
+
+    col = cost_of_living(conn)
+    assert col["by_county"]["17031"]["rpp_overall"] == 99.5
+    assert col["by_county"]["17031"]["rent_median"] == 1300
+    assert col["by_county"]["06037"]["rent_median"] == 1880
+    assert col["by_county"]["17031"]["source"] == "census:acs5_b25064"
 
 
 # ---------- manifest data sources ----------------------------------------

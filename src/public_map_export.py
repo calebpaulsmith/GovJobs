@@ -983,13 +983,20 @@ def counties_geojson(
     """FeatureCollection of US counties with locality + RPP context.
 
     ``locality_code`` is joined via ``locality_pay_counties`` for ``year``.
-    ``rpp_overall`` is the state-level fallback (BEA does not publish county-
-    level RPP). ``postings`` counts markers whose geocoded county matches.
+    ``rpp_overall`` prefers the county-level estimate written by
+    ``ingest_acs_county_rent`` (D.5.10) and falls back to the state-level
+    BEA RPP when no ACS row is present. ``rpp_overall_source`` flags which
+    one was used so the client can label approximations honestly.
+    ``rent_median`` carries the ACS B25064 median gross rent in dollars
+    when available. ``postings`` counts markers whose geocoded county
+    matches.
     """
     resolved_year = year if year is not None else current_reference_year(conn)
     markers = _marker_dataset(conn, year=resolved_year)
     postings_by_county = _count_by(markers, "county_fips")
     rpp_by_state = _rpp_lookup(conn, geo_type="state")
+    county_col = _county_col_lookup(conn)
+    national_base_pay = _gs_base_step1_for_year(conn, resolved_year, grade="13")
 
     rows = conn.execute(
         """
@@ -1014,6 +1021,22 @@ def counties_geojson(
         if tolerance:
             geometry = simplify_geometry(geometry, tolerance)
         state_code = (row["state"] or "").upper() or None
+        county_entry = county_col.get(fips)
+        state_rpp = rpp_by_state.get(state_code) if state_code else None
+        if county_entry is not None:
+            rpp_overall: float | None = county_entry["col_index"]
+            rpp_source = "county"
+            rent_median = county_entry["rent_median"]
+        else:
+            rpp_overall = state_rpp
+            rpp_source = "state" if state_rpp is not None else None
+            rent_median = None
+        gs13_pay = _gs13_step1_for_locality(
+            conn, locality_code=row["locality_code"], year=resolved_year
+        )
+        pay_vs_col = _pay_vs_col(
+            gs13_pay, rpp_overall, national_pay=national_base_pay
+        )
         features.append(
             {
                 "type": "Feature",
@@ -1024,7 +1047,12 @@ def counties_geojson(
                     "state": state_code,
                     "cbsa_code": row["cbsa_code"],
                     "locality_code": row["locality_code"],
-                    "rpp_overall": rpp_by_state.get(state_code) if state_code else None,
+                    "gs13_step1_locality": gs13_pay,
+                    "rpp_overall": rpp_overall,
+                    "rpp_overall_source": rpp_source,
+                    "rpp_state": state_rpp,
+                    "rent_median": rent_median,
+                    "pay_vs_col": pay_vs_col,
                     "postings": int(postings_by_county.get(fips, 0)),
                 },
             }
@@ -1128,11 +1156,16 @@ def pay_tables(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
-    """``{by_state, by_cbsa}`` keyed by code with the latest-year RPP row.
+    """``{by_state, by_cbsa, by_county}`` keyed by code with the latest-year row.
 
     Latest year is computed per geography so a state with stale data still
     surfaces alongside a cbsa with newer data; the returned row carries its
     ``year`` so the client can label it.
+
+    For ``geo_type='county'`` (D.5.10), ``rpp_rents`` carries the raw ACS
+    B25064 median gross rent in dollars rather than a 100-base index, since
+    ``census:acs5_b25064`` is a different unit from BEA. ``rpp_overall`` is
+    the derived COL index (``state_rpp × rent / state_median_rent``).
     """
     rows = conn.execute(
         """
@@ -1140,18 +1173,30 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
                rpp_rents, source
         FROM cost_of_living_index
         ORDER BY geo_type, geo_code,
-                 CASE source WHEN 'bea:rpp' THEN 0 ELSE 1 END,
+                 CASE source
+                     WHEN 'bea:rpp' THEN 0
+                     WHEN 'census:acs5_b25064' THEN 0
+                     ELSE 1
+                 END,
                  year DESC
         """
     ).fetchall()
     by_state: dict[str, Any] = {}
     by_cbsa: dict[str, Any] = {}
+    by_county: dict[str, Any] = {}
+    buckets = {
+        "state": by_state,
+        "cbsa": by_cbsa,
+        "county": by_county,
+    }
     for row in rows:
-        bucket = by_state if row["geo_type"] == "state" else by_cbsa
+        bucket = buckets.get(row["geo_type"])
+        if bucket is None:
+            continue
         code = (row["geo_code"] or "").strip()
         if not code or code in bucket:
             continue
-        bucket[code] = {
+        entry: dict[str, Any] = {
             "year": int(row["year"]),
             "rpp_overall": _round_or_none(row["rpp_overall"]),
             "rpp_goods": _round_or_none(row["rpp_goods"]),
@@ -1159,7 +1204,13 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
             "rpp_rents": _round_or_none(row["rpp_rents"]),
             "source": row["source"],
         }
-    return {"by_state": by_state, "by_cbsa": by_cbsa}
+        if row["geo_type"] == "county" and row["rpp_rents"] is not None:
+            try:
+                entry["rent_median"] = round(float(row["rpp_rents"]))
+            except (TypeError, ValueError):
+                entry["rent_median"] = None
+        bucket[code] = entry
+    return {"by_state": by_state, "by_cbsa": by_cbsa, "by_county": by_county}
 
 
 def zip_centroids_payload(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -1218,6 +1269,52 @@ def _count_by(markers: list[dict[str, Any]], key: str) -> dict[str, int]:
             continue
         counts[value] = counts.get(value, 0) + 1
     return counts
+
+
+def _county_col_lookup(
+    conn: sqlite3.Connection,
+) -> dict[str, dict[str, Any]]:
+    """Latest county-level COL estimate keyed by 5-digit FIPS.
+
+    D.5.10 wires ``cost_of_living_index`` rows where ``geo_type='county'``
+    (written by ``ingest_acs_county_rent``) into the exporter. ``col_index``
+    is the derived ``state_rpp * (county_rent / state_median_rent)`` value
+    stored in ``rpp_overall``; ``rent_median`` is the raw ACS B25064 median
+    gross rent stored in ``rpp_rents`` for ACS rows. Picks the highest year
+    per FIPS and prefers ``census:acs5_b25064`` when multiple sources
+    publish the same year.
+    """
+    rows = conn.execute(
+        """
+        SELECT geo_code, year, rpp_overall, rpp_rents, source
+        FROM cost_of_living_index
+        WHERE geo_type = 'county' AND rpp_overall IS NOT NULL
+        ORDER BY geo_code,
+                 CASE source WHEN 'census:acs5_b25064' THEN 0 ELSE 1 END,
+                 year DESC
+        """,
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        code = (row["geo_code"] or "").strip()
+        if not code or code in out:
+            continue
+        try:
+            col_index = round(float(row["rpp_overall"]), 2)
+        except (TypeError, ValueError):
+            continue
+        rent_median = row["rpp_rents"]
+        try:
+            rent_median = round(float(rent_median)) if rent_median is not None else None
+        except (TypeError, ValueError):
+            rent_median = None
+        out[code] = {
+            "col_index": col_index,
+            "rent_median": rent_median,
+            "year": int(row["year"]),
+            "source": row["source"],
+        }
+    return out
 
 
 def _rpp_lookup(

@@ -406,3 +406,27 @@ Status: Accepted
 
 **Consequences.** Public-map exports always have a populated reference year, even before the operator can reach OPM directly. The bootstrap seed is clearly labeled with `source_url=https://www.opm.gov/.../2026/general-schedule/` and the seed CSV is not used as final V1 data — D.5.14 is marked partial in `docs/ROADMAP.md` until the operator verification step is logged. `pay_calculator.calculate_job_pay_table` works against the 2026 rows the same way it worked against 2025, so D.5.11 (per-job pay grid with status flag) inherits the 2026 cutover automatically. If the rounding rule in OPM's actual PDF differs from `round(rate × 1.01)` for a given cell (annual rates derive from hourly × 2087, with their own rounding chain), the diff will be at most a dollar or two per cell — the spot-check tolerance is set so that anything outside ±$1 fires.
 
+---
+
+## ADR-0031 — County-level COL via ACS rent ratio applied to BEA state RPP
+Date: 2026-05-09
+Status: Accepted
+
+**Context.** Public Map invariant 9 (CLAUDE.md "Cost of living layer goes deeper than state") and D.5.10 require county-level cost-of-living signal so CountyDetail and downstream consumers can reflect within-state variance. BEA does not publish a county-level Regional Price Parity — its smallest geography is CBSA. Census ACS 5-year table B25064 (median gross rent) is the canonical, public-domain, county-level economic signal that proxies COL well at small geographies. We need a method that (a) gives every county a defensible number, (b) reuses the BEA state RPP we already trust at the state level, (c) survives a clean checkout with no API calls, and (d) is honest about being an approximation.
+
+**Decision.** Estimate county COL as a within-state rent-ratio scaling of the state RPP::
+
+    county_col_index = state_rpp × (county_rent / state_median_rent)
+
+where:
+
+- `state_rpp` is the latest BEA `cost_of_living_index` row with `geo_type='state'` for the county's state (already loaded by `scripts/ingest_bea_rpp.py`).
+- `county_rent` is the ACS B25064 5-year median gross rent for the county.
+- `state_median_rent` is the median of the county rents present in the input file for that state. With a small input (e.g., the checked-in seed) this is the median across the bundled counties; with a full ACS pull it is the true median across all counties.
+
+Implementation lands in `scripts/ingest_acs_county_rent.py`, which writes one `cost_of_living_index` row per county under `source='census:acs5_b25064'`, storing the derived index in `rpp_overall` and the raw ACS median rent (in dollars) in the `rpp_rents` slot. The unit overload of the `rpp_rents` column is documented inline and disambiguated by the `source` field — for `bea:rpp` rows `rpp_rents` is a 100-base index, for `census:acs5_b25064` rows it is a dollar amount. Per ADR-0027 the ingest is self-bootstrapping: it defaults to the checked-in seed at `data/external/census_acs_rent/2023.csv` and accepts an operator override via `--input` or `PUBLIC_MAP_ACS_COUNTY_RENTS_CSV`. The orchestrator runs the ACS step right after `ingest_bea_rpp` so the state RPP it depends on is in the database.
+
+The exporter wires the county rows into `counties_geojson` via a new `_county_col_lookup`. Counties with an ACS row expose `rpp_overall_source='county'` plus the raw `rent_median`; counties without one fall back to the existing state RPP and expose `rpp_overall_source='state'`. The state RPP is always exposed as `rpp_state` so the InfoTooltip can show the multiplication. `cost_of_living()` payload gains a `by_county` bucket keyed by 5-digit FIPS for any future client consumer that wants the raw lookup.
+
+**Consequences.** Every county the operator's input covers gets a directionally correct COL signal that beats the prior state-level fallback for county detail surfaces. The estimate is explicitly an approximation: counties get the state's overall RPP scaled by their rent ratio relative to other counties in their state. Within a state with low rent variance the index hardly differs from the state RPP; within high-variance states (CA, NY, TX) the index meaningfully reflects the difference between expensive and cheap counties. CountyDetail surfaces the formula inline so users can see the chain. BLS metro CPI (the optional secondary signal in PUBLIC_MAP_DATA_SOURCES.md) is deferred — V1 ships with rent-as-COL-proxy and revisits CPI later if rent-only is insufficient. Replacing the seed with a full ACS county pull is a single CLI step (`python scripts/ingest_acs_county_rent.py --input <census_pull.csv>`); operators with a Census API key can fetch the data via the documented URL pattern and convert the JSON-array response to the simple CSV the script expects. Because the unit semantics of `rpp_rents` differ across sources, anything reading `cost_of_living_index` for that column must check the `source` column too — that contract is documented in CLAUDE.md, in `cost_of_living()`, and in `_county_col_lookup`.
+

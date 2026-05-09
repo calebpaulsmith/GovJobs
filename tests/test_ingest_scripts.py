@@ -13,6 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ingest_acs_county_rent import (
+    import_acs_county_rent_from_csv,
+    SEED_CSV as ACS_SEED_CSV,
+)
 from scripts.ingest_bea_rpp import import_rpp_from_csv
 from scripts.ingest_cbsa_polygons import import_cbsa_from_geojson
 from scripts.ingest_county_polygons import import_counties_from_geojson
@@ -428,3 +432,103 @@ def test_2026_locality_definitions_seed_loads_with_year_2026():
         rows = list(csv.DictReader(handle))
     assert rows, "locality_definitions seed is empty"
     assert all(int(row["year"]) == 2026 for row in rows)
+
+
+# ---------- D.5.10: ACS county rent ---------------------------------------
+
+
+def _seed_state_rpp(conn, state: str, year: int, rpp: float) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cost_of_living_index (
+            year, geo_type, geo_code, rpp_overall, rpp_goods, rpp_services,
+            rpp_rents, source, imported_at
+        ) VALUES (?, 'state', ?, ?, NULL, NULL, NULL, 'bea:rpp', '2026-01-01T00:00:00Z')
+        """,
+        (year, state, rpp),
+    )
+    conn.commit()
+
+
+def test_acs_county_rent_derives_county_index_using_state_rpp(conn, tmp_path):
+    """``county_col_index = state_rpp × (county_rent / state_median_rent)``.
+
+    With three IL counties whose rents are 1000 / 1300 / 1500, the median is
+    1300. Cook (1300 in our seed) gets 99.5 × (1300/1300) = 99.5; the cheap
+    county gets 99.5 × (1000/1300) ≈ 76.54; the expensive one gets 99.5 ×
+    (1500/1300) ≈ 114.81.
+    """
+    _seed_state_rpp(conn, "IL", 2024, 99.5)
+    csv_path = _write_csv(
+        tmp_path / "acs.csv",
+        rows=[
+            {"year": "2023", "state": "IL", "county_fips": "17001",
+             "county_name": "Cheap", "median_rent": "1000"},
+            {"year": "2023", "state": "IL", "county_fips": "17031",
+             "county_name": "Cook", "median_rent": "1300"},
+            {"year": "2023", "state": "IL", "county_fips": "17999",
+             "county_name": "Pricey", "median_rent": "1500"},
+        ],
+        fieldnames=["year", "state", "county_fips", "county_name", "median_rent"],
+    )
+    written = import_acs_county_rent_from_csv(
+        conn, input_path=csv_path, source="census:acs5_b25064"
+    )
+    assert written == 3
+    rows = {
+        row["geo_code"]: row
+        for row in conn.execute(
+            "SELECT geo_code, rpp_overall, rpp_rents, year, source "
+            "FROM cost_of_living_index WHERE geo_type='county'"
+        ).fetchall()
+    }
+    assert rows["17031"]["rpp_overall"] == pytest.approx(99.5, abs=0.01)
+    assert rows["17031"]["rpp_rents"] == pytest.approx(1300.0)
+    assert rows["17031"]["source"] == "census:acs5_b25064"
+    assert rows["17001"]["rpp_overall"] == pytest.approx(76.54, abs=0.01)
+    assert rows["17999"]["rpp_overall"] == pytest.approx(114.81, abs=0.01)
+
+
+def test_acs_county_rent_falls_back_to_within_state_ratio_without_bea_rpp(conn, tmp_path):
+    """Without a BEA state RPP row, the ingest must still produce a value
+    (the within-state ratio scaled to a 100-base index)."""
+    csv_path = _write_csv(
+        tmp_path / "acs.csv",
+        rows=[
+            {"year": "2023", "state": "TX", "county_fips": "48201",
+             "county_name": "Harris", "median_rent": "1340"},
+            {"year": "2023", "state": "TX", "county_fips": "48453",
+             "county_name": "Travis", "median_rent": "1640"},
+        ],
+        fieldnames=["year", "state", "county_fips", "county_name", "median_rent"],
+    )
+    written = import_acs_county_rent_from_csv(
+        conn, input_path=csv_path, source="census:acs5_b25064"
+    )
+    assert written == 2
+    rows = {
+        row["geo_code"]: row["rpp_overall"]
+        for row in conn.execute(
+            "SELECT geo_code, rpp_overall FROM cost_of_living_index WHERE geo_type='county'"
+        )
+    }
+    # Median rent across (1340, 1640) is 1490. Harris ratio 1340/1490=0.899...
+    assert rows["48201"] == pytest.approx(89.93, abs=0.05)
+    assert rows["48453"] == pytest.approx(110.07, abs=0.05)
+
+
+def test_acs_county_rent_seed_loads_for_every_state(conn):
+    """The checked-in seed must cover all 50 states + DC and parse cleanly."""
+    assert ACS_SEED_CSV.exists(), f"missing ACS seed at {ACS_SEED_CSV}"
+    written = import_acs_county_rent_from_csv(
+        conn, input_path=ACS_SEED_CSV, source="census:acs5_b25064"
+    )
+    assert written >= 100
+    states = {
+        row["geo_code"][:2]
+        for row in conn.execute(
+            "SELECT geo_code FROM cost_of_living_index WHERE geo_type='county'"
+        )
+    }
+    # 50 state FIPS prefixes + DC's 11.
+    assert len(states) >= 51

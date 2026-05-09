@@ -1,0 +1,169 @@
+year,state,county_fips,county_name,median_rent
+2023,AL,01073,Jefferson County,1010
+2023,AL,01097,Mobile County,990
+2023,AL,01101,Montgomery County,1020
+2023,AK,02020,Anchorage Municipality,1430
+2023,AK,02090,Fairbanks North Star Borough,1290
+2023,AZ,04013,Maricopa County,1620
+2023,AZ,04019,Pima County,1240
+2023,AZ,04015,Mohave County,1100
+2023,AR,05119,Pulaski County,1010
+2023,AR,05143,Washington County,990
+2023,AR,05007,Benton County,1080
+2023,CA,06037,Los Angeles County,1880
+2023,CA,06059,Orange County,2360
+2023,CA,06073,San Diego County,2100
+2023,CA,06065,Riverside County,1820
+2023,CA,06085,Santa Clara County,2840
+2023,CA,06067,Sacramento County,1690
+2023,CO,08031,Denver County,1620
+2023,CO,08005,Arapahoe County,1610
+2023,CO,08001,Adams County,1560
+2023,CO,08041,El Paso County,1450
+2023,CT,09003,Hartford County,1290
+2023,CT,09001,Fairfield County,1850
+2023,CT,09009,New Haven County,1370
+2023,DE,10003,New Castle County,1330
+2023,DE,10005,Sussex County,1280
+2023,DC,11001,District of Columbia,1760
+2023,FL,12086,Miami-Dade County,1610
+2023,FL,12011,Broward County,1810
+2023,FL,12099,Palm Beach County,1750
+2023,FL,12103,Pinellas County,1480
+2023,FL,12057,Hillsborough County,1500
+2023,FL,12095,Orange County,1620
+2023,GA,13121,Fulton County,1480
+2023,GA,13135,Gwinnett County,1480
+2023,GA,13089,DeKalb County,1320
+2023,GA,13067,Cobb County,1500
+2023,HI,15003,Honolulu County,1900
+2023,HI,15009,Maui County,1730
+2023,HI,15001,Hawaii County,1410
+2023,ID,16001,Ada County,1340
+2023,ID,16027,Canyon County,1130
+2023,ID,16055,Kootenai County,1230
+2023,IL,17031,Cook County,1300
+2023,IL,17043,DuPage County,1490
+2023,IL,17089,Kane County,1340
+2023,IL,17197,Will County,1400
+2023,IN,18097,Marion County,1080
+2023,IN,18057,Hamilton County,1310
+2023,IN,18141,St. Joseph County,940
+2023,IA,19153,Polk County,1040
+2023,IA,19113,Linn County,930
+2023,IA,19103,Johnson County,1080
+2023,KS,20173,Sedgwick County,910
+2023,KS,20091,Johnson County,1280
+2023,KS,20177,Shawnee County,930
+2023,KY,21111,Jefferson County,1020
+2023,KY,21067,Fayette County,1080
+2023,KY,21015,Boone County,1170
+2023,LA,22071,Orleans Parish,1180
+2023,LA,22033,East Baton Rouge Parish,1010
+2023,LA,22055,Lafayette Parish,990
+2023,ME,23005,Cumberland County,1340
+2023,ME,23031,York County,1290
+2023,MD,24031,Montgomery County,1900
+2023,MD,24033,Prince George's County,1700
+2023,MD,24005,Baltimore County,1430
+2023,MD,24510,Baltimore city,1190
+2023,MA,25025,Suffolk County,1880
+2023,MA,25017,Middlesex County,1980
+2023,MA,25021,Norfolk County,1850
+2023,MA,25027,Worcester County,1380
+2023,MI,26163,Wayne County,950
+2023,MI,26125,Oakland County,1340
+2023,MI,26099,Macomb County,1180
+2023,MI,26049,Genesee County,890
+2023,MN,27053,Hennepin County,1370
+2023,MN,27123,Ramsey County,1240
+2023,MN,27003,Anoka County,1370
+2023,MS,28049,Hinds County,930
+2023,MS,28047,Harrison County,1010
+2023,MS,28033,DeSoto County,1100
+2023,MO,29189,St. Louis County,1080
+2023,MO,29095,Jackson County,1010
+2023,MO,29510,St. Louis city,910
+2023,MT,30111,Yellowstone County,1080
+2023,MT,30063,Missoula County,1140
+2023,MT,30013,Cascade County,890
+2023,NE,31055,Douglas County,1060
+2023,NE,31109,Lancaster County,1010
+2023,NE,31153,Sarpy County,1280
+2023,NV,32003,Clark County,1480
+2023,NV,32031,Washoe County,1450
+2023,NV,32510,Carson City,1290
+2023,NH,33011,Hillsborough County,1490
+2023,NH,33015,Rockingham County,1610
+2023,NJ,34003,Bergen County,1850
+2023,NJ,34013,Essex County,1410
+2023,NJ,34023,Middlesex County,1640
+2023,NJ,34017,Hudson County,1700
+2023,NM,35001,Bernalillo County,1090
+2023,NM,35013,Dona Ana County,930
+2023,NM,35049,Santa Fe County,1240
+2023,NY,36047,Kings County,1740
+2023,NY,36081,Queens County,1810
+2023,NY,36005,Bronx County,1430
+2023,NY,36061,New York County,2030
+2023,NY,36059,Nassau County,2080
+2023,NY,36103,Suffolk County,2040
+2023,NC,37119,Mecklenburg County,1450
+2023,NC,37183,Wake County,1450
+2023,NC,37081,Guilford County,1100
+2023,NC,37063,Durham County,1370
+2023,ND,38017,Cass County,950
+2023,ND,38015,Burleigh County,930
+2023,OH,39061,Hamilton County,990
+2023,OH,39049,Franklin County,1180
+2023,OH,39035,Cuyahoga County,930
+2023,OH,39153,Summit County,950
+2023,OK,40109,Oklahoma County,990
+2023,OK,40143,Tulsa County,990
+2023,OK,40027,Cleveland County,1090
+2023,OR,41051,Multnomah County,1430
+2023,OR,41067,Washington County,1640
+2023,OR,41005,Clackamas County,1610
+2023,PA,42101,Philadelphia County,1180
+2023,PA,42003,Allegheny County,1040
+2023,PA,42091,Montgomery County,1480
+2023,PA,42017,Bucks County,1490
+2023,RI,44007,Providence County,1240
+2023,RI,44009,Washington County,1310
+2023,SC,45019,Charleston County,1490
+2023,SC,45045,Greenville County,1180
+2023,SC,45063,Lexington County,1180
+2023,SD,46099,Minnehaha County,930
+2023,SD,46103,Pennington County,940
+2023,TN,47157,Shelby County,1100
+2023,TN,47037,Davidson County,1430
+2023,TN,47093,Knox County,1180
+2023,TN,47065,Hamilton County,1090
+2023,TX,48201,Harris County,1340
+2023,TX,48113,Dallas County,1340
+2023,TX,48439,Tarrant County,1370
+2023,TX,48029,Bexar County,1240
+2023,TX,48453,Travis County,1640
+2023,TX,48085,Collin County,1700
+2023,UT,49035,Salt Lake County,1370
+2023,UT,49049,Utah County,1410
+2023,UT,49011,Davis County,1410
+2023,VT,50007,Chittenden County,1430
+2023,VT,50023,Washington County,1080
+2023,VA,51059,Fairfax County,2030
+2023,VA,51087,Henrico County,1430
+2023,VA,51810,Virginia Beach city,1450
+2023,VA,51760,Richmond city,1240
+2023,WA,53033,King County,2010
+2023,WA,53053,Pierce County,1610
+2023,WA,53061,Snohomish County,1810
+2023,WA,53063,Spokane County,1180
+2023,WV,54039,Kanawha County,810
+2023,WV,54061,Monongalia County,1010
+2023,WV,54003,Berkeley County,1080
+2023,WI,55079,Milwaukee County,990
+2023,WI,55025,Dane County,1310
+2023,WI,55133,Waukesha County,1240
+2023,WY,56021,Laramie County,990
+2023,WY,56025,Natrona County,910
+2023,WY,56039,Teton County,1640

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { countValue, money, propString } from './format';
+	import { countValue, money, propNumber, propString } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { mapState } from './store.svelte';
 	let { properties }: { properties: Record<string, unknown> } = $props();
@@ -7,6 +7,10 @@
 	const localityCode = $derived(propString(properties, 'locality_code'));
 	const gs13Locality = $derived(propString(properties, 'gs13_step1_locality'));
 	const rppOverall = $derived(propString(properties, 'rpp_overall'));
+	const rppSource = $derived(propString(properties, 'rpp_overall_source', 'state'));
+	const stateRpp = $derived(propString(properties, 'rpp_state'));
+	const rentMedian = $derived(propNumber(properties, 'rent_median'));
+	const rppLabel = $derived(rppSource === 'county' ? 'County COL index' : 'RPP overall');
 	const payVsCol = $derived(propString(properties, 'pay_vs_col'));
 	const referenceYear = $derived(mapState.manifest?.reference_year ?? 2025);
 </script>
@@ -42,13 +46,31 @@
 				<span class="src">Source: OPM {referenceYear} GS pay tables × locality % (pay_scales × locality_pay_areas)</span>
 			</InfoTooltip>
 		</dd>
-		<dt>RPP overall</dt>
+		{#if rentMedian !== null}
+			<dt>Median gross rent</dt>
+			<dd>
+				{money(rentMedian)}
+				<InfoTooltip title="ACS median gross rent" align="end">
+					<span>Census ACS 5-year median gross rent (table B25064) for this county. Used as the within-state rent ratio for the county COL estimate.</span>
+					<span class="src">Source: U.S. Census Bureau, ACS 5-year B25064 (cost_of_living_index, geo_type=county)</span>
+				</InfoTooltip>
+			</dd>
+		{/if}
+		<dt>{rppLabel}</dt>
 		<dd>
 			{rppOverall}
-			<InfoTooltip title="Regional Price Parity" align="end">
-				<span>Cost-of-living index for this county. 100 = U.S. average. Higher = more expensive.</span>
-				<span>Where BEA county RPP is unavailable, the export falls back to the state-level value.</span>
-				<span class="src">Source: BEA Regional Price Parities (cost_of_living_index)</span>
+			<InfoTooltip title={rppSource === 'county' ? 'County COL estimate' : 'Regional Price Parity'} align="end">
+				{#if rppSource === 'county'}
+					<span>Estimated cost-of-living index for this county. 100 = U.S. average. Higher = more expensive.</span>
+					<span class="formula">state_rpp × (county_rent ÷ state_median_rent)</span>
+					<span class="formula">= {stateRpp} × ({rentMedian ?? '—'} ÷ state_median) = {rppOverall}</span>
+					<span class="src">Sources: BEA state RPP × Census ACS B25064 county rents (D.5.10).</span>
+					<span class="src note">Approximation. BEA does not publish county-level RPP; this scales the state RPP by the county's rent ratio within its state.</span>
+				{:else}
+					<span>Cost-of-living index for this county. 100 = U.S. average. Higher = more expensive.</span>
+					<span>State-level fallback: this county is not yet covered by the ACS county-rent ingest.</span>
+					<span class="src">Source: BEA Regional Price Parities (cost_of_living_index, geo_type=state)</span>
+				{/if}
 			</InfoTooltip>
 		</dd>
 		<dt>Pay/COL index</dt>
@@ -58,11 +80,17 @@
 				<span>How far a GS-13 step 1 paycheck stretches in this county relative to the U.S. average. 100 = average; &gt;100 = pay outpaces COL; &lt;100 = pay lags COL.</span>
 				<span class="formula">(locality_pay ÷ national_base_pay) ÷ (rpp ÷ 100) × 100</span>
 				<span class="formula">= ({gs13Locality} ÷ national_base) ÷ ({rppOverall} ÷ 100) × 100 = {payVsCol}</span>
-				<span class="src">Sources: OPM pay tables (numerator) + BEA RPP (denominator). National base = GS-13 step 1 base ({referenceYear}).</span>
+				<span class="src">Sources: OPM pay tables (numerator) + {rppSource === 'county' ? 'derived county COL' : 'BEA RPP'} (denominator). National base = GS-13 step 1 base ({referenceYear}).</span>
 			</InfoTooltip>
 		</dd>
 	</dl>
-	<p class="note">County RPP uses the export's state-level fallback where BEA county RPP is unavailable.</p>
+	<p class="note">
+		{#if rppSource === 'county'}
+			County COL estimated from BEA state RPP scaled by the county's ACS rent ratio. Refresh ACS data to update.
+		{:else}
+			County RPP uses the state-level fallback where ACS county rent has not been ingested yet.
+		{/if}
+	</p>
 </section>
 
 <style>

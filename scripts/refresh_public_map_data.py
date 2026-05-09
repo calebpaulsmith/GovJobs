@@ -19,6 +19,7 @@ Environment variables:
     PUBLIC_MAP_GS_PAY_CSVS        - colon/semicolon-separated list of GS pay CSV paths
     PUBLIC_MAP_OTHER_PAY_PLANS    - "PLAN=path" pairs separated by ';' (e.g. "FW=fw.csv;ES=es.csv")
     PUBLIC_MAP_BEA_RPP_CSV        - BEA RPP CSV path
+    PUBLIC_MAP_ACS_COUNTY_RENTS_CSV - ACS county median rent CSV override
     PUBLIC_MAP_ZIP_CENTROIDS      - ZIP/ZCTA centroid CSV/TXT/ZIP override
 
 Run:
@@ -218,6 +219,20 @@ def build_steps() -> list[Step]:
             key="ingest_bea_rpp",
             label="BEA Regional Price Parities",
             args=bea_args,
+        )
+    )
+
+    # D.5.10 — county-level COL must run after BEA RPP so the per-county
+    # estimator can read state RPPs from the same database.
+    acs_rents = os.environ.get("PUBLIC_MAP_ACS_COUNTY_RENTS_CSV")
+    acs_args = [_python(), "scripts/ingest_acs_county_rent.py"]
+    if acs_rents:
+        acs_args.extend(["--input", acs_rents])
+    steps.append(
+        Step(
+            key="ingest_acs_county_rent",
+            label="Census ACS county median rent",
+            args=acs_args,
         )
     )
 
