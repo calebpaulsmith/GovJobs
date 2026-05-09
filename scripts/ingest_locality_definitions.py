@@ -39,7 +39,7 @@ from src.ingest_common import emit_summary, resolve_or_download, run_ingest  # n
 SOURCE_KEY = "opm_locality_definitions"
 DISPLAY_NAME = "OPM locality pay area definitions"
 CATEGORY = "locality"
-SEED_CSV = REPO / "data" / "external" / "opm_locality_definitions" / "2025.csv"
+SEED_CSV = REPO / "data" / "external" / "opm_locality_definitions" / "2026.csv"
 
 REQUIRED_COLUMNS = {"locality_code", "year", "county_fips"}
 

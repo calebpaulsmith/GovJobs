@@ -34,7 +34,7 @@ from src.ingest_common import emit_summary, resolve_or_download, run_ingest  # n
 SOURCE_KEY = "opm_locality_pay"
 DISPLAY_NAME = "OPM locality pay percentages"
 CATEGORY = "pay"
-SEED_CSV = REPO / "data" / "external" / "opm_locality_pay" / "2025.csv"
+SEED_CSV = REPO / "data" / "external" / "opm_locality_pay" / "2026.csv"
 
 REQUIRED_COLUMNS = {"locality_code", "year", "adjustment_pct"}
 

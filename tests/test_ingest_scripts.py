@@ -373,3 +373,58 @@ def test_bea_rpp_csv_inserts_state_and_metro_rows(conn, tmp_path):
     ).fetchone()
     assert il["rpp_overall"] == pytest.approx(99.5)
     assert il["rpp_goods"] == pytest.approx(98.0)
+
+
+# ---------- D.5.14: 2026 seed cutover --------------------------------------
+
+
+def test_2026_gs_seed_imports_full_grid_and_resolves_reference_year(conn):
+    """The checked-in 2026 seed loads cleanly and pay_scales gains a 2026 row
+    set. Reference year resolution must then return 2026."""
+    from scripts.ingest_gs_pay import SEED_CSV
+    from src.public_map_export import current_reference_year
+
+    assert SEED_CSV.exists(), f"missing 2026 GS seed at {SEED_CSV}"
+    assert SEED_CSV.name == "2026_base.csv"
+
+    written = import_gs_pay_from_csv(
+        conn,
+        input_path=SEED_CSV,
+        pay_plan="GS",
+        source="opm:gs_pay",
+        default_source_url=None,
+    )
+    # 15 grades × 10 steps = 150 cells.
+    assert written == 150
+
+    rows = conn.execute(
+        "SELECT COUNT(*) AS n FROM pay_scales WHERE pay_plan='GS' AND year=2026"
+    ).fetchone()
+    assert rows["n"] == 150
+    assert current_reference_year(conn) == 2026
+
+
+def test_2026_locality_pay_seed_loads_with_year_2026():
+    """The locality-pay seed file must declare year=2026 for V1 cutover."""
+    from scripts.ingest_locality_pay import SEED_CSV
+
+    assert SEED_CSV.exists(), f"missing 2026 locality pay seed at {SEED_CSV}"
+    assert SEED_CSV.name == "2026.csv"
+    with SEED_CSV.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "locality_pay seed is empty"
+    assert all(int(row["year"]) == 2026 for row in rows)
+    # RUS (Rest of U.S.) must always be present — the calculator's
+    # default-locality fallback depends on it.
+    assert any(row["locality_code"].upper() == "RUS" for row in rows)
+
+
+def test_2026_locality_definitions_seed_loads_with_year_2026():
+    from scripts.ingest_locality_definitions import SEED_CSV
+
+    assert SEED_CSV.exists(), f"missing 2026 locality defs seed at {SEED_CSV}"
+    assert SEED_CSV.name == "2026.csv"
+    with SEED_CSV.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "locality_definitions seed is empty"
+    assert all(int(row["year"]) == 2026 for row in rows)

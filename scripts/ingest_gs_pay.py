@@ -37,7 +37,7 @@ from src.ingest_common import emit_summary, resolve_or_download, run_ingest  # n
 SOURCE_KEY = "opm_gs_pay"
 DISPLAY_NAME = "OPM GS pay tables"
 CATEGORY = "pay"
-SEED_CSV = REPO / "data" / "external" / "opm_gs_pay" / "2025_base.csv"
+SEED_CSV = REPO / "data" / "external" / "opm_gs_pay" / "2026_base.csv"
 
 REQUIRED_COLUMNS = {"year", "grade", "step", "annual_rate"}
 

@@ -390,3 +390,19 @@ The bulk-historic plan (D.5.7's HistoricJoa half + D.5.21 static history JSON + 
 
 **Consequences.** ADR-0016's "no live API" clause is narrowed to: "no live API that requires keys, no live DB, no user data online." Public, keyless endpoints behind an edge cache are allowed for explicit click-to-load features. The dashboard's local SQLite stays small (no millions of HistoricJoa rows). Adds one Cloudflare Pages Function (free tier covers ~100k req/day) and one new ROADMAP entry, **D.5.24 — On-demand Posting Intelligence**. The on-demand tab eventually replaces D.5.21 (per-job history) and D.5.22 (timeline sparkline) — both are folded into D.5.24. The trailing-90-days closed-jobs overlay (D.5.7's static half) is unchanged.
 
+---
+
+## ADR-0030 — 2026 GS pay-table cutover with bootstrap seed + operator verification
+Date: 2026-05-09
+Status: Accepted
+
+**Context.** CLAUDE.md invariant 15 requires Public Map V1 to ship official OPM 2026 GS base + locality pay rows, with `manifest.json.reference_year` resolving to 2026 and the Public Map Admin spot-check verifying sampled cells against OPM-published values. The OPM website is not reliably reachable from every dev sandbox (the 403 responses observed during the D.5.14 work are an example), so a "fetch official PDF at code time" approach can leave a clean checkout unable to bootstrap the 2026 reference year. We needed the cutover to be unblockable while still preserving the official-data invariant.
+
+**Decision.** D.5.14 ships a two-stage cutover:
+
+1. **Bootstrap seed (now).** Check in `data/external/opm_gs_pay/2026_base.csv` computed as `round(2025_rate × 1.010)` — the across-the-board portion of the 2026 raise per OPM's published PDF title "Incorporating the 1% General Schedule Increase." Locality percentages (`opm_locality_pay/2026.csv`) and county→locality mappings (`opm_locality_definitions/2026.csv`) carry the 2025 values forward as 2026 placeholders, since both are stable year-over-year. `SEED_CSV` constants in the three OPM ingest scripts point to the 2026 files; the orchestrator label changes from "2025 seed" to "2026 seed". `current_reference_year(conn)` therefore resolves to 2026 immediately on a clean checkout.
+
+2. **Operator verification (before V1 deploy).** `pages/11_Public_Map_Admin.py` gains a "Reference year (D.5.14)" panel that shows three sampled GS cells (GS-1 step 1 base, GS-13 step 1 base, GS-15 step 10 base), the resolved reference year, and the official OPM 2026 PDF URL. Any operator with internet access opens the PDF, checks the three cells, and either accepts the seed (cells match within $1) or replaces `data/external/opm_gs_pay/2026_base.csv` with the verified rows and re-runs `python scripts/ingest_gs_pay.py`. The existing year-over-year diff already flags large unexpected jumps. V1 is **not** callable done until an operator has logged a clean spot-check against OPM's published 2026 values.
+
+**Consequences.** Public-map exports always have a populated reference year, even before the operator can reach OPM directly. The bootstrap seed is clearly labeled with `source_url=https://www.opm.gov/.../2026/general-schedule/` and the seed CSV is not used as final V1 data — D.5.14 is marked partial in `docs/ROADMAP.md` until the operator verification step is logged. `pay_calculator.calculate_job_pay_table` works against the 2026 rows the same way it worked against 2025, so D.5.11 (per-job pay grid with status flag) inherits the 2026 cutover automatically. If the rounding rule in OPM's actual PDF differs from `round(rate × 1.01)` for a given cell (annual rates derive from hourly × 2087, with their own rounding chain), the diff will be at most a dollar or two per cell — the spot-check tolerance is set so that anything outside ±$1 fires.
+

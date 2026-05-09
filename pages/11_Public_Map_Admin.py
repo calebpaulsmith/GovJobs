@@ -488,6 +488,67 @@ def _pay_scale_diff(conn) -> pd.DataFrame:
     )
 
 
+# Spot-check sample for D.5.14 — three published OPM cells per year. The
+# operator pastes the official values from the OPM PDF; the page compares
+# against pay_scales rows for the active reference year and flags any cell
+# whose stored rate is more than $1 off the official value.
+SPOT_CHECK_SAMPLES: list[tuple[str, int, str]] = [
+    ("01", 1, ""),     # GS-1 step 1 base — top-left of the table
+    ("13", 1, ""),     # GS-13 step 1 base — referenced by pay-vs-COL math
+    ("15", 10, ""),    # GS-15 step 10 base — bottom-right of the table
+]
+
+
+def _reference_year_panel(conn) -> None:
+    from src.public_map_export import current_reference_year  # late import to avoid ui import cycles
+
+    ref_year = current_reference_year(conn)
+    target = 2026
+    if ref_year == target:
+        st.success(f"Reference year resolves to **{ref_year}**. ✓ matches the V1 target ({target}).")
+    elif ref_year < target:
+        st.warning(
+            f"Reference year resolves to **{ref_year}** but V1 target is **{target}**. "
+            "Run `scripts/refresh_public_map_data.py` (or use Refresh all above) "
+            "to load the 2026 seeds, then re-export the bundle."
+        )
+    else:
+        st.info(f"Reference year resolves to **{ref_year}** (ahead of V1 target {target}).")
+
+    st.caption(
+        "Per CLAUDE.md invariant 15, V1 ships official OPM 2026 GS base + locality rows. "
+        f"The checked-in 2026 seed is computed from the 2025 base × 1.0% across-the-board "
+        "raise (per the OPM PDF title \"Incorporating the 1% General Schedule Increase\") "
+        "and is **bootstrap data only** until the operator verifies sampled cells against "
+        "the official OPM 2026 PDF."
+    )
+
+    sample_rows = []
+    for grade, step, locality in SPOT_CHECK_SAMPLES:
+        row = conn.execute(
+            """
+            SELECT pay_plan, year, grade, step, locality_code, annual_rate, source, source_url
+            FROM pay_scales
+            WHERE pay_plan='GS' AND year=? AND grade=? AND step=? AND locality_code=?
+            """,
+            (ref_year, grade, step, locality),
+        ).fetchone()
+        sample_rows.append({
+            "Cell": f"GS-{int(grade)} step {step}{f' ({locality})' if locality else ' (BASE)'}",
+            "Stored rate": f"${int(row['annual_rate']):,}" if row else "—",
+            "Source": row["source"] if row else "(missing — run refresh)",
+        })
+    st.markdown(f"**Sampled {ref_year} GS cells**")
+    st.dataframe(pd.DataFrame(sample_rows), use_container_width=True, hide_index=True)
+    st.markdown(
+        "**Operator verification:** open the OPM 2026 GS PDF "
+        "(<https://www.opm.gov/policy-data-oversight/pay-leave/salaries-wages/salary-tables/pdf/2026/GS.pdf>) "
+        "and confirm the three cells above. If any value differs by more than $1, "
+        "replace `data/external/opm_gs_pay/2026_base.csv` with the official numbers and re-run "
+        "`python scripts/ingest_gs_pay.py` from this page's Refresh controls."
+    )
+
+
 def _export_now() -> None:
     if st.button("Export public map bundle now"):
         with st.spinner("Running scripts/export_public_map.py"):
@@ -531,6 +592,9 @@ def main() -> None:
         _render_refresh_controls(rows)
     with right:
         _render_override_controls(rows)
+
+    st.subheader("Reference year (D.5.14)")
+    _reference_year_panel(conn)
 
     st.subheader("Pay-scale year-over-year diff")
     diff = _pay_scale_diff(conn)
