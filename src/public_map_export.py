@@ -1051,13 +1051,19 @@ def counties_geojson(
     """FeatureCollection of US counties with locality + RPP context.
 
     ``locality_code`` is joined via ``locality_pay_counties`` for ``year``.
-    ``rpp_overall`` is the state-level fallback (BEA does not publish county-
-    level RPP). ``postings`` counts markers whose geocoded county matches.
+    ``rpp_overall`` prefers the county-level RPP from
+    ``cost_of_living_index`` (geo_type='county') when D.5.10's ACS ingest
+    has populated it; otherwise it falls back to the state-level value.
+    ``rpp_overall_source`` is ``'county'`` or ``'state'`` so the client can
+    label approximate fallbacks honestly. ``postings`` counts markers whose
+    geocoded county matches.
     """
     resolved_year = year if year is not None else current_reference_year(conn)
     markers = _marker_dataset(conn, year=resolved_year)
     postings_by_county = _count_by(markers, "county_fips")
     rpp_by_state = _rpp_lookup(conn, geo_type="state")
+    rpp_by_county = _rpp_lookup(conn, geo_type="county")
+    national_base_pay = _gs_base_step1_for_year(conn, resolved_year, grade="13")
 
     rows = conn.execute(
         """
@@ -1071,6 +1077,7 @@ def counties_geojson(
         (resolved_year,),
     ).fetchall()
 
+    pay_cache: dict[str, float | None] = {}
     features: list[dict[str, Any]] = []
     for row in rows:
         fips = (row["fips"] or "").strip()
@@ -1082,6 +1089,23 @@ def counties_geojson(
         if tolerance:
             geometry = simplify_geometry(geometry, tolerance)
         state_code = (row["state"] or "").upper() or None
+        county_rpp = rpp_by_county.get(fips)
+        if county_rpp is not None:
+            rpp_value: float | None = county_rpp
+            rpp_source = "county"
+        elif state_code:
+            rpp_value = rpp_by_state.get(state_code)
+            rpp_source = "state" if rpp_value is not None else None
+        else:
+            rpp_value = None
+            rpp_source = None
+        locality_code = (row["locality_code"] or "").upper() or None
+        if locality_code and locality_code not in pay_cache:
+            pay_cache[locality_code] = _gs13_step1_for_locality(
+                conn, locality_code=locality_code, year=resolved_year
+            )
+        gs13_pay = pay_cache.get(locality_code) if locality_code else None
+        pay_vs_col = _pay_vs_col(gs13_pay, rpp_value, national_pay=national_base_pay)
         features.append(
             {
                 "type": "Feature",
@@ -1092,7 +1116,10 @@ def counties_geojson(
                     "state": state_code,
                     "cbsa_code": row["cbsa_code"],
                     "locality_code": row["locality_code"],
-                    "rpp_overall": rpp_by_state.get(state_code) if state_code else None,
+                    "gs13_step1_locality": gs13_pay,
+                    "rpp_overall": rpp_value,
+                    "rpp_overall_source": rpp_source,
+                    "pay_vs_col": pay_vs_col,
                     "postings": int(postings_by_county.get(fips, 0)),
                 },
             }
@@ -1196,11 +1223,13 @@ def pay_tables(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
-    """``{by_state, by_cbsa}`` keyed by code with the latest-year RPP row.
+    """``{by_state, by_cbsa, by_county}`` keyed by code with the latest-year row.
 
     Latest year is computed per geography so a state with stale data still
     surfaces alongside a cbsa with newer data; the returned row carries its
-    ``year`` so the client can label it.
+    ``year`` so the client can label it. ``by_county`` is populated by D.5.10
+    when ``census_acs_rent`` ingest has run; entries are derived as
+    ``state_rpp × (county_rent / state_median_rent)``.
     """
     rows = conn.execute(
         """
@@ -1208,14 +1237,27 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
                rpp_rents, source
         FROM cost_of_living_index
         ORDER BY geo_type, geo_code,
-                 CASE source WHEN 'bea:rpp' THEN 0 ELSE 1 END,
+                 CASE source
+                     WHEN 'bea:rpp' THEN 0
+                     WHEN 'census:acs5_b25064' THEN 0
+                     ELSE 1
+                 END,
                  year DESC
         """
     ).fetchall()
     by_state: dict[str, Any] = {}
     by_cbsa: dict[str, Any] = {}
+    by_county: dict[str, Any] = {}
     for row in rows:
-        bucket = by_state if row["geo_type"] == "state" else by_cbsa
+        geo_type = row["geo_type"]
+        if geo_type == "state":
+            bucket = by_state
+        elif geo_type == "cbsa":
+            bucket = by_cbsa
+        elif geo_type == "county":
+            bucket = by_county
+        else:
+            continue
         code = (row["geo_code"] or "").strip()
         if not code or code in bucket:
             continue
@@ -1227,7 +1269,7 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
             "rpp_rents": _round_or_none(row["rpp_rents"]),
             "source": row["source"],
         }
-    return {"by_state": by_state, "by_cbsa": by_cbsa}
+    return {"by_state": by_state, "by_cbsa": by_cbsa, "by_county": by_county}
 
 
 def zip_centroids_payload(conn: sqlite3.Connection) -> list[dict[str, Any]]:

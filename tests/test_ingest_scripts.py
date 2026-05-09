@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ingest_acs_county_rents import import_acs_rents_from_csv
 from scripts.ingest_bea_rpp import import_rpp_from_csv
 from scripts.ingest_cbsa_polygons import import_cbsa_from_geojson
 from scripts.ingest_county_polygons import import_counties_from_geojson
@@ -374,6 +375,109 @@ def test_bea_rpp_csv_inserts_state_and_metro_rows(conn, tmp_path):
     ).fetchone()
     assert il["rpp_overall"] == pytest.approx(99.5)
     assert il["rpp_goods"] == pytest.approx(98.0)
+
+
+# ---------- D.5.10: Census ACS county rents -------------------------------
+
+
+def _seed_state_rpp(conn, *, geo_code: str, year: int, rpp_overall: float) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cost_of_living_index (
+            year, geo_type, geo_code, rpp_overall, rpp_goods, rpp_services,
+            rpp_rents, source, imported_at
+        ) VALUES (?, 'state', ?, ?, NULL, NULL, NULL, 'bea:rpp', ?)
+        """,
+        (year, geo_code.upper(), rpp_overall, "2024-01-01T00:00:00Z"),
+    )
+    conn.commit()
+
+
+def test_acs_county_rents_derives_county_rpp_from_state_rpp(conn, tmp_path):
+    _seed_state_rpp(conn, geo_code="IL", year=2023, rpp_overall=98.0)
+    _seed_state_rpp(conn, geo_code="CA", year=2023, rpp_overall=113.8)
+    csv_path = _write_csv(
+        tmp_path / "acs.csv",
+        rows=[
+            {"year": "2023", "geo_type": "state", "geo_code": "IL",
+             "county_name": "", "state": "IL", "median_rent": "1130"},
+            {"year": "2023", "geo_type": "state", "geo_code": "CA",
+             "county_name": "", "state": "CA", "median_rent": "1856"},
+            {"year": "2023", "geo_type": "county", "geo_code": "17031",
+             "county_name": "Cook County", "state": "IL", "median_rent": "1264"},
+            {"year": "2023", "geo_type": "county", "geo_code": "06037",
+             "county_name": "Los Angeles County", "state": "CA", "median_rent": "1856"},
+        ],
+        fieldnames=["year", "geo_type", "geo_code", "county_name", "state", "median_rent"],
+    )
+    written = import_acs_rents_from_csv(
+        conn, input_path=csv_path, source="census:acs5_b25064"
+    )
+    assert written == 2  # state rows are not inserted; only counties
+
+    cook = conn.execute(
+        "SELECT rpp_overall, rpp_rents FROM cost_of_living_index "
+        "WHERE geo_type='county' AND geo_code='17031' AND year=2023"
+    ).fetchone()
+    # state_rpp 98.0 × (1264 / 1130) = 109.62
+    assert cook["rpp_overall"] == pytest.approx(109.62, abs=0.05)
+    assert cook["rpp_rents"] == pytest.approx(1264.0)
+
+    la = conn.execute(
+        "SELECT rpp_overall FROM cost_of_living_index "
+        "WHERE geo_type='county' AND geo_code='06037' AND year=2023"
+    ).fetchone()
+    # state_rpp 113.8 × (1856 / 1856) = 113.8
+    assert la["rpp_overall"] == pytest.approx(113.8)
+
+
+def test_acs_county_rents_skips_counties_when_state_rpp_missing(conn, tmp_path):
+    # No BEA RPP seeded for WY, so the WY county row should be skipped.
+    _seed_state_rpp(conn, geo_code="IL", year=2023, rpp_overall=98.0)
+    csv_path = _write_csv(
+        tmp_path / "acs.csv",
+        rows=[
+            {"year": "2023", "geo_type": "state", "geo_code": "IL",
+             "county_name": "", "state": "IL", "median_rent": "1130"},
+            {"year": "2023", "geo_type": "state", "geo_code": "WY",
+             "county_name": "", "state": "WY", "median_rent": "900"},
+            {"year": "2023", "geo_type": "county", "geo_code": "17031",
+             "county_name": "Cook County", "state": "IL", "median_rent": "1264"},
+            {"year": "2023", "geo_type": "county", "geo_code": "56021",
+             "county_name": "Laramie County", "state": "WY", "median_rent": "950"},
+        ],
+        fieldnames=["year", "geo_type", "geo_code", "county_name", "state", "median_rent"],
+    )
+    written = import_acs_rents_from_csv(
+        conn, input_path=csv_path, source="census:acs5_b25064"
+    )
+    assert written == 1
+    rows = conn.execute(
+        "SELECT geo_code FROM cost_of_living_index WHERE geo_type='county'"
+    ).fetchall()
+    assert [r["geo_code"] for r in rows] == ["17031"]
+
+
+def test_acs_county_rents_seed_csv_loads_against_seeded_bea_rows(conn):
+    """The checked-in seed must produce non-zero county rows when the BEA seed is loaded."""
+    from scripts.ingest_acs_county_rents import SEED_CSV
+    from scripts.ingest_bea_rpp import SEED_CSV as BEA_SEED
+
+    assert SEED_CSV.exists(), f"missing ACS rent seed at {SEED_CSV}"
+    written_bea = import_rpp_from_csv(conn, input_path=BEA_SEED, source="bea:rpp")
+    assert written_bea > 0
+    written = import_acs_rents_from_csv(
+        conn, input_path=SEED_CSV, source="census:acs5_b25064"
+    )
+    # The seed has ~40 county rows; require at least 30 to land.
+    assert written >= 30
+    # Cook County (Chicago) must be present and have a sensible RPP.
+    cook = conn.execute(
+        "SELECT rpp_overall FROM cost_of_living_index "
+        "WHERE geo_type='county' AND geo_code='17031'"
+    ).fetchone()
+    assert cook is not None
+    assert 60.0 <= cook["rpp_overall"] <= 160.0
 
 
 # ---------- D.5.14: 2026 seed cutover --------------------------------------

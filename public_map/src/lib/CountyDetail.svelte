@@ -7,8 +7,16 @@
 	const localityCode = $derived(propString(properties, 'locality_code'));
 	const gs13Locality = $derived(propString(properties, 'gs13_step1_locality'));
 	const rppOverall = $derived(propString(properties, 'rpp_overall'));
+	const rppSource = $derived(propString(properties, 'rpp_overall_source'));
 	const payVsCol = $derived(propString(properties, 'pay_vs_col'));
 	const referenceYear = $derived(mapState.manifest?.reference_year ?? 2025);
+	const rppLabel = $derived(
+		rppSource === 'county'
+			? 'County (ACS rent-derived)'
+			: rppSource === 'state'
+				? 'State fallback'
+				: 'Unavailable'
+	);
 </script>
 
 <section>
@@ -44,11 +52,18 @@
 		</dd>
 		<dt>RPP overall</dt>
 		<dd>
-			{rppOverall}
+			{rppOverall} <span class="precision">({rppLabel})</span>
 			<InfoTooltip title="Regional Price Parity" align="end">
 				<span>Cost-of-living index for this county. 100 = U.S. average. Higher = more expensive.</span>
-				<span>Where BEA county RPP is unavailable, the export falls back to the state-level value.</span>
-				<span class="src">Source: BEA Regional Price Parities (cost_of_living_index)</span>
+				{#if rppSource === 'county'}
+					<span class="formula">state_rpp × (county_median_rent ÷ state_median_rent)</span>
+					<span class="src">Sources: BEA RPP (state) × Census ACS 5-year B25064 median gross rent (county). Per D.5.10.</span>
+				{:else if rppSource === 'state'}
+					<span>County-level ACS rent data is not yet ingested for this county. Falling back to the state-level BEA RPP.</span>
+					<span class="src">Source: BEA Regional Price Parities (state)</span>
+				{:else}
+					<span>RPP unavailable for this county.</span>
+				{/if}
 			</InfoTooltip>
 		</dd>
 		<dt>Pay/COL index</dt>
@@ -62,7 +77,15 @@
 			</InfoTooltip>
 		</dd>
 	</dl>
-	<p class="note">County RPP uses the export's state-level fallback where BEA county RPP is unavailable.</p>
+	<p class="note">
+		{#if rppSource === 'county'}
+			County RPP is derived from Census ACS B25064 median rent.
+		{:else if rppSource === 'state'}
+			County RPP uses the state-level BEA fallback; ACS county rents are not yet ingested for this county.
+		{:else}
+			RPP is unavailable for this county.
+		{/if}
+	</p>
 </section>
 
 <style>
@@ -72,5 +95,6 @@
 	.grid { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.8rem; margin: 0; }
 	dt { color: #94a3b8; }
 	dd { margin: 0; font-weight: 600; text-align: right; }
+	.precision { color: #94a3b8; font-weight: 400; font-size: 11px; }
 	.note { margin: 0.8rem 0 0; color: #94a3b8; font-size: 12px; line-height: 1.45; }
 </style>

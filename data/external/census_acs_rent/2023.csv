@@ -1,0 +1,70 @@
+year,geo_type,geo_code,county_name,state,median_rent
+2023,state,AL,,AL,950
+2023,state,AK,,AK,1346
+2023,state,AZ,,AZ,1417
+2023,state,AR,,AR,861
+2023,state,CA,,CA,1856
+2023,state,CO,,CO,1597
+2023,state,CT,,CT,1421
+2023,state,DC,,DC,1697
+2023,state,FL,,FL,1466
+2023,state,GA,,GA,1268
+2023,state,IL,,IL,1130
+2023,state,MA,,MA,1620
+2023,state,MD,,MD,1577
+2023,state,MI,,MI,1023
+2023,state,MN,,MN,1170
+2023,state,NC,,NC,1144
+2023,state,NJ,,NJ,1614
+2023,state,NV,,NV,1424
+2023,state,NY,,NY,1428
+2023,state,OH,,OH,946
+2023,state,OR,,OR,1393
+2023,state,PA,,PA,1135
+2023,state,TX,,TX,1306
+2023,state,UT,,UT,1308
+2023,state,VA,,VA,1483
+2023,state,WA,,WA,1554
+2023,county,01073,Jefferson County,AL,1075
+2023,county,02020,Anchorage Municipality,AK,1395
+2023,county,04013,Maricopa County,AZ,1492
+2023,county,04019,Pima County,AZ,1207
+2023,county,06037,Los Angeles County,CA,1856
+2023,county,06059,Orange County,CA,2230
+2023,county,06073,San Diego County,CA,2128
+2023,county,06075,San Francisco County,CA,2249
+2023,county,06081,San Mateo County,CA,2580
+2023,county,06085,Santa Clara County,CA,2613
+2023,county,08031,Denver County,CO,1574
+2023,county,09003,Hartford County,CT,1294
+2023,county,11001,District of Columbia,DC,1697
+2023,county,12086,Miami-Dade County,FL,1591
+2023,county,12095,Orange County,FL,1599
+2023,county,13121,Fulton County,GA,1485
+2023,county,17031,Cook County,IL,1264
+2023,county,17097,Lake County,IL,1442
+2023,county,24031,Montgomery County,MD,1953
+2023,county,24033,Prince George's County,MD,1807
+2023,county,25025,Suffolk County,MA,1799
+2023,county,27053,Hennepin County,MN,1314
+2023,county,32003,Clark County,NV,1393
+2023,county,34003,Bergen County,NJ,1799
+2023,county,34013,Essex County,NJ,1392
+2023,county,36005,Bronx County,NY,1378
+2023,county,36047,Kings County,NY,1582
+2023,county,36061,New York County,NY,1947
+2023,county,36081,Queens County,NY,1648
+2023,county,37119,Mecklenburg County,NC,1404
+2023,county,37183,Wake County,NC,1432
+2023,county,39035,Cuyahoga County,OH,894
+2023,county,41051,Multnomah County,OR,1454
+2023,county,42101,Philadelphia County,PA,1166
+2023,county,48029,Bexar County,TX,1184
+2023,county,48201,Harris County,TX,1247
+2023,county,48439,Tarrant County,TX,1325
+2023,county,48453,Travis County,TX,1568
+2023,county,49035,Salt Lake County,UT,1325
+2023,county,51059,Fairfax County,VA,2106
+2023,county,51510,Alexandria city,VA,1872
+2023,county,53033,King County,WA,1799
+2023,county,53061,Snohomish County,WA,1748

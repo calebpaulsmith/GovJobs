@@ -365,10 +365,33 @@ def test_counties_geojson_joins_locality_and_state_rpp(conn, tmp_path):
     assert props["state"] == "IL"
     assert props["cbsa_code"] == "16980"
     assert props["locality_code"] == "CHI"
-    # RPP fallback is state-level per the plan (BEA does not publish
-    # county RPP).
+    # No county-level RPP seeded in this fixture — falls back to the state value.
     assert props["rpp_overall"] == 99.5
+    assert props["rpp_overall_source"] == "state"
+    assert props["gs13_step1_locality"] == 110_803.00
     assert props["postings"] == 1
+
+
+def test_counties_geojson_prefers_county_rpp_when_present(conn, tmp_path):
+    """D.5.10: when census_acs_rent has populated a county-level row in
+    cost_of_living_index, counties_geojson must use it instead of the
+    state-level fallback and label the source as 'county'."""
+    _seed_full_chicago_fixture(conn, tmp_path)
+    # ACS-derived county row that differs from the state-level value
+    _seed_rpp(
+        conn,
+        geo_type="county",
+        geo_code="17031",
+        year=2023,
+        rpp_overall=109.62,
+        source="census:acs5_b25064",
+    )
+
+    fc = counties_geojson(conn, repo_root=tmp_path, year=YEAR, tolerance=0.0)
+    props = fc["features"][0]["properties"]
+    assert props["rpp_overall"] == 109.62
+    assert props["rpp_overall_source"] == "county"
+    assert props["pay_vs_col"] is not None
 
 
 def test_counties_postings_match_marker_county_fips(conn, tmp_path):
@@ -481,6 +504,33 @@ def test_cost_of_living_returns_latest_year_per_geo(conn):
     assert col["by_state"]["IL"]["year"] == 2024
     assert col["by_state"]["IL"]["rpp_overall"] == 99.5
     assert col["by_cbsa"]["16980"]["rpp_overall"] == 104.2
+    # by_county is always present (D.5.10), even if empty
+    assert "by_county" in col
+    assert col["by_county"] == {}
+
+
+def test_cost_of_living_by_county_carries_acs_rows(conn):
+    """D.5.10: county-level rows from census:acs5_b25064 land in by_county."""
+    _seed_rpp(
+        conn,
+        geo_type="county",
+        geo_code="17031",
+        year=2023,
+        rpp_overall=109.62,
+        source="census:acs5_b25064",
+    )
+    _seed_rpp(
+        conn,
+        geo_type="county",
+        geo_code="06037",
+        year=2023,
+        rpp_overall=113.8,
+        source="census:acs5_b25064",
+    )
+    col = cost_of_living(conn)
+    assert col["by_county"]["17031"]["rpp_overall"] == 109.62
+    assert col["by_county"]["17031"]["source"] == "census:acs5_b25064"
+    assert col["by_county"]["06037"]["rpp_overall"] == 113.8
 
 
 # ---------- manifest data sources ----------------------------------------
