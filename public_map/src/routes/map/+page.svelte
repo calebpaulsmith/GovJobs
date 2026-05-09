@@ -9,6 +9,7 @@
 	import SavedSearchMenu from '$lib/SavedSearchMenu.svelte';
 	import AddressSearch from '$lib/AddressSearch.svelte';
 	import ProfileDrawer from '$lib/ProfileDrawer.svelte';
+	import CompensationComparator from '$lib/CompensationComparator.svelte';
 	import { LAYOUT_SLOTS, slotAttr } from '$lib/layout';
 	import { mapState } from '$lib/store.svelte';
 	import { jobProfile } from '$lib/jobProfile.svelte';
@@ -67,6 +68,15 @@
 		<button
 			type="button"
 			class="profile-btn"
+			onclick={() => (mapState.compareOpen = true)}
+			aria-label="Open pay and cost-of-living comparator"
+			title="Compare pay across localities and states"
+		>
+			Pay Compare
+		</button>
+		<button
+			type="button"
+			class="profile-btn"
 			onclick={() => (mapState.profileOpen = true)}
 			aria-label="Open my jobs profile"
 			title="My saved and hidden jobs"
@@ -86,6 +96,7 @@
 	</header>
 
 	<ProfileDrawer />
+	<CompensationComparator />
 
 	{#key mapState.theme}
 		<Map />

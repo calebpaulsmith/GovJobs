@@ -40,6 +40,8 @@ class MapState {
 	profileOpen = $state<boolean>(false);
 	// D.5.16: light/dark theme. Initialized from localStorage in +page.svelte.
 	theme = $state<'light' | 'dark'>('dark');
+	// D.5.17: compensation/COL comparator drawer.
+	compareOpen = $state<boolean>(false);
 }
 
 export interface MapViewport {

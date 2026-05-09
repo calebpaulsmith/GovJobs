@@ -91,11 +91,25 @@ export interface JobDetails {
 
 export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;
 
+export interface StateColRow {
+	year: number | null;
+	rpp_overall: number | null;
+	rpp_goods: number | null;
+	rpp_services: number | null;
+	rpp_rents: number | null;
+	source: string;
+}
+export interface CostOfLiving {
+	by_state: Record<string, StateColRow>;
+	by_cbsa: Record<string, unknown>;
+}
+
 let jobDetailsCache: Record<string, JobDetails> | null = null;
 let agencyOptionsCache: AgencyOption[] | null = null;
 let payTablesCache: PayTables | null = null;
 let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
 let zipCentroidsCache: ZipCentroid[] | null = null;
+let costOfLivingCache: CostOfLiving | null = null;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -153,4 +167,12 @@ export async function loadPayTables(): Promise<PayTables> {
 export async function loadZipCentroids(): Promise<ZipCentroid[]> {
 	zipCentroidsCache ??= await fetchJson<ZipCentroid[]>('zip_centroids.json', []);
 	return zipCentroidsCache;
+}
+
+export async function loadCostOfLiving(): Promise<CostOfLiving> {
+	costOfLivingCache ??= await fetchJson<CostOfLiving>('cost_of_living.json', {
+		by_state: {},
+		by_cbsa: {}
+	});
+	return costOfLivingCache;
 }
