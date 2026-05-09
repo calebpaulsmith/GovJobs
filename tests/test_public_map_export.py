@@ -10,6 +10,7 @@ from src.database import (
     record_geocoding_miss,
     upsert_geocoded_location,
     upsert_job,
+    upsert_zip_centroid,
 )
 from src.public_map_export import (
     agency_options,
@@ -21,6 +22,7 @@ from src.public_map_export import (
     opm_state_aggregates,
     posting_coverage_summary,
     series_options,
+    zip_centroids_payload,
 )
 
 
@@ -382,3 +384,27 @@ def test_record_geocoding_miss_dedupes(conn):
         "SELECT seen_count FROM geocoding_misses WHERE city='atlantis' AND state='IL'"
     ).fetchone()
     assert row["seen_count"] == 2
+
+
+def test_zip_centroids_payload_exports_static_lookup(conn):
+    upsert_zip_centroid(
+        conn,
+        zip_code="60601",
+        lat=41.88531,
+        lon=-87.62164,
+        city="Chicago",
+        state="IL",
+        county_fips="17031",
+        source="test",
+    )
+
+    assert zip_centroids_payload(conn) == [
+        {
+            "zip": "60601",
+            "lat": 41.88531,
+            "lon": -87.62164,
+            "city": "Chicago",
+            "state": "IL",
+            "county_fips": "17031",
+        }
+    ]

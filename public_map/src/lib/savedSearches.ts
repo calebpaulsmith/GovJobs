@@ -1,6 +1,6 @@
 import { DEFAULT_METRIC, type MetricKey } from './metrics';
 import { DEFAULT_FILTERS, normalizeFilters, type JobFilters } from './filters';
-import type { MapViewport } from './store.svelte';
+import type { AddressTarget, MapViewport } from './store.svelte';
 
 export const SAVED_SEARCHES_KEY = 'tgp.public_map.saved_searches.v1';
 export const SAVED_SEARCHES_SCHEMA_VERSION = 1;
@@ -13,6 +13,7 @@ export interface SavedSearch {
 	filters: JobFilters;
 	metric: MetricKey;
 	viewport?: MapViewport;
+	addressTarget?: AddressTarget;
 }
 
 interface SavedSearchStore {
@@ -52,6 +53,7 @@ export function createSavedSearch(input: {
 	filters: JobFilters;
 	metric: MetricKey;
 	viewport?: MapViewport;
+	addressTarget?: AddressTarget | null;
 }): SavedSearch {
 	const now = new Date().toISOString();
 	return {
@@ -61,7 +63,8 @@ export function createSavedSearch(input: {
 		updatedAt: now,
 		filters: cloneFilters(input.filters),
 		metric: input.metric,
-		viewport: input.viewport ? cloneViewport(input.viewport) : undefined
+		viewport: input.viewport ? cloneViewport(input.viewport) : undefined,
+		addressTarget: input.addressTarget ? cloneAddressTarget(input.addressTarget) : undefined
 	};
 }
 
@@ -90,7 +93,8 @@ function normalizeSavedSearch(item: Partial<SavedSearch>): SavedSearch | null {
 		updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
 		filters: cloneFilters(item.filters ?? DEFAULT_FILTERS),
 		metric,
-		viewport: item.viewport ? cloneViewport(item.viewport) : undefined
+		viewport: item.viewport ? cloneViewport(item.viewport) : undefined,
+		addressTarget: item.addressTarget ? cloneAddressTarget(item.addressTarget) : undefined
 	};
 }
 
@@ -99,6 +103,25 @@ function cloneViewport(viewport: MapViewport): MapViewport {
 		center: [Number(viewport.center[0]), Number(viewport.center[1])],
 		zoom: Number(viewport.zoom)
 	};
+}
+
+function cloneAddressTarget(target: AddressTarget): AddressTarget {
+	const resultType = isResultType(target.resultType) ? target.resultType : 'address';
+	const provider = isProvider(target.provider) ? target.provider : 'nominatim';
+	return {
+		...cloneViewport(target),
+		label: String(target.label ?? 'Saved address'),
+		resultType,
+		provider
+	};
+}
+
+function isResultType(value: unknown): value is AddressTarget['resultType'] {
+	return value === 'address' || value === 'postcode' || value === 'place' || value === 'region';
+}
+
+function isProvider(value: unknown): value is AddressTarget['provider'] {
+	return value === 'mapbox' || value === 'nominatim' || value === 'zip_centroid';
 }
 
 function cleanName(name: string): string {

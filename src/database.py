@@ -757,6 +757,22 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             UNIQUE(city, state, location_text)
         );
 
+        CREATE TABLE IF NOT EXISTS zip_centroids (
+            zip TEXT PRIMARY KEY,
+            lat REAL NOT NULL,
+            lon REAL NOT NULL,
+            city TEXT,
+            state TEXT,
+            county_fips TEXT,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_zip_centroids_state
+            ON zip_centroids(state);
+        CREATE INDEX IF NOT EXISTS idx_zip_centroids_county
+            ON zip_centroids(county_fips);
+
         CREATE TABLE IF NOT EXISTS pay_plans (
             code TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -881,7 +897,7 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     _seed_pay_plans(conn)
     _backfill_child_tables_from_jobs(conn)
     _backfill_search_locations_from_raw(conn)
-    _set_meta(conn, "schema_version", "9")
+    _set_meta(conn, "schema_version", "10")
     conn.commit()
     return conn
 
@@ -2268,6 +2284,48 @@ def upsert_geocoded_location(
             lon,
             county_fips,
             geo_quality,
+            source,
+            utc_now(),
+        ),
+    )
+
+
+def upsert_zip_centroid(
+    conn: sqlite3.Connection,
+    zip_code: str,
+    lat: float,
+    lon: float,
+    city: str | None = None,
+    state: str | None = None,
+    county_fips: str | None = None,
+    source: str = "census_zcta",
+) -> None:
+    """Insert or update one 5-digit ZIP/ZCTA centroid row."""
+    normalized_zip = re.sub(r"\D", "", zip_code or "")[:5]
+    if len(normalized_zip) != 5:
+        raise ValueError("zip_code must contain a 5-digit ZIP")
+    conn.execute(
+        """
+        INSERT INTO zip_centroids (
+            zip, lat, lon, city, state, county_fips, source, imported_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(zip) DO UPDATE SET
+            lat=excluded.lat,
+            lon=excluded.lon,
+            city=excluded.city,
+            state=excluded.state,
+            county_fips=excluded.county_fips,
+            source=excluded.source,
+            imported_at=excluded.imported_at
+        """,
+        (
+            normalized_zip,
+            float(lat),
+            float(lon),
+            (city or "").strip() or None,
+            (state or "").strip().upper() or None,
+            (county_fips or "").strip() or None,
             source,
             utc_now(),
         ),

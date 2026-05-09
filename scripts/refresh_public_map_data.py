@@ -19,6 +19,7 @@ Environment variables:
     PUBLIC_MAP_GS_PAY_CSVS        - colon/semicolon-separated list of GS pay CSV paths
     PUBLIC_MAP_OTHER_PAY_PLANS    - "PLAN=path" pairs separated by ';' (e.g. "FW=fw.csv;ES=es.csv")
     PUBLIC_MAP_BEA_RPP_CSV        - BEA RPP CSV path
+    PUBLIC_MAP_ZIP_CENTROIDS      - ZIP/ZCTA centroid CSV/TXT/ZIP override
 
 Run:
     python scripts/refresh_public_map_data.py
@@ -217,6 +218,18 @@ def build_steps() -> list[Step]:
             key="ingest_bea_rpp",
             label="BEA Regional Price Parities",
             args=bea_args,
+        )
+    )
+
+    zip_centroids = os.environ.get("PUBLIC_MAP_ZIP_CENTROIDS")
+    zip_args = [_python(), "scripts/ingest_zip_centroids.py"]
+    if zip_centroids:
+        zip_args.extend(["--input", zip_centroids])
+    steps.append(
+        Step(
+            key="ingest_zip_centroids",
+            label="ZIP/ZCTA centroids",
+            args=zip_args,
         )
     )
 

@@ -34,6 +34,15 @@ export interface AgencyOption {
 	postings: number;
 }
 
+export interface ZipCentroid {
+	zip: string;
+	lat: number;
+	lon: number;
+	city?: string;
+	state?: string;
+	county_fips?: string;
+}
+
 export interface JobDetails {
 	id: number;
 	title: string;
@@ -64,6 +73,7 @@ let jobDetailsCache: Record<string, JobDetails> | null = null;
 let agencyOptionsCache: AgencyOption[] | null = null;
 let payTablesCache: PayTables | null = null;
 let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
+let zipCentroidsCache: ZipCentroid[] | null = null;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -116,4 +126,9 @@ export async function loadJobDetails(id: string | number): Promise<JobDetails | 
 export async function loadPayTables(): Promise<PayTables> {
 	payTablesCache ??= await fetchJson<PayTables>('pay_tables.json', {});
 	return payTablesCache;
+}
+
+export async function loadZipCentroids(): Promise<ZipCentroid[]> {
+	zipCentroidsCache ??= await fetchJson<ZipCentroid[]>('zip_centroids.json', []);
+	return zipCentroidsCache;
 }

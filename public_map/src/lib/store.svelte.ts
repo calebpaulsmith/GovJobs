@@ -11,8 +11,12 @@ class MapState {
 	closedJobsEnabled = $state<boolean>(false);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
+	addressSearchOpen = $state<boolean>(false);
+	addressTarget = $state<AddressTarget | null>(null);
+	lastAddressTarget = $state<AddressTarget | null>(null);
 	savedSearchesOpen = $state<boolean>(false);
 	selectedFeature = $state<SelectedFeature | null>(null);
+	focusedArea = $state<FocusedArea | null>(null);
 	// When set, the FeaturePanel renders a JobList for the matching scope
 	// (e.g. {scope: 'state', state: 'IL'}) instead of the current
 	// selectedFeature detail view. Set by clicking "View N postings" inside a
@@ -30,11 +34,22 @@ export interface MapViewport {
 	zoom: number;
 }
 
+export interface AddressTarget extends MapViewport {
+	label: string;
+	resultType: 'address' | 'postcode' | 'place' | 'region';
+	provider: 'mapbox' | 'nominatim' | 'zip_centroid';
+}
+
 export interface ListView {
 	scope: 'state' | 'locality' | 'county' | 'cbsa';
 	// 2-letter state postal, OPM locality code, 5-digit county FIPS, etc.
 	code: string;
 	// Display label for the panel header.
+	label: string;
+}
+
+export interface FocusedArea {
+	source: string;
 	label: string;
 }
 

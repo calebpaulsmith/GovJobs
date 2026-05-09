@@ -142,6 +142,7 @@
 	class="filters"
 	class:expanded
 	class:saved-open={mapState.savedSearchesOpen}
+	class:address-open={mapState.addressSearchOpen}
 	aria-label="Map filters"
 	data-layout-slot={slotAttr(LAYOUT_SLOTS.filters)}
 >
@@ -297,14 +298,21 @@
 	.filters {
 		position: absolute;
 		left: 1rem;
-		top: 10.9rem;
+		top: 12.45rem;
 		z-index: 6;
 		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
+		transition: top 160ms ease;
+	}
+	.filters.address-open {
+		top: 24.5rem;
 	}
 	.filters.saved-open {
-		top: 24rem;
+		top: 27rem;
+	}
+	.filters.saved-open.address-open {
+		top: 37rem;
 	}
 	.toggle,
 	.body {
@@ -479,6 +487,10 @@
 			bottom: 6.5rem;
 		}
 		.filters.saved-open {
+			top: auto;
+		}
+		.filters.address-open,
+		.filters.saved-open.address-open {
 			top: auto;
 		}
 		.row,

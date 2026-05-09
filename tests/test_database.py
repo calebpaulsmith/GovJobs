@@ -25,6 +25,7 @@ from src.database import (
     start_manifest,
     update_manifest,
     upsert_application,
+    upsert_zip_centroid,
     upsert_job,
     upsert_job_text,
     upsert_resume_version,
@@ -112,8 +113,29 @@ def test_init_schema_creates_core_tables(conn):
         "applications",
         "application_events",
         "resume_versions",
+        "zip_centroids",
     }.issubset(tables)
     assert conn.execute("SELECT name FROM agency_codes WHERE code='HSCB'").fetchone()[0]
+
+
+def test_upsert_zip_centroid_round_trips(conn):
+    upsert_zip_centroid(
+        conn,
+        zip_code="60601",
+        lat=41.88531,
+        lon=-87.62164,
+        city="Chicago",
+        state="il",
+        county_fips="17031",
+        source="test",
+    )
+    upsert_zip_centroid(conn, zip_code="60601", lat=41.88, lon=-87.62, source="test2")
+
+    row = conn.execute("SELECT * FROM zip_centroids WHERE zip='60601'").fetchone()
+    assert row["lat"] == 41.88
+    assert row["lon"] == -87.62
+    assert row["state"] is None
+    assert row["source"] == "test2"
 
 
 def test_upsert_job_inserts_and_updates_by_dedup_key(conn):

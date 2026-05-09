@@ -4,6 +4,7 @@
 	import FeaturePanel from '$lib/FeaturePanel.svelte';
 	import FilterPanel from '$lib/FilterPanel.svelte';
 	import SavedSearchMenu from '$lib/SavedSearchMenu.svelte';
+	import AddressSearch from '$lib/AddressSearch.svelte';
 	import { LAYOUT_SLOTS, slotAttr } from '$lib/layout';
 	import { mapState } from '$lib/store.svelte';
 </script>
@@ -32,6 +33,7 @@
 
 	<Map />
 	<MetricSwitcher />
+	<AddressSearch />
 	<SavedSearchMenu />
 	<FilterPanel />
 	<FeaturePanel />

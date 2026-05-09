@@ -30,7 +30,7 @@ from src.database import utc_now
 logger = logging.getLogger(__name__)
 
 
-VALID_CATEGORIES = {"job_postings", "pay", "locality", "geometry", "col"}
+VALID_CATEGORIES = {"job_postings", "pay", "locality", "geometry", "col", "geocoding"}
 
 
 def begin_run(

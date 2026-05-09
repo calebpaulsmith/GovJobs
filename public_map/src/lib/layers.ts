@@ -16,6 +16,7 @@ export const SOURCE_IDS = {
 	localities: 'localities',
 	jobsHeat: 'jobs-heat',
 	closedJobs: 'closed-jobs',
+	addressPin: 'address-pin',
 	jobs: 'jobs'
 } as const;
 
@@ -28,6 +29,8 @@ export const LAYER_IDS = {
 	localitiesOutline: 'localities-outline',
 	postingHeat: 'posting-heat',
 	closedMarkers: 'closed-job-markers',
+	addressPinHalo: 'address-pin-halo',
+	addressPin: 'address-pin',
 	clusters: 'job-clusters',
 	clusterCount: 'job-cluster-count',
 	markers: 'job-markers'
@@ -267,6 +270,34 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1,
 			'circle-opacity': FADE(7, 9, 0.95)
+		}
+	});
+
+	map.addLayer({
+		id: LAYER_IDS.addressPinHalo,
+		type: 'circle',
+		source: SOURCE_IDS.addressPin,
+		filter: ['!', ['has', 'point_count']],
+		paint: {
+			'circle-color': '#fbbf24',
+			'circle-radius': 15,
+			'circle-opacity': 0.18,
+			'circle-stroke-color': '#fef3c7',
+			'circle-stroke-width': 1.2,
+			'circle-stroke-opacity': 0.7
+		}
+	});
+	map.addLayer({
+		id: LAYER_IDS.addressPin,
+		type: 'circle',
+		source: SOURCE_IDS.addressPin,
+		filter: ['!', ['has', 'point_count']],
+		paint: {
+			'circle-color': '#f59e0b',
+			'circle-radius': 5,
+			'circle-stroke-color': '#111827',
+			'circle-stroke-width': 1.5,
+			'circle-opacity': 0.95
 		}
 	});
 }

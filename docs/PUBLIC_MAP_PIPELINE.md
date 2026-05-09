@@ -34,7 +34,7 @@ The public site is read-only. No backend, no API, no auth, no DB online.
 
 ## One-time setup
 
-Per ADR-0027 (self-bootstrapping ingests, shipped 2026-05-08), the orchestrator runs to completion from a clean checkout with **no environment variables set**. Census polygons download themselves from `www2.census.gov/geo/tiger/GENZ2023/`; OPM locality definitions, OPM locality pay percentages, OPM GS base pay, and BEA RPP all default to checked-in seed CSVs under `data/external/{opm_locality_definitions,opm_locality_pay,opm_gs_pay,bea_rpp}/`. Env vars (`PUBLIC_MAP_*_GEOJSON`, `PUBLIC_MAP_*_CSV`) are now overrides, not enablement gates.
+Per ADR-0027 (self-bootstrapping ingests, shipped 2026-05-08), the orchestrator runs to completion from a clean checkout with **no environment variables set**. Census polygons download themselves from `www2.census.gov/geo/tiger/GENZ2023/`; ZIP/ZCTA centroids download from the Census Gazetteer; OPM locality definitions, OPM locality pay percentages, OPM GS base pay, and BEA RPP all default to checked-in seed CSVs under `data/external/{opm_locality_definitions,opm_locality_pay,opm_gs_pay,bea_rpp}/`. Env vars (`PUBLIC_MAP_*_GEOJSON`, `PUBLIC_MAP_*_CSV`) are now overrides, not enablement gates.
 
 1. **External datasets directory.** `data/external/` already contains the seed CSVs. Other downloads land here on first run; the cached files are reused on subsequent runs. Add new vintages by replacing the seed CSV under each `<source_key>/<year>.csv` path.
 2. **Geocoding seed.** Download SimpleMaps US Cities Basic CSV (CC-BY 4.0) from <https://simplemaps.com/data/us-cities>. Save to `data/external/uscities.csv`. Then:
@@ -104,7 +104,7 @@ python scripts/ingest_county_polygons.py         # Census TIGER counties
 python scripts/ingest_cbsa_polygons.py           # Census TIGER CBSAs
 python scripts/ingest_bea_rpp.py                 # BEA Regional Price Parities
 python scripts/ingest_other_pay_plans.py         # FW, ES, AD, FP, LE, VN, ...
-python scripts/ingest_zip_centroids.py           # SimpleMaps US ZIPs (D.5.4)
+python scripts/ingest_zip_centroids.py           # Census ZCTA centroids (D.5.4)
 python scripts/ingest_agency_aliases.py          # curated agency-shorthand list (D.5.2)
 python scripts/ingest_federal_properties.py     # GSA FRPP (D.5.9, ADR-0025)
 python scripts/ingest_acs_county_rents.py        # Census ACS B25064 → county COL (D.5.10)
@@ -177,7 +177,7 @@ Task Scheduler skips runs when the laptop is asleep. The footer's "freshness per
 
 | File / directory | Role |
 | --- | --- |
-| `src/database.py` | All public-map tables: `locations_geocoded`, `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status` |
+| `src/database.py` | All public-map tables: `locations_geocoded`, `zip_centroids`, `pay_plans`, `pay_scales`, `locality_pay_areas`, `locality_pay_counties`, `counties`, `metro_areas`, `state_polygons`, `cost_of_living_index`, `data_source_status` |
 | `src/data_source_registry.py` | Status read/update helpers |
 | `src/reference_data.py` | Pure read helpers for pay/locality/COL |
 | `src/pay_calculator.py` | Locality-adjusted pay tables per job |

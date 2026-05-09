@@ -43,7 +43,8 @@
 			name: name || defaultName(),
 			filters: mapState.filters,
 			metric: mapState.metric,
-			viewport: mapState.viewport
+			viewport: mapState.viewport,
+			addressTarget: mapState.lastAddressTarget
 		});
 		persist([item, ...searches]);
 		name = '';
@@ -55,7 +56,10 @@
 		mapState.filters = item.filters;
 		mapState.metric = item.metric;
 		mapState.choroplethEnabled = true;
-		if (item.viewport) mapState.pendingViewport = item.viewport;
+		if (item.addressTarget) {
+			mapState.lastAddressTarget = item.addressTarget;
+			mapState.addressTarget = item.addressTarget;
+		} else if (item.viewport) mapState.pendingViewport = item.viewport;
 		open = false;
 		mapState.savedSearchesOpen = false;
 	}
@@ -77,7 +81,12 @@
 	}
 </script>
 
-<section class="saved-searches" data-layout-slot={slotAttr(LAYOUT_SLOTS.search)} aria-label="Saved searches">
+<section
+	class="saved-searches"
+	class:address-open={mapState.addressSearchOpen}
+	data-layout-slot={slotAttr(LAYOUT_SLOTS.search)}
+	aria-label="Saved searches"
+>
 	<button
 		type="button"
 		class="toggle"
@@ -141,12 +150,16 @@
 <style>
 	.saved-searches {
 		position: absolute;
-		top: 5.15rem;
+		top: 8.85rem;
 		left: 1rem;
 		z-index: 7;
 		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
+		transition: top 160ms ease;
+	}
+	.saved-searches.address-open {
+		top: 21rem;
 	}
 	.toggle,
 	.menu {
@@ -260,8 +273,11 @@
 	}
 	@media (max-width: 640px) {
 		.saved-searches {
-			top: 5.7rem;
+			top: 9.4rem;
 			left: 0.5rem;
+		}
+		.saved-searches.address-open {
+			top: 21.5rem;
 		}
 	}
 </style>

@@ -55,12 +55,19 @@ dark modes, includes the personal compensation/COL comparator, shows
 source-backed urgency/fill badges on job listings, and persists local
 viewed/saved/hidden job state in the browser.
 
-### Current next step: D.5.4 address / ZIP zoom
+### Current next step: continue D.5.5 click-to-fit bounds
 
 D.5.2 and D.5.3 shipped on 2026-05-09. The map now has code-backed agency
 chips with repeated `agency=` URL state and client-only saved searches that
-persist filters, metric, and map viewport in `localStorage`.
+persist filters, metric, map viewport, and the last address-zoom target in
+`localStorage`.
 
-D.5.4 is the next public-map implementation step. It adds a top-left address /
-ZIP search control with Mapbox geocoding when a token is present, Nominatim as
-the fallback, and offline ZIP centroids once the export grows that bundle.
+D.5.4 shipped on 2026-05-09. The map has a top-left address / ZIP search
+control, Mapbox geocoding when a token is present, Nominatim fallback,
+offline `zip_centroids.json` lookup, `flyTo`, and a transient non-job pin.
+The bundle now includes 33,791 Census ZCTA centroids from
+`scripts/ingest_zip_centroids.py`.
+
+D.5.5 is now active. Polygon clicks fit the map to state, locality, county,
+or metro bounds and show a Back to national pill; the remaining D.5.5 work is
+visual verification plus the fuller scoped action window.

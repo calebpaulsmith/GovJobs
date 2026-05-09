@@ -34,6 +34,7 @@
 	let allJobs: FeatureCollection | null = null;
 	let allClosedJobs: FeatureCollection | null = null;
 	let jobDetails: Record<string, JobDetails> = {};
+	let addressPinTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const MAXZOOM = 9;
 	const MINZOOM = 3;
@@ -97,6 +98,7 @@
 				addOrUpdateSource(map, SOURCE_IDS.localities, localities);
 				addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
 				addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
+				addOrUpdateSource(map, SOURCE_IDS.addressPin, emptyCollection());
 				addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 
 				addAllLayers(map, mapState.metric);
@@ -152,7 +154,15 @@
 		mapState.pendingViewport = null;
 	});
 
+	$effect(() => {
+		const target = mapState.addressTarget;
+		if (!mounted || !map || !target || !map.isStyleLoaded()) return;
+		setAddressPin(target);
+		map.flyTo({ center: target.center, zoom: Math.min(target.zoom, MAXZOOM), duration: 700, essential: true });
+	});
+
 	onDestroy(() => {
+		if (addressPinTimer) clearTimeout(addressPinTimer);
 		map?.remove();
 		map = null;
 	});
@@ -187,6 +197,29 @@
 			const bucket = totals.get(state);
 			props.remote_share = bucket && bucket.total > 0 ? bucket.remote / bucket.total : null;
 		}
+	}
+
+	function emptyCollection(): FeatureCollection {
+		return { type: 'FeatureCollection', features: [] };
+	}
+
+	function setAddressPin(target: { center: [number, number]; label: string; provider: string }): void {
+		if (!map) return;
+		addOrUpdateSource(map, SOURCE_IDS.addressPin, {
+			type: 'FeatureCollection',
+			features: [
+				{
+					type: 'Feature',
+					geometry: { type: 'Point', coordinates: target.center },
+					properties: { label: target.label, provider: target.provider }
+				}
+			]
+		});
+		if (addressPinTimer) clearTimeout(addressPinTimer);
+		addressPinTimer = setTimeout(() => {
+			if (map) addOrUpdateSource(map, SOURCE_IDS.addressPin, emptyCollection());
+			mapState.addressTarget = null;
+		}, 8000);
 	}
 
 	function updateViewport(): void {
@@ -227,6 +260,7 @@
 					label: labelFor(layerId),
 					properties: props
 				};
+				fitFocusedFeature(m, layerId, feature);
 				return;
 			}
 			mapState.selectedFeature = null;
@@ -249,7 +283,7 @@
 			case LAYER_IDS.closedMarkers:
 				return 'Closed posting';
 			case LAYER_IDS.statesFill:
-				return 'State roundup';
+				return 'State';
 			case LAYER_IDS.localitiesFill:
 				return 'Locality detail';
 			case LAYER_IDS.countiesOutline:
@@ -259,6 +293,58 @@
 			default:
 				return layerId;
 		}
+	}
+
+	function fitFocusedFeature(m: MaplibreMap, layerId: string, feature: MapboxGeoJSONFeature): void {
+		const zoomByLayer: Record<string, number> = {
+			[LAYER_IDS.statesFill]: 6,
+			[LAYER_IDS.localitiesFill]: 7,
+			[LAYER_IDS.countiesOutline]: 8,
+			[LAYER_IDS.metrosOutline]: 8
+		};
+		const maxZoom = zoomByLayer[layerId];
+		if (!maxZoom) return;
+		const bounds = boundsForGeometry(feature.geometry);
+		if (!bounds) return;
+		const props = feature.properties ?? {};
+		mapState.focusedArea = {
+			source: layerId,
+			label: String(props.name ?? props.state ?? props.code ?? props.fips ?? props.cbsa_code ?? labelFor(layerId))
+		};
+		m.fitBounds(bounds, { padding: 60, maxZoom, duration: 700 });
+	}
+
+	function boundsForGeometry(geometry: GeoJSON.Geometry | null): [[number, number], [number, number]] | null {
+		if (!geometry || !('coordinates' in geometry)) return null;
+		const points: [number, number][] = [];
+		collectCoordinates(geometry.coordinates, points);
+		if (points.length === 0) return null;
+		let minLng = Infinity;
+		let minLat = Infinity;
+		let maxLng = -Infinity;
+		let maxLat = -Infinity;
+		for (const [lng, lat] of points) {
+			minLng = Math.min(minLng, lng);
+			minLat = Math.min(minLat, lat);
+			maxLng = Math.max(maxLng, lng);
+			maxLat = Math.max(maxLat, lat);
+		}
+		return [[minLng, minLat], [maxLng, maxLat]];
+	}
+
+	function collectCoordinates(value: unknown, points: [number, number][]): void {
+		if (!Array.isArray(value)) return;
+		if (typeof value[0] === 'number' && typeof value[1] === 'number') {
+			points.push([Number(value[0]), Number(value[1])]);
+			return;
+		}
+		for (const item of value) collectCoordinates(item, points);
+	}
+
+	function backToNational(): void {
+		if (!map) return;
+		mapState.focusedArea = null;
+		map.flyTo({ center: [-97, 38.5], zoom: 4, duration: 700, essential: true });
 	}
 
 	function zoomIntoCluster(m: MaplibreMap, feature: MapboxGeoJSONFeature): void {
@@ -294,6 +380,13 @@
 	</div>
 {/if}
 
+{#if mapState.focusedArea}
+	<button type="button" class="back-national" onclick={backToNational}>
+		<span>Back to national</span>
+		<strong>{mapState.focusedArea.label}</strong>
+	</button>
+{/if}
+
 <style>
 	.map-container {
 		position: absolute;
@@ -325,5 +418,41 @@
 		background: rgba(255, 255, 255, 0.05);
 		padding: 0 4px;
 		border-radius: 2px;
+	}
+	.back-national {
+		position: absolute;
+		left: 50%;
+		bottom: 6.35rem;
+		transform: translateX(-50%);
+		z-index: 8;
+		appearance: none;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		max-width: min(28rem, calc(100vw - 2rem));
+		border: 1px solid #4979b3;
+		border-radius: 999px;
+		background: rgba(14, 23, 38, 0.94);
+		color: #d8e6f3;
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+		backdrop-filter: blur(8px);
+		cursor: pointer;
+		font-size: 12px;
+		padding: 0.55rem 0.8rem;
+	}
+	.back-national strong {
+		color: #7bd0f2;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.back-national:focus-visible {
+		outline: 2px solid #7bd0f2;
+		outline-offset: 2px;
+	}
+	@media (max-width: 640px) {
+		.back-national {
+			bottom: 11rem;
+		}
 	}
 </style>

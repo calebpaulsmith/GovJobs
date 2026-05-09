@@ -1030,6 +1030,34 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"by_state": by_state, "by_cbsa": by_cbsa}
 
 
+def zip_centroids_payload(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return static ZIP/ZCTA centroids for offline ZIP search."""
+    if not _table_exists(conn, "zip_centroids"):
+        return []
+    rows = conn.execute(
+        """
+        SELECT zip, lat, lon, city, state, county_fips
+        FROM zip_centroids
+        ORDER BY zip
+        """
+    ).fetchall()
+    payload: list[dict[str, Any]] = []
+    for row in rows:
+        if row["lat"] is None or row["lon"] is None:
+            continue
+        payload.append(
+            {
+                "zip": str(row["zip"]).zfill(5),
+                "lat": round(float(row["lat"]), 5),
+                "lon": round(float(row["lon"]), 5),
+                "city": row["city"] or None,
+                "state": (row["state"] or "").upper() or None,
+                "county_fips": row["county_fips"] or None,
+            }
+        )
+    return payload
+
+
 # ---------- Reference-year + lookup helpers ---------------------------------
 
 

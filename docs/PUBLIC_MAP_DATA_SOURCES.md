@@ -189,16 +189,16 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Verification**: ~30K rows; major cities present (Chicago, DC, NYC, LA).
 - **Attribution**: required in public footer ("City data © SimpleMaps, CC-BY 4.0").
 
-### `simplemaps_uszips`
+### `census_zcta_gazetteer`
 
-- **Source**: SimpleMaps US ZIPs Basic, CC-BY 4.0.
-  - URL: <https://simplemaps.com/data/us-zips>
+- **Source**: U.S. Census Bureau 2024 ZIP Code Tabulation Area Gazetteer.
+  - URL: <https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_zcta_national.zip>
 - **Lands in**: `zip_centroids` (zip, lat, lon, city, state, county_fips). New table introduced in D.5.4.
-- **Ingest**: `scripts/ingest_zip_centroids.py`. Idempotent; writes status under `simplemaps_uszips`.
+- **Ingest**: `scripts/ingest_zip_centroids.py`. Idempotent; writes status under `census_zcta_gazetteer`. Operator CSV overrides can use SimpleMaps-style columns (`zip`, `lat`, `lng`, `city`, `state_id`, `county_fips`) when city/state/county labels are desired.
 - **Refresh**: occasional.
 - **Public-map relevance**: powers the address / ZIP geocoder's offline path (no network required for ZIP queries) and gives FRPP rows a county FIPS when only a ZIP is reported.
 - **Verification**: ~33K ZCTAs; spot-check `60601` (Chicago Loop), `20002` (NE DC), `99701` (Fairbanks).
-- **Attribution**: required in public footer alongside `simplemaps_uscities`.
+- **Attribution**: U.S. Census Bureau. If a SimpleMaps override is used, add "ZIP data © SimpleMaps, CC-BY 4.0" to the public footer.
 
 ### `mapbox_geocoding`
 

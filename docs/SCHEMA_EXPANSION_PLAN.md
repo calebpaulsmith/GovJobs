@@ -65,7 +65,7 @@ These appear in SIF but do not support the current app tasks enough to deserve f
 6. Next: improve `job_required_documents` into standard-code plus free-text rows.
 7. Done: add `job_contacts`, `job_openings`, `job_security_clearances`, `job_travel_requirements`, and `job_application_options`.
 8. Next: scalar/code-list refinements for relocation, financial disclosure, bargaining unit, and full official code-list sync if observed data quality supports it.
-9. Public-map D.5: add `zip_centroids` (ZCTA → lat/lon/county_fips). Repeats per ZIP, code-list backed, used for offline geocoding and FRPP county joins. Source: SimpleMaps US ZIPs.
+9. Done: Public-map D.5.4 added `zip_centroids` (ZCTA/ZIP → lat/lon/county_fips). Repeats per ZIP, code-list backed, used for offline geocoding and FRPP county joins. Default source: Census ZCTA Gazetteer; SimpleMaps US ZIPs can be used as an override when city/state/county labels are needed.
 10. Public-map D.5: add `federal_properties` (one row per GSA-reported asset). Repeats per locality, joins to `agency_codes` and `counties`, drives the federal-properties layer and agency-aware filtering. Source: GSA FRPP. Tracked under `data_source_status.gsa_frpp` per ADR-0018.
 
 ## Design Rule
