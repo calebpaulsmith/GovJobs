@@ -38,6 +38,8 @@ class MapState {
 	savedJobIds = $state<Set<string>>(new Set());
 	// D.5.19: profile drawer open.
 	profileOpen = $state<boolean>(false);
+	// D.5.16: light/dark theme. Initialized from localStorage in +page.svelte.
+	theme = $state<'light' | 'dark'>('dark');
 }
 
 export interface MapViewport {

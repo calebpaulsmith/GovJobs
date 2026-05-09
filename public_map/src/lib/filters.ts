@@ -10,6 +10,8 @@ export interface JobFilters {
 	remote: 'any' | 'remote' | 'hybrid' | 'onsite';
 	hiringPath: string;
 	payPlan: string;
+	// Geography chips: "state:IL", "locality:DC", etc. Multiple chips are ORed.
+	geographies: string[];
 }
 
 export const DEFAULT_FILTERS: JobFilters = {
@@ -21,7 +23,8 @@ export const DEFAULT_FILTERS: JobFilters = {
 	salaryMin: '',
 	remote: 'any',
 	hiringPath: '',
-	payPlan: ''
+	payPlan: '',
+	geographies: []
 };
 
 export const FILTER_PARAM_KEYS = [
@@ -33,7 +36,8 @@ export const FILTER_PARAM_KEYS = [
 	'salaryMin',
 	'remote',
 	'hiringPath',
-	'payPlan'
+	'payPlan',
+	'geo'
 ] as const;
 
 type JobDetailsIndex = Record<string, JobDetails>;
@@ -55,6 +59,7 @@ export function activeFilterCount(filters: JobFilters): number {
 	if (filters.remote !== 'any') count += 1;
 	if (filters.hiringPath.trim()) count += 1;
 	if (filters.payPlan.trim()) count += 1;
+	if (filters.geographies.length > 0) count += 1;
 	return count;
 }
 
@@ -71,10 +76,11 @@ export function normalizeAgencyCodes(values: string[] | string | undefined | nul
 	return codes;
 }
 
-export function normalizeFilters(input: Partial<JobFilters> & { agency?: string | string[] }): JobFilters {
+export function normalizeFilters(input: Partial<JobFilters> & { agency?: string | string[]; geo?: string | string[] }): JobFilters {
 	const remote = input.remote && ['any', 'remote', 'hybrid', 'onsite'].includes(input.remote)
 		? input.remote
 		: DEFAULT_FILTERS.remote;
+	const rawGeos = input.geographies ?? (input.geo ? (Array.isArray(input.geo) ? input.geo : [input.geo]) : []);
 	return {
 		keyword: clean(input.keyword),
 		agencies: normalizeAgencyCodes(input.agencies ?? input.agency),
@@ -84,7 +90,8 @@ export function normalizeFilters(input: Partial<JobFilters> & { agency?: string 
 		salaryMin: clean(input.salaryMin),
 		remote,
 		hiringPath: clean(input.hiringPath),
-		payPlan: clean(input.payPlan)
+		payPlan: clean(input.payPlan),
+		geographies: rawGeos.filter((g) => g && g.includes(':'))
 	};
 }
 
@@ -98,7 +105,8 @@ export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 		salaryMin: params.get('salaryMin') ?? '',
 		remote: (params.get('remote') as JobFilters['remote'] | null) ?? 'any',
 		hiringPath: params.get('hiringPath') ?? '',
-		payPlan: params.get('payPlan') ?? ''
+		payPlan: params.get('payPlan') ?? '',
+		geographies: params.getAll('geo')
 	});
 }
 
@@ -112,6 +120,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	params.delete('remote');
 	params.delete('hiringPath');
 	params.delete('payPlan');
+	params.delete('geo');
 
 	if (filters.keyword) params.set('q', filters.keyword);
 	for (const agency of filters.agencies) params.append('agency', agency);
@@ -122,6 +131,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	if (filters.remote !== 'any') params.set('remote', filters.remote);
 	if (filters.hiringPath) params.set('hiringPath', filters.hiringPath);
 	if (filters.payPlan) params.set('payPlan', filters.payPlan.toUpperCase());
+	for (const geo of filters.geographies) params.append('geo', geo);
 }
 
 export function filterJobs(
@@ -147,6 +157,7 @@ export function matchesJobFeature(
 
 	if (filters.keyword && !containsAnyText(combined, filters.keyword)) return false;
 	if (filters.agencies.length > 0 && !agencyMatches(combined, filters.agencies)) return false;
+	if (filters.geographies.length > 0 && !geographyMatches(combined, filters.geographies)) return false;
 	if (filters.series && !equalsNormalized(combined.series, filters.series)) return false;
 	if (filters.payPlan && !equalsNormalized(combined.pay_plan, filters.payPlan)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(combined.remote_status, filters.remote)) return false;
@@ -187,6 +198,20 @@ function containsAnyText(props: FilterableProps, needle: string): boolean {
 function agencyMatches(props: FilterableProps, agencies: string[]): boolean {
 	const agencyCode = String(props.agency_code ?? '').toUpperCase().trim();
 	return agencies.includes(agencyCode);
+}
+
+// Geography chips have the form "state:IL" or "locality:DC".
+// A job matches if it falls within any of the provided geography chips (OR).
+function geographyMatches(props: FilterableProps, geographies: string[]): boolean {
+	for (const geo of geographies) {
+		const sep = geo.indexOf(':');
+		if (sep === -1) continue;
+		const type = geo.slice(0, sep);
+		const code = geo.slice(sep + 1).toUpperCase();
+		if (type === 'state' && String(props.state ?? '').toUpperCase() === code) return true;
+		if (type === 'locality' && String(props.locality_code ?? '').toUpperCase() === code) return true;
+	}
+	return false;
 }
 
 function containsText(value: unknown, needle: string): boolean {

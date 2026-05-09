@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { GeoJSONSource, Map as MaplibreMap, MapboxGeoJSONFeature, StyleSpecification } from 'mapbox-gl';
-	import { configureMapboxRuntime, pickStyle, HAS_MAPBOX_TOKEN } from './basemap';
+	import { configureMapboxRuntime, pickStyleForTheme, HAS_MAPBOX_TOKEN } from './basemap';
 	import {
 		loadClosedJobs,
 		loadCounties,
@@ -47,7 +47,7 @@
 
 		configureMapboxRuntime(mapboxgl);
 
-		const style = pickStyle();
+		const style = pickStyleForTheme(mapState.theme);
 		map = new mapboxgl.Map({
 			container,
 			style: style as string | StyleSpecification,

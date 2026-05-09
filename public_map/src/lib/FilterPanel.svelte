@@ -134,7 +134,19 @@
 	}
 
 	function resetFilters() {
-		mapState.filters = { ...DEFAULT_FILTERS, agencies: [] };
+		mapState.filters = { ...DEFAULT_FILTERS, agencies: [], geographies: [] };
+	}
+
+	function removeGeo(geo: string) {
+		setFilter('geographies', mapState.filters.geographies.filter((g) => g !== geo));
+	}
+
+	function geoLabel(geo: string): string {
+		const sep = geo.indexOf(':');
+		if (sep === -1) return geo;
+		const type = geo.slice(0, sep);
+		const code = geo.slice(sep + 1);
+		return type === 'state' ? `State: ${code}` : type === 'locality' ? `Locality: ${code}` : geo;
 	}
 </script>
 
@@ -203,6 +215,21 @@
 				{/if}
 				{#if agencyValidation}<p class="validation">{agencyValidation}</p>{/if}
 			</div>
+
+			{#if mapState.filters.geographies.length > 0}
+				<div class="geo-chips">
+					<span>Geography scope</span>
+					<div class="chips" aria-label="Active geography filters">
+						{#each mapState.filters.geographies as geo (geo)}
+							<button type="button" class="chip chip-geo" onclick={() => removeGeo(geo)}>
+								{geoLabel(geo)}
+								<strong aria-hidden="true">×</strong>
+							</button>
+						{/each}
+					</div>
+					<p class="geo-hint">Jobs outside these areas are hidden. Add more via the + button on any state or locality.</p>
+				</div>
+			{/if}
 
 			<div class="row">
 				<label>
@@ -316,8 +343,8 @@
 	}
 	.toggle,
 	.body {
-		background: rgba(14, 23, 38, 0.94);
-		border: 1px solid #2a3a52;
+		background: var(--c-panel-blur, rgba(14, 23, 38, 0.94));
+		border: 1px solid var(--c-border, #2a3a52);
 		backdrop-filter: blur(8px);
 		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 	}
@@ -329,7 +356,7 @@
 		justify-content: space-between;
 		padding: 0.65rem 0.8rem;
 		border-radius: 8px;
-		color: #e5edf5;
+		color: var(--c-text, #e5edf5);
 		cursor: pointer;
 		font-weight: 600;
 	}
@@ -340,7 +367,7 @@
 		min-width: 1.35rem;
 		height: 1.35rem;
 		border-radius: 999px;
-		background: #4979b3;
+		background: var(--c-accent-dim, #4979b3);
 		color: #fff;
 		font-size: 11px;
 	}
@@ -356,6 +383,7 @@
 	}
 	.body > label,
 	.agency-picker,
+	.geo-chips,
 	.row {
 		margin-bottom: 0.7rem;
 	}
@@ -367,17 +395,17 @@
 		grid-template-columns: repeat(3, 1fr);
 	}
 	span {
-		color: #94a3b8;
+		color: var(--c-muted, #94a3b8);
 		font-size: 11px;
 	}
 	input,
 	select {
 		width: 100%;
 		box-sizing: border-box;
-		border: 1px solid #2c4870;
+		border: 1px solid var(--c-border-input, #2c4870);
 		border-radius: 6px;
-		background: rgba(8, 13, 22, 0.85);
-		color: #e5edf5;
+		background: var(--c-row-bg, rgba(8, 13, 22, 0.85));
+		color: var(--c-text, #e5edf5);
 		padding: 0.45rem 0.55rem;
 		font: inherit;
 	}
@@ -388,12 +416,22 @@
 	.chip:focus-visible,
 	.toggle:focus-visible,
 	.summary button:focus-visible {
-		outline: 2px solid #7bd0f2;
+		outline: 2px solid var(--c-accent, #7bd0f2);
 		outline-offset: 2px;
 	}
 	.agency-picker {
 		display: grid;
 		gap: 0.45rem;
+	}
+	.geo-chips {
+		display: grid;
+		gap: 0.45rem;
+	}
+	.geo-hint {
+		margin: 0;
+		font-size: 10px;
+		color: var(--c-faint, #64748b);
+		line-height: 1.4;
 	}
 	.chips {
 		display: flex;
@@ -402,17 +440,23 @@
 	}
 	.chip {
 		appearance: none;
-		border: 1px solid #4979b3;
+		border: 1px solid var(--c-accent-dim, #4979b3);
 		border-radius: 999px;
-		background: rgba(73, 121, 179, 0.2);
-		color: #e5edf5;
+		background: var(--c-accent-bg-strong, rgba(73, 121, 179, 0.2));
+		color: var(--c-text, #e5edf5);
 		padding: 0.28rem 0.5rem;
 		cursor: pointer;
 		font: inherit;
+		font-size: 11px;
+	}
+	.chip-geo {
+		border-color: #5e9a4a;
+		background: rgba(94, 154, 74, 0.15);
+		color: var(--c-text, #e5edf5);
 	}
 	.chip strong {
 		margin-left: 0.35rem;
-		color: #fff;
+		color: var(--c-text, #fff);
 	}
 	.agency-search {
 		display: grid;
@@ -422,10 +466,10 @@
 	.agency-search button,
 	.agency-results button {
 		appearance: none;
-		border: 1px solid #2c4870;
+		border: 1px solid var(--c-border-input, #2c4870);
 		border-radius: 6px;
-		background: rgba(28, 42, 64, 0.85);
-		color: #d8e6f3;
+		background: var(--c-row-hover, rgba(28, 42, 64, 0.85));
+		color: var(--c-text-2, #d8e6f3);
 		cursor: pointer;
 		font: inherit;
 	}
@@ -446,14 +490,14 @@
 		padding: 0.45rem 0.55rem;
 	}
 	.agency-results button strong {
-		color: #fff;
+		color: var(--c-text, #fff);
 	}
 	.agency-results button span {
-		color: #d8e6f3;
+		color: var(--c-text-2, #d8e6f3);
 	}
 	.agency-results button small {
 		grid-column: 2;
-		color: #94a3b8;
+		color: var(--c-muted, #94a3b8);
 	}
 	.validation {
 		margin: 0;
@@ -465,14 +509,14 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		padding-top: 0.45rem;
-		border-top: 1px solid #22344c;
+		border-top: 1px solid var(--c-border-subtle, #22344c);
 	}
 	.summary button {
 		appearance: none;
-		border: 1px solid #2c4870;
+		border: 1px solid var(--c-border-input, #2c4870);
 		border-radius: 999px;
-		background: rgba(28, 42, 64, 0.75);
-		color: #cfd9e6;
+		background: var(--c-row-hover, rgba(28, 42, 64, 0.75));
+		color: var(--c-text-2, #cfd9e6);
 		padding: 0.35rem 0.7rem;
 		cursor: pointer;
 	}

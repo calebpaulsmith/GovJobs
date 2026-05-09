@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { mapState } from './store.svelte';
 	import { countValue, money, percent, propString } from './format';
+	import QuickAdd from './QuickAdd.svelte';
 	let { properties }: { properties: Record<string, unknown> } = $props();
 
 	const localityName = $derived(propString(properties, 'name'));
@@ -21,7 +22,12 @@
 
 <section>
 	<p class="eyebrow">Locality pay area</p>
-	<h2>{localityName} <span>{localityCode}</span></h2>
+	<h2>
+		{localityName}
+		<span>
+			<QuickAdd type="geography" value="locality:{localityCode}" label={localityCode} />
+		</span>
+	</h2>
 
 	<button type="button" class="postings-btn" onclick={viewPostings} disabled={postings === 0 || !localityCode}>
 		<span class="num">{countValue(postings)}</span>
