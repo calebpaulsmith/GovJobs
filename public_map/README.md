@@ -54,3 +54,18 @@ windows with Add to Search and global-filter preview toggles, exposes light and
 dark modes, includes the personal compensation/COL comparator, shows
 source-backed urgency/fill badges on job listings, and persists local
 viewed/saved/hidden job state in the browser.
+
+### Current next step: D.5.2 agency multi-select
+
+D.5.2 is the next public-map implementation step as of 2026-05-09. It replaces
+the free-text agency filter with a code-backed multi-select typeahead that uses
+agency codes, display names, and aliases from the exported agency metadata. The
+selected agencies must round-trip through shareable URLs as repeated `agency=`
+keys and must filter markers, heat inputs, state/locality/county counts, and job
+lists through the same normalized code set.
+
+**D.5.2 exit:** a URL with multiple `agency=` parameters restores the same
+selected agencies after reload; adding/removing an agency updates the map, heat
+layer, and lists without a full page refresh; aliases resolve to canonical agency
+codes; and unsupported/free-text values are ignored with a visible validation
+message instead of silently filtering everything out.
