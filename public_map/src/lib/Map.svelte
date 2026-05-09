@@ -143,7 +143,10 @@
 			const stillVisible = filteredJobs.features.some(
 				(feature) => String(feature.properties?.id ?? '') === selectedId
 			);
-			if (!stillVisible) mapState.selectedFeature = null;
+			if (!stillVisible) {
+				mapState.selectedFeature = null;
+				mapState.jobStack = null;
+			}
 		}
 	});
 
@@ -255,6 +258,11 @@
 					zoomIntoCluster(m, feature);
 					return;
 				}
+				if (layerId === LAYER_IDS.markers) {
+					openMarkerStack(feature);
+					return;
+				}
+				mapState.jobStack = null;
 				mapState.selectedFeature = {
 					source: layerId,
 					label: labelFor(layerId),
@@ -264,6 +272,7 @@
 				return;
 			}
 			mapState.selectedFeature = null;
+			mapState.jobStack = null;
 		});
 
 		for (const id of layerOrder) {
@@ -293,6 +302,61 @@
 			default:
 				return layerId;
 		}
+	}
+
+	function openMarkerStack(feature: MapboxGeoJSONFeature): void {
+		const features = markerFeaturesAtSamePoint(feature);
+		if (features.length <= 1) {
+			mapState.jobStack = null;
+			mapState.listView = null;
+			mapState.selectedFeature = {
+				source: LAYER_IDS.markers,
+				label: labelFor(LAYER_IDS.markers),
+				properties: feature.properties ?? {}
+			};
+			return;
+		}
+		const label = pointStackLabel(features[0].properties);
+		mapState.selectedFeature = null;
+		mapState.listView = null;
+		mapState.jobStack = {
+			label,
+			selectedIndex: 0,
+			items: features
+				.map((candidate) => ({ properties: candidate.properties ?? {} }))
+				.sort((a, b) => stackSortKey(a.properties).localeCompare(stackSortKey(b.properties)))
+		};
+	}
+
+	function markerFeaturesAtSamePoint(feature: MapboxGeoJSONFeature): FeatureCollection['features'] {
+		const coords = feature.geometry.type === 'Point' ? feature.geometry.coordinates : null;
+		if (!coords || !allJobs) return [{ type: 'Feature', geometry: null, properties: feature.properties ?? {} }];
+		const filtered = filterJobs(allJobs, mapState.filters, jobDetails);
+		const matches = filtered.features.filter((candidate) => {
+			if (candidate.geometry?.type !== 'Point') return false;
+			const candidateCoords = candidate.geometry.coordinates;
+			return sameCoordinate(coords, candidateCoords);
+		});
+		return matches.length > 0 ? matches : [{ type: 'Feature', geometry: null, properties: feature.properties ?? {} }];
+	}
+
+	function sameCoordinate(a: number[], b: number[]): boolean {
+		return Math.abs(Number(a[0]) - Number(b[0])) < 0.00001 && Math.abs(Number(a[1]) - Number(b[1])) < 0.00001;
+	}
+
+	function pointStackLabel(props: Record<string, unknown> | null): string {
+		const city = String(props?.city ?? '').trim();
+		const state = String(props?.state ?? '').trim();
+		return [city, state].filter(Boolean).join(', ') || 'Selected map point';
+	}
+
+	function stackSortKey(props: Record<string, unknown>): string {
+		return [
+			String(props.close_date ?? '9999-12-31'),
+			String(props.agency_code ?? ''),
+			String(props.series ?? ''),
+			String(props.title ?? '')
+		].join('|');
 	}
 
 	function fitFocusedFeature(m: MaplibreMap, layerId: string, feature: MapboxGeoJSONFeature): void {

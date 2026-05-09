@@ -17,6 +17,7 @@ class MapState {
 	savedSearchesOpen = $state<boolean>(false);
 	selectedFeature = $state<SelectedFeature | null>(null);
 	focusedArea = $state<FocusedArea | null>(null);
+	jobStack = $state<JobStackView | null>(null);
 	// When set, the FeaturePanel renders a JobList for the matching scope
 	// (e.g. {scope: 'state', state: 'IL'}) instead of the current
 	// selectedFeature detail view. Set by clicking "View N postings" inside a
@@ -51,6 +52,16 @@ export interface ListView {
 export interface FocusedArea {
 	source: string;
 	label: string;
+}
+
+export interface JobStackItem {
+	properties: Record<string, unknown>;
+}
+
+export interface JobStackView {
+	label: string;
+	items: JobStackItem[];
+	selectedIndex: number;
 }
 
 export interface Manifest {

@@ -7,12 +7,39 @@
 	import CountyDetail from './CountyDetail.svelte';
 	import JobCard from './JobCard.svelte';
 	import JobList from './JobList.svelte';
+	import PointJobList from './PointJobList.svelte';
 	import { countValue, propString } from './format';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 
 	function close() {
 		mapState.selectedFeature = null;
 		mapState.listView = null;
+		mapState.jobStack = null;
+	}
+
+	function stackIndex(): number {
+		return mapState.jobStack?.selectedIndex ?? 0;
+	}
+
+	function stackCount(): number {
+		return mapState.jobStack?.items.length ?? 0;
+	}
+
+	function selectStackJob(index: number) {
+		const stack = mapState.jobStack;
+		if (!stack) return;
+		const wrapped = (index + stack.items.length) % stack.items.length;
+		const item = stack.items[wrapped];
+		mapState.jobStack = { ...stack, selectedIndex: wrapped };
+		mapState.selectedFeature = {
+			source: LAYER_IDS.markers,
+			label: 'Job card',
+			properties: item.properties
+		};
+	}
+
+	function backToPointList() {
+		mapState.selectedFeature = null;
 	}
 </script>
 
@@ -29,6 +56,19 @@
 		</header>
 		<JobList listView={mapState.listView} />
 	</aside>
+{:else if mapState.jobStack && !mapState.selectedFeature}
+	<aside
+		class="panel"
+		aria-live="polite"
+		data-layout-slot={slotAttr(LAYOUT_SLOTS.feature)}
+		transition:fly={{ x: 24, duration: 200 }}
+	>
+		<header>
+			<span class="layer">Job point</span>
+			<button type="button" class="close" onclick={close} aria-label="Close">Ã—</button>
+		</header>
+		<PointJobList stack={mapState.jobStack} />
+	</aside>
 {:else if mapState.selectedFeature}
 	<aside
 		class="panel"
@@ -41,6 +81,14 @@
 			<button type="button" class="close" onclick={close} aria-label="Close">×</button>
 		</header>
 		{#if mapState.selectedFeature.source === LAYER_IDS.markers}
+			{#if mapState.jobStack && stackCount() > 1}
+				<nav class="stack-nav" aria-label="Jobs at this point">
+					<button type="button" onclick={backToPointList}>List</button>
+					<button type="button" onclick={() => selectStackJob(stackIndex() - 1)}>Prev</button>
+					<span>{stackIndex() + 1} / {stackCount()}</span>
+					<button type="button" onclick={() => selectStackJob(stackIndex() + 1)}>Next</button>
+				</nav>
+			{/if}
 			<JobCard properties={mapState.selectedFeature.properties} />
 		{:else if mapState.selectedFeature.source === LAYER_IDS.statesFill}
 			<StateRoundup properties={mapState.selectedFeature.properties} />
@@ -70,6 +118,11 @@
 	.layer, .eyebrow { color: #7bd0f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 	.close { appearance: none; background: transparent; border: none; color: #94a3b8; font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
 	.close:hover { color: #e5edf5; }
+	.stack-nav { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.35rem; align-items: center; margin-bottom: 0.65rem; padding: 0.4rem; border: 1px solid #22344c; border-radius: 8px; background: rgba(8, 13, 22, 0.55); }
+	.stack-nav button { appearance: none; border: 1px solid #2c4870; border-radius: 999px; background: rgba(28, 42, 64, 0.75); color: #d8e6f3; cursor: pointer; font: inherit; font-size: 11px; padding: 0.25rem 0.55rem; }
+	.stack-nav button:hover { border-color: #7bd0f2; color: #7bd0f2; }
+	.stack-nav button:focus-visible { outline: 2px solid #7bd0f2; outline-offset: 2px; }
+	.stack-nav span { color: #94a3b8; font-size: 11px; text-align: center; }
 	h2 { margin: 0 0 0.75rem; font-size: 20px; line-height: 1.15; }
 	.grid { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.8rem; margin: 0; }
 	dt { color: #94a3b8; }

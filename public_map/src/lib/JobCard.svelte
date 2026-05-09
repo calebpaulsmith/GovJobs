@@ -14,6 +14,7 @@
 		if (!id) return;
 		loading = true;
 		error = null;
+		detail = null;
 		Promise.all([loadJobDetails(id), loadPayTables()])
 			.then(([job, tables]) => {
 				detail = job;
