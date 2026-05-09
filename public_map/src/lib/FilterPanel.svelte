@@ -81,7 +81,16 @@
 	});
 
 	function setFilter<K extends keyof JobFilters>(key: K, value: JobFilters[K]) {
-		mapState.filters = { ...mapState.filters, [key]: value };
+		// Mutate the field on the proxy AND reassign the parent. The
+		// reassignment guarantees Map.svelte's filter $effect re-runs even
+		// if it captured the prior `mapState.filters` reference. See the
+		// matching note in ActiveFilterStrip.svelte.
+		(mapState.filters as JobFilters)[key] = value;
+		mapState.filters = {
+			...mapState.filters,
+			agencies: [...mapState.filters.agencies],
+			geographies: [...mapState.filters.geographies]
+		};
 	}
 
 	function selectedAgencyOptions(): AgencyOption[] {

@@ -33,26 +33,41 @@
 		return `${niceType}: ${code}`;
 	}
 
-	function removeAgency(code: string): void {
+	// All chip removals do TWO things on purpose:
+	//   1. Mutate the field in place so $state proxy invalidation fires.
+	//   2. Reassign mapState.filters to a fresh object so $effect blocks
+	//      that captured the old reference re-run.
+	// Without (2), Map.svelte's filter effect can hold the prior `filters`
+	// reference and skip re-applying the source data — visible as "I removed
+	// the chip but the markers are still filtered." Without (1), child reads
+	// can still see stale arrays in some Svelte 5 reactivity edge cases.
+	function rebuildFilters(): void {
 		mapState.filters = {
 			...mapState.filters,
-			agencies: mapState.filters.agencies.filter((a) => a !== code)
+			agencies: [...mapState.filters.agencies],
+			geographies: [...mapState.filters.geographies]
 		};
+	}
+
+	function removeAgency(code: string): void {
+		mapState.filters.agencies = mapState.filters.agencies.filter((a) => a !== code);
+		rebuildFilters();
 	}
 
 	function removeGeography(geo: string): void {
-		mapState.filters = {
-			...mapState.filters,
-			geographies: mapState.filters.geographies.filter((g) => g !== geo)
-		};
+		mapState.filters.geographies = mapState.filters.geographies.filter((g) => g !== geo);
+		rebuildFilters();
 	}
 
 	function clearKey<K extends keyof JobFilters>(key: K): void {
-		mapState.filters = { ...mapState.filters, [key]: DEFAULT_FILTERS[key] };
+		(mapState.filters as JobFilters)[key] = DEFAULT_FILTERS[key];
+		rebuildFilters();
 	}
 
 	function clearGradeBand(): void {
-		mapState.filters = { ...mapState.filters, gradeMin: '', gradeMax: '' };
+		mapState.filters.gradeMin = '';
+		mapState.filters.gradeMax = '';
+		rebuildFilters();
 	}
 
 	function clearAll(): void {
