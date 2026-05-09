@@ -38,10 +38,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-pages",
         type=int,
-        default=50,
+        default=100,
         help=(
-            "USAJOBS Search page cap (each page = 500 records). "
-            "Default 50 = up to 25,000 postings, comfortably above the federal-wide ceiling."
+            "USAJOBS Search page cap (each page = 500 records). The importer "
+            "auto-stops when pagination runs out, so this is a safety ceiling, "
+            "not a target. Default 100 = up to 50,000 postings (federal-wide "
+            "ceiling is well below that today, but the cap leaves headroom)."
         ),
     )
     parser.add_argument(

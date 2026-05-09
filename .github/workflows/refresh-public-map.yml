@@ -14,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       max_pages:
-        description: 'Max USAJOBS Search pages (500 records per page; 50 = up to 25k records)'
+        description: 'Max USAJOBS Search pages (500 records per page; 100 = up to 50k records). Importer auto-stops when pagination runs out.'
         required: false
-        default: '50'
+        default: '100'
         type: string
       skip_reference_data:
         description: 'Skip reference-data refresh (faster; reuse last polygons / pay tables)'
@@ -83,7 +83,7 @@ jobs:
       - name: Refresh postings + reference data + bundle
         run: |
           set -euo pipefail
-          MAX_PAGES="${{ github.event.inputs.max_pages || '50' }}"
+          MAX_PAGES="${{ github.event.inputs.max_pages || '100' }}"
           SKIP_REF="${{ github.event.inputs.skip_reference_data || 'false' }}"
           ARGS=("--max-pages" "$MAX_PAGES")
           if [ "$SKIP_REF" = "true" ]; then

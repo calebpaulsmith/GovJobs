@@ -86,7 +86,7 @@
 
 <section>
 	<p class="eyebrow">{isClosed ? 'Closed posting' : 'Open posting'}</p>
-	<h2>{propString(properties, 'title')}</h2>
+	<h2>{detail?.title ?? propString(properties, 'title', 'Loading…')}</h2>
 	{#if urgency.level}
 		<div class="urgency-badge urgency-{urgency.level}" role="status">{urgency.text}</div>
 	{/if}
