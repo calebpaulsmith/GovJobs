@@ -2,7 +2,7 @@ import type { Feature, FeatureCollection, JobDetails } from './data';
 
 export interface JobFilters {
 	keyword: string;
-	agency: string;
+	agencies: string[];
 	series: string;
 	gradeMin: string;
 	gradeMax: string;
@@ -14,7 +14,7 @@ export interface JobFilters {
 
 export const DEFAULT_FILTERS: JobFilters = {
 	keyword: '',
-	agency: '',
+	agencies: [],
 	series: '',
 	gradeMin: '',
 	gradeMax: '',
@@ -41,26 +41,43 @@ type JobDetailsIndex = Record<string, JobDetails>;
 type FilterableProps = Record<string, unknown>;
 
 export function hasActiveFilters(filters: JobFilters): boolean {
-	return Object.entries(filters).some(([key, value]) => {
-		if (key === 'remote') return value !== 'any';
-		return String(value ?? '').trim().length > 0;
-	});
+	return activeFilterCount(filters) > 0;
 }
 
 export function activeFilterCount(filters: JobFilters): number {
-	return Object.entries(filters).filter(([key, value]) => {
-		if (key === 'remote') return value !== 'any';
-		return String(value ?? '').trim().length > 0;
-	}).length;
+	let count = 0;
+	if (filters.keyword.trim()) count += 1;
+	if (filters.agencies.length > 0) count += 1;
+	if (filters.series.trim()) count += 1;
+	if (filters.gradeMin.trim()) count += 1;
+	if (filters.gradeMax.trim()) count += 1;
+	if (filters.salaryMin.trim()) count += 1;
+	if (filters.remote !== 'any') count += 1;
+	if (filters.hiringPath.trim()) count += 1;
+	if (filters.payPlan.trim()) count += 1;
+	return count;
 }
 
-export function normalizeFilters(input: Partial<JobFilters>): JobFilters {
+export function normalizeAgencyCodes(values: string[] | string | undefined | null): string[] {
+	const rawValues = Array.isArray(values) ? values : values ? [values] : [];
+	const seen = new Set<string>();
+	const codes: string[] = [];
+	for (const value of rawValues) {
+		const code = clean(value).toUpperCase();
+		if (!code || seen.has(code)) continue;
+		seen.add(code);
+		codes.push(code);
+	}
+	return codes;
+}
+
+export function normalizeFilters(input: Partial<JobFilters> & { agency?: string | string[] }): JobFilters {
 	const remote = input.remote && ['any', 'remote', 'hybrid', 'onsite'].includes(input.remote)
 		? input.remote
 		: DEFAULT_FILTERS.remote;
 	return {
 		keyword: clean(input.keyword),
-		agency: clean(input.agency),
+		agencies: normalizeAgencyCodes(input.agencies ?? input.agency),
 		series: clean(input.series),
 		gradeMin: clean(input.gradeMin),
 		gradeMax: clean(input.gradeMax),
@@ -74,7 +91,7 @@ export function normalizeFilters(input: Partial<JobFilters>): JobFilters {
 export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 	return normalizeFilters({
 		keyword: params.get('q') ?? '',
-		agency: params.get('agency') ?? '',
+		agencies: params.getAll('agency'),
 		series: params.get('series') ?? '',
 		gradeMin: params.get('gradeMin') ?? '',
 		gradeMax: params.get('gradeMax') ?? '',
@@ -97,7 +114,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	params.delete('payPlan');
 
 	if (filters.keyword) params.set('q', filters.keyword);
-	if (filters.agency) params.set('agency', filters.agency);
+	for (const agency of filters.agencies) params.append('agency', agency);
 	if (filters.series) params.set('series', filters.series);
 	if (filters.gradeMin) params.set('gradeMin', filters.gradeMin);
 	if (filters.gradeMax) params.set('gradeMax', filters.gradeMax);
@@ -129,7 +146,7 @@ export function matchesJobFeature(
 	const combined = combineProps(props, detail);
 
 	if (filters.keyword && !containsAnyText(combined, filters.keyword)) return false;
-	if (filters.agency && !agencyMatches(combined, filters.agency)) return false;
+	if (filters.agencies.length > 0 && !agencyMatches(combined, filters.agencies)) return false;
 	if (filters.series && !equalsNormalized(combined.series, filters.series)) return false;
 	if (filters.payPlan && !equalsNormalized(combined.pay_plan, filters.payPlan)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(combined.remote_status, filters.remote)) return false;
@@ -144,7 +161,6 @@ function combineProps(props: FilterableProps, detail: JobDetails | undefined): F
 	return {
 		...props,
 		...(detail ?? {}),
-		// Keep marker city/state when detail locations only contains nested rows.
 		city: props.city ?? detail?.locations?.[0]?.city,
 		state: props.state ?? detail?.locations?.[0]?.state
 	};
@@ -168,11 +184,9 @@ function containsAnyText(props: FilterableProps, needle: string): boolean {
 	return haystack.includes(needle.toLowerCase().trim());
 }
 
-function agencyMatches(props: FilterableProps, agency: string): boolean {
-	const needle = agency.toLowerCase().trim();
-	return [props.agency, props.department, props.agency_code]
-		.map((v) => String(v ?? '').toLowerCase())
-		.some((value) => value.includes(needle));
+function agencyMatches(props: FilterableProps, agencies: string[]): boolean {
+	const agencyCode = String(props.agency_code ?? '').toUpperCase().trim();
+	return agencies.includes(agencyCode);
 }
 
 function containsText(value: unknown, needle: string): boolean {

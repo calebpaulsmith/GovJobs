@@ -24,6 +24,16 @@ export interface JobLocation {
 	location_text?: string | null;
 }
 
+export interface AgencyOption {
+	code: string | null;
+	name: string;
+	label?: string;
+	department_code?: string | null;
+	department_name?: string | null;
+	aliases?: string[];
+	postings: number;
+}
+
 export interface JobDetails {
 	id: number;
 	title: string;
@@ -51,6 +61,7 @@ export interface JobDetails {
 export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;
 
 let jobDetailsCache: Record<string, JobDetails> | null = null;
+let agencyOptionsCache: AgencyOption[] | null = null;
 let payTablesCache: PayTables | null = null;
 let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
 
@@ -83,6 +94,14 @@ export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY
 export const loadClosedJobs = () =>
 	fetchJson<FeatureCollection>('closed_jobs.geojson', EMPTY_COLLECTION);
 export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
+export async function loadAgencyOptions(): Promise<AgencyOption[]> {
+	agencyOptionsCache ??= (await fetchJson<AgencyOption[]>('agencies.json', [])).map((option) => ({
+		...option,
+		name: option.name ?? option.label ?? option.code ?? 'Unknown',
+		aliases: option.aliases ?? []
+	}));
+	return agencyOptionsCache;
+}
 
 export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {
 	jobDetailsIndexCache ??= await fetchJson<Record<string, JobDetails>>('jobs_detail.json', {});
