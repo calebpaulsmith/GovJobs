@@ -370,3 +370,23 @@ Status: Accepted
 
 **Consequences.** D.5 grows by six sub-phases: D.5.14 through D.5.19. The exporter will need new payload fields for `reference_year`, compensation reference data, urgency/fill signals, and stable job identity for local profile state. The Svelte app will need `GeoScopeWindow`, theme persistence, a compensation comparator, and a local profile/jobs-state module. This does not add public-map accounts, authentication, cloud sync, or a backend. Public-map V1 is not done until these features are documented, tested, and reflected in `CLAUDE.md`, `docs/PRODUCT_SPEC.md`, `docs/ROADMAP.md`, and the detailed Claude plan.
 
+---
+
+## ADR-0029 — Edge-cached on-demand historic via Cloudflare Pages Functions
+Date: 2026-05-09
+Status: Accepted
+
+**Context.** The original D.5.21 / D.5.22 plan called for a per-job History tab and a posting timeline sparkline backed by a bulk HistoricJoa import (millions of records, ~6.8 GB raw, ~15 hours per the 2026-05-09 recon). That bulk pull breaches every threshold in `config.py` and bloats the dashboard's local SQLite without much user-facing payoff: any given session uses only a tiny slice of the corpus. The user proposed (2026-05-09) a lazy alternative: when a visitor clicks "Posting Intelligence" on a JobCard, perform a targeted API call for that filter set and cache the result. ADR-0016 said "no live API" for the public site, but a read-only edge-cached proxy to a public, key-less endpoint is qualitatively different from "DB online" or "user data online."
+
+**Decision.** Add a Cloudflare Pages Functions endpoint at `public_map/functions/api/job-history.ts` that proxies USAJOBS HistoricJoa with edge caching. Contract:
+
+- Request: `GET /api/job-history?position_id=…&agency_code=…&series=…&grade=…&state=…&months=…&window=1mo|3mo|6mo|1yr|3yr|5yr|10yr`
+- Server-side: builds the equivalent HistoricJoa query (HistoricJoa is public, no API key required per CLAUDE.md), strips long text fields from the response to keep payload small, and returns a trimmed JSON.
+- Cache: `caches.default.put(...)` with a 24-hour TTL keyed by the exact query. First request pays ~1–3 s round-trip; every subsequent request globally is served from edge cache.
+- Failure mode: HistoricJoa downtime → returns `{status: 'unavailable', retry_after: 3600}`; the JobCard renders an explanatory message, never a fake-history fallback.
+- The Svelte client treats the endpoint as click-to-load only (per user decision 2026-05-09). No prefetch, no autoload on JobCard mount. This keeps cache size and outbound API load proportional to actual user intent.
+
+The bulk-historic plan (D.5.7's HistoricJoa half + D.5.21 static history JSON + D.5.22 timeline pre-compute) is **rejected**. The trailing-90-day closed-jobs overlay stays a static export because it's used for the gray-dots layer at every page-load, not per-job.
+
+**Consequences.** ADR-0016's "no live API" clause is narrowed to: "no live API that requires keys, no live DB, no user data online." Public, keyless endpoints behind an edge cache are allowed for explicit click-to-load features. The dashboard's local SQLite stays small (no millions of HistoricJoa rows). Adds one Cloudflare Pages Function (free tier covers ~100k req/day) and one new ROADMAP entry, **D.5.24 — On-demand Posting Intelligence**. The on-demand tab eventually replaces D.5.21 (per-job history) and D.5.22 (timeline sparkline) — both are folded into D.5.24. The trailing-90-days closed-jobs overlay (D.5.7's static half) is unchanged.
+

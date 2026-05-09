@@ -424,34 +424,45 @@ def opm_state_aggregates(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
 
 
 def agency_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    # Group by the strongest available identity: agency_code first (so
+    # known codes collapse cleanly across name variants), agency name
+    # otherwise (so unknown-code agencies still appear as distinct chips
+    # instead of all collapsing into one mystery bucket — see the
+    # 2026-05-09 agencies.json regression).
     rows = conn.execute(
         """
         SELECT
-            COALESCE(j.agency_code, '') AS code,
+            j.agency_code AS code,
             COALESCE(ac.name, MAX(j.agency), '') AS name,
             COALESCE(ac.department_code, MAX(j.department_code), '') AS department_code,
             COALESCE(ac.department_name, MAX(j.department), '') AS department_name,
-            COUNT(DISTINCT j.id) AS postings
+            COUNT(DISTINCT j.id) AS postings,
+            CASE WHEN j.agency_code IS NOT NULL AND TRIM(j.agency_code) <> ''
+                 THEN 'code' ELSE 'name' END AS group_key_type
         FROM jobs j
         LEFT JOIN agency_codes ac ON ac.code = j.agency_code
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
           AND COALESCE(j.agency_code, j.agency) IS NOT NULL
-        GROUP BY COALESCE(j.agency_code, '')
+        GROUP BY
+            CASE WHEN j.agency_code IS NOT NULL AND TRIM(j.agency_code) <> ''
+                 THEN UPPER(TRIM(j.agency_code))
+                 ELSE LOWER(TRIM(j.agency))
+            END
         ORDER BY postings DESC, name
         """
     ).fetchall()
     aliases_by_code = _agency_aliases(conn)
     return [
         {
-            "code": row["code"] or None,
+            "code": (row["code"] or None) if row["group_key_type"] == "code" else None,
             "name": row["name"] or row["code"] or "Unknown",
             # Keep `label` for older bundles/UI code; D.5.2's typeahead uses
             # `name` as the canonical display field.
             "label": row["name"] or row["code"] or "Unknown",
             "department_code": row["department_code"] or None,
             "department_name": row["department_name"] or None,
-            "aliases": aliases_by_code.get((row["code"] or "").upper(), []),
+            "aliases": aliases_by_code.get((row["code"] or "").upper(), []) if row["code"] else [],
             "postings": int(row["postings"]),
         }
         for row in rows

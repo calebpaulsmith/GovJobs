@@ -85,6 +85,10 @@ def job_from_search_item(
     category = _first(descriptor.get("JobCategory"))
     grade = _first(descriptor.get("JobGrade"))
 
+    parsed_dept, parsed_sub = _parse_organization_codes(
+        details.get("OrganizationCodes") or descriptor.get("OrganizationCodes")
+    )
+
     return {
         "source": "usajobs_search",
         "usajobs_control_number": _text(item.get("MatchedObjectId")),
@@ -99,11 +103,13 @@ def job_from_search_item(
             or descriptor.get("OrganizationID")
             or details.get("OrganizationCode")
             or details.get("OrganizationID")
+            or parsed_sub
             or default_agency_code
         ),
         "department_code": _text(
             descriptor.get("DepartmentCode")
             or details.get("DepartmentCode")
+            or parsed_dept
             or default_department_code
         ),
         "series": _series(category.get("Code")),
@@ -884,3 +890,22 @@ def _historic_url(control_number: Any) -> str | None:
     if control is None:
         return None
     return f"https://www.usajobs.gov/job/{control}"
+
+
+def _parse_organization_codes(value: Any) -> tuple[str | None, str | None]:
+    """Parse the USAJOBS Search `OrganizationCodes` string.
+
+    The Search API returns it as `DEPT/SUBELEMENT` (e.g. `HS/HSCB` for FEMA,
+    `VA/VATA` for the Veterans Health Administration). Returns
+    ``(department_code, sub_element_code)``; when only one segment is present
+    the parser returns it as the sub-element so it can populate `agency_code`.
+    """
+    text = _text(value)
+    if not text:
+        return None, None
+    parts = [piece.strip() for piece in text.split("/") if piece.strip()]
+    if not parts:
+        return None, None
+    if len(parts) == 1:
+        return None, parts[0].upper()
+    return parts[0].upper(), parts[-1].upper()
