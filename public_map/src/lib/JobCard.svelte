@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { loadJobDetails, loadPayTables, type JobDetails, type PayTables } from './data';
 	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
+	import InfoTooltip from './InfoTooltip.svelte';
 	import { jobProfile } from './jobProfile.svelte';
 	import { mapState } from './store.svelte';
 	import QuickAdd from './QuickAdd.svelte';
@@ -68,13 +69,28 @@
 			});
 	});
 
+	type PayLookup = {
+		plan: string;
+		year: string | undefined;
+		locality: string;
+		fallbackToBase: boolean;
+		grade: string;
+	};
+
+	function payLookup(job: JobDetails | null): PayLookup {
+		const plan = String(job?.pay_plan ?? properties.pay_plan ?? 'GS');
+		const year = payTables ? Object.keys(payTables[plan] ?? {}).sort().at(-1) : undefined;
+		const locality = String(job?.locality_code ?? properties.locality_code ?? 'BASE') || 'BASE';
+		const grade = String(job?.grade_low ?? properties.grade_low ?? '');
+		const byYear = year && payTables ? payTables[plan]?.[year] : undefined;
+		const fallbackToBase = locality !== 'BASE' && !byYear?.[locality] && Boolean(byYear?.BASE);
+		return { plan, year, locality, fallbackToBase, grade };
+	}
+
 	function tableRows(job: JobDetails | null): [string, string][] {
-		if (!job || !payTables) return [];
-		const plan = String(job.pay_plan ?? properties.pay_plan ?? 'GS');
-		const year = Object.keys(payTables[plan] ?? {}).sort().at(-1);
-		const locality = String(job.locality_code ?? properties.locality_code ?? 'BASE') || 'BASE';
-		const grade = String(job.grade_low ?? properties.grade_low ?? '');
-		const byYear = year ? payTables[plan]?.[year] : undefined;
+		const { plan, year, locality, grade } = payLookup(job);
+		if (!payTables || !year) return [];
+		const byYear = payTables[plan]?.[year];
 		const localityTable = byYear?.[locality] ?? byYear?.BASE;
 		const steps = localityTable?.[grade];
 		if (!steps) return [];
@@ -160,7 +176,16 @@
 			</ul>
 		{/if}
 		{#if tableRows(detail).length}
-			<h3>Locality-adjusted pay table</h3>
+			{@const lookup = payLookup(detail)}
+			<h3>
+				Locality-adjusted pay table
+				<InfoTooltip title="How this table was built" align="end">
+					<span>Step rates for this posting's pay plan, grade, and locality. Source year is the most recent year present in the bundled pay scale.</span>
+					<span class="formula">step_rate = base_step × (1 + locality_pct ÷ 100)</span>
+					<span class="formula">plan = {lookup.plan} • year = {lookup.year ?? '—'} • locality = {lookup.locality}{lookup.fallbackToBase ? ' (fell back to BASE)' : ''} • grade = {lookup.grade || '—'}</span>
+					<span class="src">Source: OPM GS pay tables × locality % adjustments (pay_scales × locality_pay_areas)</span>
+				</InfoTooltip>
+			</h3>
 			<table>
 				<tbody>
 					{#each tableRows(detail) as [step, rate] (step)}
@@ -169,7 +194,14 @@
 				</tbody>
 			</table>
 		{:else}
-			<p class="note">No matching static pay-table row is available for this posting's plan/locality/grade.</p>
+			{@const lookup = payLookup(detail)}
+			<p class="note">
+				No matching static pay-table row for plan {lookup.plan} / locality {lookup.locality} / grade {lookup.grade || '—'}.
+				<InfoTooltip title="Why no pay table?" align="end">
+					<span>The bundled pay-scale snapshot does not contain a row for this combination. The Public Map Admin page can refresh OPM pay scales for the active reference year.</span>
+					<span class="src">Source: pay_scales (last refreshed via scripts/ingest_opm_gs_pay.py / ingest_opm_locality_pay.py)</span>
+				</InfoTooltip>
+			</p>
 		{/if}
 	{/if}
 </section>
