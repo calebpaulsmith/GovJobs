@@ -26,6 +26,7 @@ from src.public_map_export import (  # noqa: E402
     cost_of_living,
     counties_geojson,
     current_reference_year,
+    federal_properties_geojson,
     job_details,
     jobs_geojson,
     localities_geojson,
@@ -88,6 +89,7 @@ def main() -> int:
         pay_tables_payload = pay_tables(conn)
         col_payload = cost_of_living(conn)
         zip_centroids = zip_centroids_payload(conn)
+        federal_properties = federal_properties_geojson(conn)
         layer_counts = {
             "states.geojson": len(states["features"]),
             "localities.geojson": len(localities["features"]),
@@ -95,6 +97,7 @@ def main() -> int:
             "metros.geojson": len(metros["features"]),
             "jobs.geojson": len(geojson["features"]),
             "closed_jobs.geojson": len(closed_geojson["features"]),
+            "federal_properties.geojson": len(federal_properties["features"]),
             "zip_centroids.json": len(zip_centroids),
         }
         man = manifest(
@@ -116,6 +119,7 @@ def main() -> int:
     print(f"Agencies:         {len(agencies):,}")
     print(f"Series:           {len(series):,}")
     print(f"ZIP centroids:    {len(zip_centroids):,}")
+    print(f"Federal props:    {layer_counts['federal_properties.geojson']:,} FRPP buildings")
     print(
         "Polygons:         "
         f"{layer_counts['states.geojson']:,} states / "
@@ -151,6 +155,9 @@ def main() -> int:
         "pay_tables.json": _write_json(output / "pay_tables.json", pay_tables_payload),
         "cost_of_living.json": _write_json(output / "cost_of_living.json", col_payload),
         "zip_centroids.json": _write_json(output / "zip_centroids.json", zip_centroids),
+        "federal_properties.geojson": _write_json(
+            output / "federal_properties.geojson", federal_properties
+        ),
         "manifest.json": _write_json(output / "manifest.json", man),
     }
     print()

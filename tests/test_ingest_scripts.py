@@ -16,6 +16,7 @@ import pytest
 from scripts.ingest_bea_rpp import import_rpp_from_csv
 from scripts.ingest_cbsa_polygons import import_cbsa_from_geojson
 from scripts.ingest_county_polygons import import_counties_from_geojson
+from scripts.ingest_federal_properties import import_properties_from_csv
 from scripts.ingest_gs_pay import import_gs_pay_from_csv
 from scripts.ingest_locality_definitions import import_definitions_from_csv
 from scripts.ingest_locality_pay import import_locality_pay_from_csv
@@ -428,3 +429,163 @@ def test_2026_locality_definitions_seed_loads_with_year_2026():
         rows = list(csv.DictReader(handle))
     assert rows, "locality_definitions seed is empty"
     assert all(int(row["year"]) == 2026 for row in rows)
+
+
+# ---------- federal real properties (D.5.9) -------------------------------
+
+
+def _frpp_csv(path: Path, rows: list[dict]) -> Path:
+    fields = [
+        "frpp_id",
+        "name",
+        "property_type",
+        "agency",
+        "agency_code",
+        "address",
+        "city",
+        "state",
+        "zip",
+        "county_fips",
+        "latitude",
+        "longitude",
+        "building_status",
+    ]
+    return _write_csv(path, rows, fields)
+
+
+def test_federal_properties_ingest_writes_rows_and_normalizes_fields(conn, tmp_path):
+    csv_path = _frpp_csv(
+        tmp_path / "frpp.csv",
+        [
+            {
+                "frpp_id": "GSA-DC-0001",
+                "name": "Truman Building",
+                "property_type": "Office",
+                "agency": "Dept of State",
+                "agency_code": "DS",
+                "address": "2201 C St NW",
+                "city": "Washington",
+                "state": "dc",
+                "zip": "20520",
+                "county_fips": "1001",  # 4 digits — should pad to 5
+                "latitude": "38.8945",
+                "longitude": "-77.0489",
+                "building_status": "Active",
+            },
+            {
+                # Bad lat — should be skipped
+                "frpp_id": "GSA-BAD-0001",
+                "name": "Off the planet",
+                "property_type": "",
+                "agency": "",
+                "agency_code": "",
+                "address": "",
+                "city": "",
+                "state": "VA",
+                "zip": "",
+                "county_fips": "",
+                "latitude": "999",
+                "longitude": "0",
+                "building_status": "",
+            },
+            {
+                # Missing required fields — should be skipped
+                "frpp_id": "",
+                "name": "Anonymous",
+                "property_type": "",
+                "agency": "",
+                "agency_code": "",
+                "address": "",
+                "city": "",
+                "state": "",
+                "zip": "",
+                "county_fips": "",
+                "latitude": "40.0",
+                "longitude": "-100.0",
+                "building_status": "",
+            },
+        ],
+    )
+    written = import_properties_from_csv(
+        conn,
+        input_path=csv_path,
+        source="gsa:test",
+        replace_all=False,
+    )
+    assert written == 1
+    row = conn.execute(
+        "SELECT frpp_id, name, state, county_fips, latitude, longitude, source "
+        "FROM federal_properties"
+    ).fetchone()
+    assert row["frpp_id"] == "GSA-DC-0001"
+    assert row["name"] == "Truman Building"
+    assert row["state"] == "DC"
+    assert row["county_fips"] == "01001"
+    assert row["latitude"] == pytest.approx(38.8945)
+    assert row["longitude"] == pytest.approx(-77.0489)
+    assert row["source"] == "gsa:test"
+
+
+def test_federal_properties_ingest_replace_all_clears_existing(conn, tmp_path):
+    rows1 = [
+        {
+            "frpp_id": "OLD-1",
+            "name": "Old building",
+            "property_type": "",
+            "agency": "",
+            "agency_code": "",
+            "address": "",
+            "city": "",
+            "state": "VA",
+            "zip": "",
+            "county_fips": "",
+            "latitude": "38.0",
+            "longitude": "-77.0",
+            "building_status": "",
+        }
+    ]
+    rows2 = [
+        {
+            "frpp_id": "NEW-1",
+            "name": "New building",
+            "property_type": "",
+            "agency": "",
+            "agency_code": "",
+            "address": "",
+            "city": "",
+            "state": "TX",
+            "zip": "",
+            "county_fips": "",
+            "latitude": "30.0",
+            "longitude": "-95.0",
+            "building_status": "",
+        }
+    ]
+    import_properties_from_csv(
+        conn,
+        input_path=_frpp_csv(tmp_path / "first.csv", rows1),
+        source="gsa:first",
+        replace_all=False,
+    )
+    import_properties_from_csv(
+        conn,
+        input_path=_frpp_csv(tmp_path / "second.csv", rows2),
+        source="gsa:second",
+        replace_all=True,
+    )
+    ids = [row["frpp_id"] for row in conn.execute("SELECT frpp_id FROM federal_properties")]
+    assert ids == ["NEW-1"]
+
+
+def test_federal_properties_seed_csv_loads_and_has_required_columns():
+    from scripts.ingest_federal_properties import REQUIRED_COLUMNS, SEED_CSV
+
+    assert SEED_CSV.exists(), f"missing FRPP seed at {SEED_CSV}"
+    with SEED_CSV.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        fieldnames = set(reader.fieldnames or [])
+    assert REQUIRED_COLUMNS <= fieldnames
+    assert len(rows) >= 10, "seed should ship a representative national set"
+    states = {row["state"].upper() for row in rows if row.get("state")}
+    assert len(states) >= 10, "seed should span multiple states"

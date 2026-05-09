@@ -43,6 +43,10 @@
 		mapState.closedJobsEnabled = !mapState.closedJobsEnabled;
 	}
 
+	function toggleFederalProperties() {
+		mapState.federalPropertiesEnabled = !mapState.federalPropertiesEnabled;
+	}
+
 	function gradientCss(key: MetricKey): string {
 		return METRICS[key].colorStops.map(([, color]) => color).join(', ');
 	}
@@ -101,6 +105,18 @@
 				: 'Trailing-90-day closed postings are off'}
 		>
 			Closed {mapState.closedJobsEnabled ? 'on' : 'off'}
+		</button>
+		<button
+			type="button"
+			class="shade-toggle"
+			class:on={mapState.federalPropertiesEnabled}
+			onclick={toggleFederalProperties}
+			aria-pressed={mapState.federalPropertiesEnabled}
+			title={mapState.federalPropertiesEnabled
+				? 'GSA federal properties layer is on (zoom in to see them)'
+				: 'GSA federal properties layer is off'}
+		>
+			Fed props {mapState.federalPropertiesEnabled ? 'on' : 'off'}
 		</button>
 		{#if hasExperimentalMetrics}
 			<button

@@ -17,6 +17,7 @@ from src.public_map_export import (
     agency_options,
     closed_jobs_geojson,
     current_reference_year,
+    federal_properties_geojson,
     geocoding_summary,
     job_details,
     jobs_geojson,
@@ -524,3 +525,93 @@ def test_current_reference_year_prefers_pay_scales_max_year(conn):
             locality_code="", rate=20_000.00 + year,
         )
     assert current_reference_year(conn) == 2026
+
+
+# ---------- Federal Real Property layer (D.5.9) -----------------------------
+
+
+def _insert_federal_property(conn, **kwargs) -> None:
+    defaults = {
+        "frpp_id": "TEST-1",
+        "name": "Test Building",
+        "property_type": "Office",
+        "agency": "GSA",
+        "agency_code": "GS",
+        "address": "123 Main St",
+        "city": "Anywhere",
+        "state": "VA",
+        "zip": "22202",
+        "county_fips": "51013",
+        "latitude": 38.87,
+        "longitude": -77.05,
+        "building_status": "Active",
+        "source": "test",
+        "imported_at": utc_now(),
+    }
+    defaults.update(kwargs)
+    conn.execute(
+        """
+        INSERT INTO federal_properties (
+            frpp_id, name, property_type, agency, agency_code, address,
+            city, state, zip, county_fips, latitude, longitude,
+            building_status, source, imported_at
+        ) VALUES (
+            :frpp_id, :name, :property_type, :agency, :agency_code, :address,
+            :city, :state, :zip, :county_fips, :latitude, :longitude,
+            :building_status, :source, :imported_at
+        )
+        """,
+        defaults,
+    )
+    conn.commit()
+
+
+def test_federal_properties_geojson_returns_point_features(conn):
+    _insert_federal_property(conn, frpp_id="A", latitude=38.87, longitude=-77.05)
+    _insert_federal_property(conn, frpp_id="B", latitude=29.55, longitude=-95.09)
+
+    fc = federal_properties_geojson(conn)
+    assert fc["type"] == "FeatureCollection"
+    assert len(fc["features"]) == 2
+    geom_types = {f["geometry"]["type"] for f in fc["features"]}
+    assert geom_types == {"Point"}
+    ids = {f["properties"]["id"] for f in fc["features"]}
+    assert ids == {"A", "B"}
+
+
+def test_federal_properties_geojson_skips_missing_or_invalid_coords(conn):
+    _insert_federal_property(conn, frpp_id="OK", latitude=38.87, longitude=-77.05)
+    _insert_federal_property(conn, frpp_id="NULL_LAT", latitude=None, longitude=-77.0)
+    _insert_federal_property(conn, frpp_id="OUT_OF_RANGE", latitude=99.0, longitude=0.0)
+
+    fc = federal_properties_geojson(conn)
+    ids = {f["properties"]["id"] for f in fc["features"]}
+    assert ids == {"OK"}
+
+
+def test_federal_properties_geojson_omits_null_properties(conn):
+    _insert_federal_property(
+        conn,
+        frpp_id="SPARSE",
+        property_type=None,
+        address=None,
+        zip=None,
+        county_fips=None,
+        building_status=None,
+    )
+    fc = federal_properties_geojson(conn)
+    feat = fc["features"][0]
+    assert feat["properties"]["id"] == "SPARSE"
+    # Null fields should be omitted, not rendered as null/None.
+    assert "property_type" not in feat["properties"]
+    assert "address" not in feat["properties"]
+    assert "zip" not in feat["properties"]
+    assert "building_status" not in feat["properties"]
+    # Non-null fields stay.
+    assert feat["properties"]["name"] == "Test Building"
+    assert feat["properties"]["state"] == "VA"
+
+
+def test_federal_properties_geojson_empty_when_table_has_no_rows(conn):
+    fc = federal_properties_geojson(conn)
+    assert fc == {"type": "FeatureCollection", "features": []}

@@ -20,6 +20,7 @@ Environment variables:
     PUBLIC_MAP_OTHER_PAY_PLANS    - "PLAN=path" pairs separated by ';' (e.g. "FW=fw.csv;ES=es.csv")
     PUBLIC_MAP_BEA_RPP_CSV        - BEA RPP CSV path
     PUBLIC_MAP_ZIP_CENTROIDS      - ZIP/ZCTA centroid CSV/TXT/ZIP override
+    PUBLIC_MAP_FRPP_CSV           - GSA Federal Real Property Profile CSV override
 
 Run:
     python scripts/refresh_public_map_data.py
@@ -230,6 +231,20 @@ def build_steps() -> list[Step]:
             key="ingest_zip_centroids",
             label="ZIP/ZCTA centroids",
             args=zip_args,
+        )
+    )
+
+    # Per ADR-0025, federal real-property points feed a separate marker layer.
+    # Falls back to the checked-in seed when no env var or --input is provided.
+    frpp_csv = os.environ.get("PUBLIC_MAP_FRPP_CSV")
+    frpp_args = [_python(), "scripts/ingest_federal_properties.py"]
+    if frpp_csv:
+        frpp_args.extend(["--input", frpp_csv])
+    steps.append(
+        Step(
+            key="ingest_federal_properties",
+            label="Federal real properties (FRPP)",
+            args=frpp_args,
         )
     )
 

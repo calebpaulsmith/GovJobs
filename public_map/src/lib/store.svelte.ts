@@ -9,6 +9,10 @@ class MapState {
 	choroplethEnabled = $state<boolean>(true);
 	postingHeatEnabled = $state<boolean>(true);
 	closedJobsEnabled = $state<boolean>(false);
+	// D.5.9: GSA Federal Real Property layer (neutral diamonds at zoom >= 6).
+	// Off by default so it doesn't crowd job markers; toggled from the
+	// MetricSwitcher.
+	federalPropertiesEnabled = $state<boolean>(false);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
 	addressSearchOpen = $state<boolean>(false);

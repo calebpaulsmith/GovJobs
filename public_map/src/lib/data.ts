@@ -139,6 +139,8 @@ export const loadLocalities = () =>
 export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY_COLLECTION);
 export const loadClosedJobs = () =>
 	fetchJson<FeatureCollection>('closed_jobs.geojson', EMPTY_COLLECTION);
+export const loadFederalProperties = () =>
+	fetchJson<FeatureCollection>('federal_properties.geojson', EMPTY_COLLECTION);
 export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
 export async function loadAgencyOptions(): Promise<AgencyOption[]> {
 	agencyOptionsCache ??= (await fetchJson<AgencyOption[]>('agencies.json', [])).map((option) => ({

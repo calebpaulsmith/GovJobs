@@ -853,6 +853,29 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             imported_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS federal_properties (
+            frpp_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            property_type TEXT,
+            agency TEXT,
+            agency_code TEXT,
+            address TEXT,
+            city TEXT,
+            state TEXT,
+            zip TEXT,
+            county_fips TEXT,
+            latitude REAL,
+            longitude REAL,
+            building_status TEXT,
+            source TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_federal_properties_state
+            ON federal_properties(state);
+        CREATE INDEX IF NOT EXISTS idx_federal_properties_agency_code
+            ON federal_properties(agency_code);
+
         CREATE TABLE IF NOT EXISTS cost_of_living_index (
             year INTEGER NOT NULL,
             geo_type TEXT NOT NULL,
@@ -897,7 +920,7 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     _seed_pay_plans(conn)
     _backfill_child_tables_from_jobs(conn)
     _backfill_search_locations_from_raw(conn)
-    _set_meta(conn, "schema_version", "10")
+    _set_meta(conn, "schema_version", "11")
     conn.commit()
     return conn
 

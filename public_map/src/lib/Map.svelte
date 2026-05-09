@@ -10,6 +10,7 @@
 	import {
 		loadClosedJobs,
 		loadCounties,
+		loadFederalProperties,
 		loadJobs,
 		loadLocalities,
 		loadManifest,
@@ -27,6 +28,7 @@
 		addOrUpdateSource,
 		setClosedJobsVisible,
 		setChoroplethVisible,
+		setFederalPropertiesVisible,
 		setPostingHeatVisible,
 		setStateFillMetric
 	} from './layers';
@@ -76,13 +78,14 @@
 		map.on('load', async () => {
 			if (!map) return;
 			try {
-				const [states, counties, metros, localities, jobs, closedJobs, details, manifest] = await Promise.all([
+				const [states, counties, metros, localities, jobs, closedJobs, federalProperties, details, manifest] = await Promise.all([
 					loadStates(),
 					loadCounties(),
 					loadMetros(),
 					loadLocalities(),
 					loadJobs(),
 					loadClosedJobs(),
+					loadFederalProperties(),
 					loadJobDetailsIndex(),
 					loadManifest()
 				]);
@@ -111,6 +114,7 @@
 				addOrUpdateSource(map, SOURCE_IDS.localities, localities);
 				addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
 				addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
+				addOrUpdateSource(map, SOURCE_IDS.federalProperties, federalProperties);
 				addOrUpdateSource(map, SOURCE_IDS.addressPin, emptyCollection());
 				addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 
@@ -130,11 +134,13 @@
 		const shadingOn = mapState.choroplethEnabled;
 		const heatOn = mapState.postingHeatEnabled;
 		const closedOn = mapState.closedJobsEnabled;
+		const frppOn = mapState.federalPropertiesEnabled;
 		if (mounted && map && map.isStyleLoaded()) {
 			setStateFillMetric(map, m);
 			setChoroplethVisible(map, shadingOn);
 			setPostingHeatVisible(map, heatOn);
 			setClosedJobsVisible(map, closedOn);
+			setFederalPropertiesVisible(map, frppOn);
 		}
 	});
 
@@ -283,6 +289,7 @@
 			LAYER_IDS.clusters,
 			LAYER_IDS.markers,
 			LAYER_IDS.closedMarkers,
+			LAYER_IDS.federalProperties,
 			LAYER_IDS.localitiesFill,
 			LAYER_IDS.countiesOutline,
 			LAYER_IDS.metrosOutline,
@@ -293,6 +300,7 @@
 			for (const layerId of layerOrder) {
 				if (!m.getLayer(layerId)) continue;
 				if (layerId === LAYER_IDS.closedMarkers && !mapState.closedJobsEnabled) continue;
+				if (layerId === LAYER_IDS.federalProperties && !mapState.federalPropertiesEnabled) continue;
 				const feats = m.queryRenderedFeatures(e.point, { layers: [layerId] });
 				if (feats.length === 0) continue;
 
@@ -340,6 +348,8 @@
 				return 'Job card';
 			case LAYER_IDS.closedMarkers:
 				return 'Closed posting';
+			case LAYER_IDS.federalProperties:
+				return 'Federal property';
 			case LAYER_IDS.statesFill:
 				return 'State';
 			case LAYER_IDS.localitiesFill:
