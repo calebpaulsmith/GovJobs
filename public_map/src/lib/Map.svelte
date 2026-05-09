@@ -59,6 +59,7 @@
 
 		map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), 'top-right');
 		map.addControl(new mapboxgl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
+		map.on('moveend', () => updateViewport());
 
 		map.on('load', async () => {
 			if (!map) return;
@@ -100,6 +101,7 @@
 
 				addAllLayers(map, mapState.metric);
 				attachClickHandling(map);
+				updateViewport();
 			} catch (err) {
 				console.error('[public_map] data load failed', err);
 				mapState.dataError = (err as Error).message;
@@ -143,6 +145,13 @@
 		}
 	});
 
+	$effect(() => {
+		const viewport = mapState.pendingViewport;
+		if (!mounted || !map || !viewport) return;
+		map.easeTo({ center: viewport.center, zoom: Math.min(viewport.zoom, MAXZOOM), duration: 600 });
+		mapState.pendingViewport = null;
+	});
+
 	onDestroy(() => {
 		map?.remove();
 		map = null;
@@ -178,6 +187,15 @@
 			const bucket = totals.get(state);
 			props.remote_share = bucket && bucket.total > 0 ? bucket.remote / bucket.total : null;
 		}
+	}
+
+	function updateViewport(): void {
+		if (!map) return;
+		const center = map.getCenter();
+		mapState.viewport = {
+			center: [Number(center.lng.toFixed(5)), Number(center.lat.toFixed(5))],
+			zoom: Number(map.getZoom().toFixed(2))
+		};
 	}
 
 	function attachClickHandling(m: MaplibreMap): void {

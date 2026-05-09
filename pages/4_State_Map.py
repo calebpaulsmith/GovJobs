@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import html
+import json
 import math
+from pathlib import Path
 from typing import Any
 
 import folium
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 from folium.plugins import MarkerCluster
@@ -24,9 +27,100 @@ from src.ui_data import (
 
 
 US_CENTER = (39.8283, -98.5795)
+REPO = Path(__file__).resolve().parents[1]
+PUBLIC_MAP_DATA = REPO / "public_map" / "static" / "data"
+
+POLYGON_LAYER_FILES = {
+    "State polygons": "states.geojson",
+    "Locality pay polygons": "localities.geojson",
+    "County polygons": "counties.geojson",
+    "Metro/CBSA polygons": "metros.geojson",
+}
+
+POLYGON_LAYER_STYLES = {
+    "State polygons": {"color": "#2563EB", "fillColor": "#60A5FA", "weight": 1.0, "fillOpacity": 0.08},
+    "Locality pay polygons": {"color": "#7C3AED", "fillColor": "#A78BFA", "weight": 1.6, "fillOpacity": 0.12},
+    "County polygons": {"color": "#64748B", "fillColor": "#CBD5E1", "weight": 0.45, "fillOpacity": 0.02},
+    "Metro/CBSA polygons": {"color": "#DC2626", "fillColor": "#FCA5A5", "weight": 0.9, "fillOpacity": 0.03},
+}
+
+POLYGON_TOOLTIP_FIELDS = {
+    "State polygons": (["name", "state", "postings", "locality_code", "pay_vs_col"], ["State", "Code", "Postings", "Dominant locality", "Pay/COL"]),
+    "Locality pay polygons": (["name", "code", "adjustment_pct", "county_count", "postings"], ["Locality", "Code", "Adjustment %", "Counties", "Postings"]),
+    "County polygons": (["name", "state", "fips", "locality_code", "postings"], ["County", "State", "FIPS", "Locality", "Postings"]),
+    "Metro/CBSA polygons": (["name", "cbsa_code", "cbsa_type", "postings"], ["Metro/CBSA", "Code", "Type", "Postings"]),
+}
 
 
-def _work_location_map(points, *, center: tuple[float, float], zoom_start: int = 5) -> folium.Map:
+@st.cache_data(show_spinner=False)
+def _load_public_map_geojson(file_name: str) -> dict[str, Any] | None:
+    path = PUBLIC_MAP_DATA / file_name
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@st.cache_data(show_spinner=False)
+def _load_public_map_manifest() -> dict[str, Any] | None:
+    return _load_public_map_geojson("manifest.json")
+
+
+def _geojson_feature_count(payload: dict[str, Any] | None) -> int:
+    if not payload:
+        return 0
+    features = payload.get("features")
+    return len(features) if isinstance(features, list) else 0
+
+
+def _style_for_layer(layer_name: str) -> dict[str, Any]:
+    return dict(POLYGON_LAYER_STYLES[layer_name])
+
+
+def _tooltip_for_layer(layer_name: str) -> folium.GeoJsonTooltip:
+    fields, aliases = POLYGON_TOOLTIP_FIELDS[layer_name]
+    return folium.GeoJsonTooltip(
+        fields=fields,
+        aliases=aliases,
+        sticky=True,
+        localize=True,
+        labels=True,
+    )
+
+
+def _add_public_polygon_layers(map_obj: folium.Map, selected_layers: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for layer_name in selected_layers:
+        file_name = POLYGON_LAYER_FILES[layer_name]
+        payload = _load_public_map_geojson(file_name)
+        count = _geojson_feature_count(payload)
+        counts[layer_name] = count
+        if not payload or count == 0:
+            continue
+        folium.GeoJson(
+            payload,
+            name=layer_name,
+            overlay=True,
+            control=True,
+            show=True,
+            style_function=lambda _feature, name=layer_name: _style_for_layer(name),
+            highlight_function=lambda _feature: {
+                "weight": 3,
+                "color": "#111827",
+                "fillOpacity": 0.18,
+            },
+            tooltip=_tooltip_for_layer(layer_name),
+        ).add_to(map_obj)
+    return counts
+
+
+def _work_location_map(
+    points,
+    *,
+    center: tuple[float, float],
+    selected_polygon_layers: list[str],
+    zoom_start: int = 5,
+) -> tuple[folium.Map, dict[str, int]]:
     map_obj = folium.Map(location=center, zoom_start=zoom_start, tiles=None, control_scale=True)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
@@ -43,6 +137,8 @@ def _work_location_map(points, *, center: tuple[float, float], zoom_start: int =
         control=True,
     ).add_to(map_obj)
     folium.TileLayer("OpenStreetMap", name="OpenStreetMap", overlay=False, control=True).add_to(map_obj)
+
+    polygon_counts = _add_public_polygon_layers(map_obj, selected_polygon_layers)
 
     cluster = MarkerCluster(
         name="Work locations",
@@ -94,7 +190,7 @@ def _work_location_map(points, *, center: tuple[float, float], zoom_start: int =
     if bounds:
         map_obj.fit_bounds(bounds, padding=(24, 24))
     folium.LayerControl(collapsed=False).add_to(map_obj)
-    return map_obj
+    return map_obj, polygon_counts
 
 
 def _popup_html(
@@ -281,11 +377,25 @@ if source_layer == "USAJOBS postings":
         with st.popover("Map Filters", use_container_width=True):
             map_source = st.selectbox("Posting source", ["All", "usajobs_search", "usajobs_historic"])
             include_multi = st.checkbox("Include multi-location postings", value=True)
+            selected_polygon_layers = st.multiselect(
+                "Public map polygon overlays",
+                list(POLYGON_LAYER_FILES),
+                default=["State polygons", "Locality pay polygons"],
+                help=(
+                    "Uses the same exported GeoJSON bundle as the public map "
+                    "under public_map/static/data/."
+                ),
+            )
     points = work_location_points(conn, include_multi_location=include_multi, source=map_source)
     coverage = current_location_coverage(conn)
 
     center = _map_center(points) if not points.empty else US_CENTER
-    map_obj = _work_location_map(points, center=center, zoom_start=5 if not points.empty else 4)
+    map_obj, polygon_counts = _work_location_map(
+        points,
+        center=center,
+        selected_polygon_layers=selected_polygon_layers,
+        zoom_start=5 if not points.empty else 4,
+    )
     map_state = st_folium(
         map_obj,
         height=860,
@@ -295,11 +405,24 @@ if source_layer == "USAJOBS postings":
     )
     bounds = _bounds_from_map_state(map_state)
     zoom = int(map_state.get("zoom") or 4) if isinstance(map_state, dict) else 4
+    manifest = _load_public_map_manifest()
+    manifest_generated = (manifest or {}).get("generated_at")
+    polygon_summary = " | ".join(
+        f"{label.replace(' polygons', '').replace('/CBSA', '')}: {polygon_counts.get(label, 0):,}"
+        for label in selected_polygon_layers
+    )
     with toolbar[2]:
         st.caption(
             f"Mapped work locations: {len(points):,} | Current mapped: {coverage['mapped_postings']:,} | "
             f"Current unmapped: {coverage['unmapped_non_remote_postings']:,} | Remote: {coverage['remote_postings']:,}"
         )
+        if polygon_summary:
+            st.caption(
+                f"Public map overlays: {polygon_summary}"
+                + (f" | Bundle generated: {manifest_generated}" if manifest_generated else "")
+            )
+        elif not (PUBLIC_MAP_DATA / "manifest.json").exists():
+            st.caption("Public map overlays unavailable. Run `python scripts/export_public_map.py` to build the local bundle.")
 
     with st.popover("Map Review Panel", use_container_width=True):
         st.metric("Mapped work locations", f"{len(points):,}")
@@ -307,6 +430,22 @@ if source_layer == "USAJOBS postings":
         coverage_cols[0].metric("Current Mapped", f"{coverage['mapped_postings']:,}")
         coverage_cols[1].metric("Current Unmapped", f"{coverage['unmapped_non_remote_postings']:,}")
         coverage_cols[2].metric("Remote", f"{coverage['remote_postings']:,}")
+        if selected_polygon_layers:
+            st.subheader("Public Map Polygon Overlays")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Layer": layer,
+                            "File": POLYGON_LAYER_FILES[layer],
+                            "Features": polygon_counts.get(layer, 0),
+                        }
+                        for layer in selected_polygon_layers
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
         if points.empty:
             st.info(
                 "No coordinate-level work locations are available yet. The base map is ready; current Search imports can add latitude/longitude points when the API provides them."

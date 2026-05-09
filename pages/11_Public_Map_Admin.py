@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -22,11 +23,14 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from config import load_config
 from src.data_source_registry import (
     freshness_summary,
     list_status,
     set_manual_override,
 )
+from src.data_import import import_current_search
+from src.public_map_corpus import run_public_map_recon
 from src.ui_data import app_connection
 
 
@@ -44,6 +48,17 @@ SCRIPT_FOR_KEY: dict[str, list[str]] = {
     "bea_rpp": ["scripts/ingest_bea_rpp.py"],
 }
 
+REFRESH_ALL_STEPS: list[tuple[str, str, list[str]]] = [
+    ("census_states", "State polygons", ["scripts/ingest_state_polygons.py"]),
+    ("census_counties", "County polygons", ["scripts/ingest_county_polygons.py"]),
+    ("census_cbsa", "CBSA polygons", ["scripts/ingest_cbsa_polygons.py"]),
+    ("opm_locality_definitions", "OPM locality definitions", ["scripts/ingest_locality_definitions.py"]),
+    ("opm_locality_pay", "OPM locality percentages", ["scripts/ingest_locality_pay.py"]),
+    ("opm_locality_polygons", "OPM locality polygons", ["scripts/ingest_locality_polygons.py"]),
+    ("opm_gs_pay", "GS pay tables", ["scripts/ingest_gs_pay.py"]),
+    ("bea_rpp", "BEA Regional Price Parities", ["scripts/ingest_bea_rpp.py"]),
+]
+
 CATEGORY_LABELS = {
     "geometry": "Geometry",
     "pay": "Pay tables",
@@ -51,6 +66,8 @@ CATEGORY_LABELS = {
     "col": "Cost of living",
     "job_postings": "Job postings",
 }
+
+PUBLIC_MAP_DATA = REPO / "public_map" / "static" / "data"
 
 
 def _age_label(timestamp: str | None) -> str:
@@ -90,6 +107,72 @@ def _status_indicator(row: dict) -> str:
     return "GREEN"
 
 
+def _format_delta(previous: int | None, current: int | None) -> str:
+    if previous is None or current is None:
+        return ""
+    delta = int(current) - int(previous)
+    if delta > 0:
+        return f"+{delta:,}"
+    return f"{delta:,}"
+
+
+def _status_by_key(conn) -> dict[str, dict]:
+    return {row["source_key"]: row for row in list_status(conn)}
+
+
+def _manifest_layers() -> dict[str, int]:
+    path = PUBLIC_MAP_DATA / "manifest.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    layers = payload.get("layers") or {}
+    return {str(key): int(value or 0) for key, value in layers.items()}
+
+
+def _job_totals(conn) -> dict[str, int]:
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total_usajobs,
+            SUM(CASE WHEN source='usajobs_search' THEN 1 ELSE 0 END) AS current_search,
+            SUM(CASE WHEN source='usajobs_historic' THEN 1 ELSE 0 END) AS historic,
+            SUM(
+                CASE
+                    WHEN source LIKE 'usajobs%'
+                     AND (close_date IS NULL OR close_date >= date('now'))
+                    THEN 1 ELSE 0
+                END
+            ) AS open_usajobs
+        FROM jobs
+        WHERE source LIKE 'usajobs%'
+        """
+    ).fetchone()
+    return {
+        "total_usajobs": int(row["total_usajobs"] or 0),
+        "current_search": int(row["current_search"] or 0),
+        "historic": int(row["historic"] or 0),
+        "open_usajobs": int(row["open_usajobs"] or 0),
+    }
+
+
+def _refresh_ticker_frame(items: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "Status": item["status"],
+                "Refreshed item": item["label"],
+                "Previous total": item.get("previous"),
+                "Current total": item.get("current"),
+                "Delta": _format_delta(item.get("previous"), item.get("current")),
+            }
+            for item in items
+        ]
+    )
+
+
 def _render_status_table(rows: list[dict]) -> None:
     if not rows:
         st.info(
@@ -122,6 +205,158 @@ def _run_subprocess(args: list[str]) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
+
+
+def _render_refresh_all(rows: list[dict], conn) -> None:
+    st.subheader("Refresh all reference data")
+    st.caption(
+        "Runs every public-map reference ingest, then rebuilds the static map bundle. "
+        "The ticker shows each source's row count before and after the refresh."
+    )
+    if st.button("Refresh all reference data and export bundle", type="primary", use_container_width=True):
+        before = _status_by_key(conn)
+        items = [
+            {
+                "source_key": source_key,
+                "label": label,
+                "previous": int((before.get(source_key) or {}).get("row_count") or 0),
+                "current": int((before.get(source_key) or {}).get("row_count") or 0),
+                "status": "PENDING",
+                "stdout": "",
+                "stderr": "",
+            }
+            for source_key, label, _cmd in REFRESH_ALL_STEPS
+        ]
+        items.append(
+            {
+                "source_key": "public_map_bundle",
+                "label": "Static public map bundle",
+                "previous": sum(_manifest_layers().values()),
+                "current": sum(_manifest_layers().values()),
+                "status": "PENDING",
+                "stdout": "",
+                "stderr": "",
+            }
+        )
+
+        ticker = st.empty()
+        log_container = st.container()
+        failures = 0
+
+        for index, (_source_key, _label, cmd) in enumerate(REFRESH_ALL_STEPS):
+            items[index]["status"] = "RUNNING"
+            ticker.dataframe(_refresh_ticker_frame(items), use_container_width=True, hide_index=True)
+            result = _run_subprocess(cmd)
+            after = _status_by_key(conn)
+            status_row = after.get(items[index]["source_key"]) or {}
+            items[index]["current"] = int(status_row.get("row_count") or 0)
+            items[index]["stdout"] = result.stdout
+            items[index]["stderr"] = result.stderr
+            if result.returncode == 0 and not status_row.get("last_error"):
+                items[index]["status"] = "OK"
+            else:
+                items[index]["status"] = "FAILED"
+                failures += 1
+            ticker.dataframe(_refresh_ticker_frame(items), use_container_width=True, hide_index=True)
+
+        bundle_index = len(items) - 1
+        if failures:
+            items[bundle_index]["status"] = "SKIPPED"
+            ticker.dataframe(_refresh_ticker_frame(items), use_container_width=True, hide_index=True)
+            st.error(f"{failures} refresh step(s) failed. Fix those before exporting the public bundle.")
+        else:
+            items[bundle_index]["status"] = "RUNNING"
+            ticker.dataframe(_refresh_ticker_frame(items), use_container_width=True, hide_index=True)
+            result = _run_subprocess(["scripts/export_public_map.py"])
+            items[bundle_index]["current"] = sum(_manifest_layers().values())
+            items[bundle_index]["stdout"] = result.stdout
+            items[bundle_index]["stderr"] = result.stderr
+            items[bundle_index]["status"] = "OK" if result.returncode == 0 else "FAILED"
+            ticker.dataframe(_refresh_ticker_frame(items), use_container_width=True, hide_index=True)
+            if result.returncode == 0:
+                st.success("Reference data refreshed and public map bundle exported.")
+            else:
+                st.error(f"Export failed (exit {result.returncode}).")
+
+        with log_container.expander("Refresh logs", expanded=bool(failures)):
+            for item in items:
+                st.markdown(f"**{item['label']} - {item['status']}**")
+                if item.get("stdout"):
+                    st.code(item["stdout"], language="text")
+                if item.get("stderr"):
+                    st.code(item["stderr"], language="text")
+
+
+def _render_all_jobs_controls(conn) -> None:
+    st.subheader("Get all current USAJOBS postings")
+    st.caption(
+        "Runs the federal-wide current Search import with no agency filter. "
+        "Reconnaissance runs first and updates docs/DOWNLOAD_STRATEGY.md."
+    )
+    before = _job_totals(conn)
+    cols = st.columns(4)
+    cols[0].metric("All USAJOBS rows", f"{before['total_usajobs']:,}")
+    cols[1].metric("Open USAJOBS rows", f"{before['open_usajobs']:,}")
+    cols[2].metric("Current Search rows", f"{before['current_search']:,}")
+    cols[3].metric("Historic rows", f"{before['historic']:,}")
+
+    no_page_cap = st.toggle(
+        "No page cap",
+        value=False,
+        help="When enabled, the importer follows USAJOBS pagination until the API reports no next page.",
+    )
+    max_pages = st.number_input(
+        "Page cap",
+        min_value=1,
+        max_value=500,
+        value=25,
+        step=5,
+        disabled=no_page_cap,
+    )
+    if st.button("Import federal-wide current postings", use_container_width=True):
+        cfg = load_config()
+        progress = st.empty()
+        progress.info("Running data reconnaissance...")
+        recommendations = run_public_map_recon(cfg)
+        progress.info("Importing federal-wide current Search pages...")
+        result = import_current_search(
+            conn,
+            cfg,
+            {},
+            max_pages=None if no_page_cap else int(max_pages),
+        )
+        after = _job_totals(conn)
+        progress.success(
+            f"Imported {result.records_imported:,} record(s) across "
+            f"{result.pages_completed:,} page(s)."
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Metric": "All USAJOBS rows",
+                        "Previous total": before["total_usajobs"],
+                        "Current total": after["total_usajobs"],
+                        "Delta": _format_delta(before["total_usajobs"], after["total_usajobs"]),
+                    },
+                    {
+                        "Metric": "Open USAJOBS rows",
+                        "Previous total": before["open_usajobs"],
+                        "Current total": after["open_usajobs"],
+                        "Delta": _format_delta(before["open_usajobs"], after["open_usajobs"]),
+                    },
+                    {
+                        "Metric": "Current Search rows",
+                        "Previous total": before["current_search"],
+                        "Current total": after["current_search"],
+                        "Delta": _format_delta(before["current_search"], after["current_search"]),
+                    },
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption("Recon modes: " + ", ".join(rec.mode for rec in recommendations))
 
 
 def _render_refresh_controls(rows: list[dict]) -> None:
@@ -287,6 +522,9 @@ def main() -> None:
     rows = list_status(conn)
     st.subheader("Data sources")
     _render_status_table(rows)
+
+    _render_refresh_all(rows, conn)
+    _render_all_jobs_controls(conn)
 
     left, right = st.columns(2)
     with left:

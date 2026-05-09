@@ -11,6 +11,7 @@ class MapState {
 	closedJobsEnabled = $state<boolean>(false);
 	manifest = $state<Manifest | null>(null);
 	dataError = $state<string | null>(null);
+	savedSearchesOpen = $state<boolean>(false);
 	selectedFeature = $state<SelectedFeature | null>(null);
 	// When set, the FeaturePanel renders a JobList for the matching scope
 	// (e.g. {scope: 'state', state: 'IL'}) instead of the current
@@ -18,8 +19,15 @@ class MapState {
 	// roundup popup. Cleared when the user closes the panel or picks a marker.
 	listView = $state<ListView | null>(null);
 	filters = $state<JobFilters>({ ...DEFAULT_FILTERS, agencies: [] });
+	viewport = $state<MapViewport>({ center: [-97, 38.5], zoom: 4 });
+	pendingViewport = $state<MapViewport | null>(null);
 	filteredJobCount = $state(0);
 	totalJobCount = $state(0);
+}
+
+export interface MapViewport {
+	center: [number, number];
+	zoom: number;
 }
 
 export interface ListView {

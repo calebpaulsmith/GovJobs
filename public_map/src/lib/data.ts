@@ -1,6 +1,6 @@
 // Data bundle loaders. The export script writes 12 files into static/data/;
-// see scripts/export_public_map.py. We fetch them with `cache: 'force-cache'`
-// since Cloudflare CDNs the bundle and the nightly push busts the cache.
+// see scripts/export_public_map.py. Cloudflare can cache the production bundle,
+// but local dev should always re-read the latest exported files.
 //
 // If a file is missing (e.g. before the first export run), we resolve to an
 // empty FeatureCollection rather than throwing, so the map skeleton still
@@ -70,7 +70,7 @@ const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', feature
 async function fetchJson<T>(filename: string, fallback: T): Promise<T> {
 	const url = `${DATA_BASE}/${filename}`;
 	try {
-		const response = await fetch(url, { cache: 'force-cache' });
+		const response = await fetch(url, { cache: import.meta.env.DEV ? 'no-store' : 'force-cache' });
 		if (!response.ok) {
 			console.warn(`[public_map] ${url} returned ${response.status}; using empty fallback.`);
 			return fallback;

@@ -51,6 +51,13 @@
 		}
 	});
 
+	$effect(() => {
+		if (mapState.savedSearchesOpen && expanded) {
+			expanded = false;
+			userManuallyExpanded = false;
+		}
+	});
+
 	function toggleExpanded() {
 		expanded = !expanded;
 		userManuallyExpanded = expanded;
@@ -134,6 +141,7 @@
 <section
 	class="filters"
 	class:expanded
+	class:saved-open={mapState.savedSearchesOpen}
 	aria-label="Map filters"
 	data-layout-slot={slotAttr(LAYOUT_SLOTS.filters)}
 >
@@ -294,6 +302,9 @@
 		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
+	}
+	.filters.saved-open {
+		top: 24rem;
 	}
 	.toggle,
 	.body {
@@ -466,6 +477,9 @@
 			left: 0.5rem;
 			top: auto;
 			bottom: 6.5rem;
+		}
+		.filters.saved-open {
+			top: auto;
 		}
 		.row,
 		.row.three {

@@ -55,17 +55,12 @@ dark modes, includes the personal compensation/COL comparator, shows
 source-backed urgency/fill badges on job listings, and persists local
 viewed/saved/hidden job state in the browser.
 
-### Current next step: D.5.2 agency multi-select
+### Current next step: D.5.4 address / ZIP zoom
 
-D.5.2 is the next public-map implementation step as of 2026-05-09. It replaces
-the free-text agency filter with a code-backed multi-select typeahead that uses
-agency codes, display names, and aliases from the exported agency metadata. The
-selected agencies must round-trip through shareable URLs as repeated `agency=`
-keys and must filter markers, heat inputs, state/locality/county counts, and job
-lists through the same normalized code set.
+D.5.2 and D.5.3 shipped on 2026-05-09. The map now has code-backed agency
+chips with repeated `agency=` URL state and client-only saved searches that
+persist filters, metric, and map viewport in `localStorage`.
 
-**D.5.2 exit:** a URL with multiple `agency=` parameters restores the same
-selected agencies after reload; adding/removing an agency updates the map, heat
-layer, and lists without a full page refresh; aliases resolve to canonical agency
-codes; and unsupported/free-text values are ignored with a visible validation
-message instead of silently filtering everything out.
+D.5.4 is the next public-map implementation step. It adds a top-left address /
+ZIP search control with Mapbox geocoding when a token is present, Nominatim as
+the fallback, and offline ZIP centroids once the export grows that bundle.

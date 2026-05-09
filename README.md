@@ -84,6 +84,26 @@ Explicitly **not** in V1: React, FastAPI, Docker, cloud deployment, user account
 
 These are the local setup steps.
 
+### Easy local launcher
+
+On Windows, double-click `Open GovJobs.bat` from the repo root. It starts the
+Streamlit dashboard, opens the main dashboard and Settings page, and starts the
+public map at `http://localhost:5173/map`.
+
+You can also run the same launcher from PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/open_local.ps1
+```
+
+Use `-SkipMap` if you only want the Streamlit dashboard and Settings page.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/open_local.ps1 -SkipMap
+```
+
+### Manual setup
+
 1. Install Python 3.11+ and create a virtual environment.
 2. `pip install -r requirements.txt`
 3. Copy `.env.example` to `.env` and fill in your USAJOBS credentials. Get a key at <https://developer.usajobs.gov/>.
