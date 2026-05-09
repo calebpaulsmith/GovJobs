@@ -1,15 +1,13 @@
 <!--
 	Filtered list of job postings inside a polygon scope (state, locality,
-	county, CBSA). Honors the active filter chips (mapState.filters) so what
-	the user sees here matches what's plotted on the map. Clicking a row
-	switches the FeaturePanel into JobCard mode for that posting.
+	county, CBSA). Honors the active filter chips so the list matches the map.
 -->
 <script lang="ts">
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobs, loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs } from './filters';
 	import { LAYER_IDS } from './layers';
-	import { gradeRange, money, propString, salaryRange } from './format';
+	import { gradeRange, propString, salaryRange } from './format';
 
 	let { listView }: { listView: ListView } = $props();
 	let allJobs = $state<{ type: 'FeatureCollection'; features: Feature[] } | null>(null);
@@ -38,7 +36,7 @@
 			case 'county':
 				return String(details[String(props.id ?? '')]?.locations?.[0]?.state ?? '') === listView.code;
 			case 'cbsa':
-				// No CBSA tag on markers yet — fall back to "no match" until D.5 wires it.
+				// No CBSA tag on markers yet; fall back to no match until D.5 wires it.
 				return false;
 			default:
 				return false;
@@ -51,8 +49,11 @@
 		return filtered.features.filter(inScope);
 	});
 
+	function detailFor(props: Record<string, unknown>): JobDetails | undefined {
+		return details[String(props.id ?? '')];
+	}
+
 	function pickJob(feature: Feature) {
-		// Promote the clicked row to a JobCard view in the same panel.
 		mapState.selectedFeature = {
 			source: LAYER_IDS.markers,
 			label: 'Job card',
@@ -69,7 +70,7 @@
 <section class="job-list">
 	<div class="header">
 		<button type="button" class="back" onclick={backToRoundup} aria-label="Back to roundup">
-			← Back
+			&lt;- Back
 		</button>
 		<div>
 			<p class="eyebrow">Postings in scope</p>
@@ -78,7 +79,7 @@
 	</div>
 
 	{#if loading}
-		<p class="note">Loading postings…</p>
+		<p class="note">Loading postings...</p>
 	{:else if error}
 		<p class="error">{error}</p>
 	{:else if visible.length === 0}
@@ -88,17 +89,25 @@
 		<ul>
 			{#each visible as feature, i (feature.properties?.id ?? i)}
 				{@const props = feature.properties ?? {}}
+				{@const detail = detailFor(props)}
 				<li>
 					<button type="button" class="row" onclick={() => pickJob(feature)}>
 						<div class="row-title">{propString(props, 'title')}</div>
+						<div class="row-agency">{String(detail?.agency ?? props.agency_code ?? 'Agency unknown')}</div>
+						<div class="row-dept">{String(detail?.department ?? 'Department unknown')}</div>
 						<div class="row-meta">
-							<span>{gradeRange(props.pay_plan, props.grade_low, props.grade_high)}</span>
-							<span>·</span>
-							<span>{propString(props, 'agency_code')}</span>
-							<span>·</span>
-							<span>{propString(props, 'city')}, {propString(props, 'state', '')}</span>
+							<span>{gradeRange(detail?.pay_plan ?? props.pay_plan, detail?.grade_low ?? props.grade_low, detail?.grade_high ?? props.grade_high)}</span>
+							<span>Series {String(detail?.series ?? props.series ?? '-')}</span>
 						</div>
-						<div class="row-salary">{salaryRange(props.salary_min, props.salary_max, undefined)}</div>
+						<div class="row-meta">
+							<span>{salaryRange(detail?.salary_min ?? props.salary_min, detail?.salary_max ?? props.salary_max, detail?.salary_type)}</span>
+							<span>{String(detail?.remote_status ?? props.remote_status ?? 'Remote unknown')}</span>
+						</div>
+						<div class="row-meta">
+							<span>Closes {String(detail?.close_date ?? props.close_date ?? '-')}</span>
+							<span>{propString(props, 'city')}, {propString(props, 'state', '')}</span>
+							<span>Locality {propString(props, 'locality_code')}</span>
+						</div>
 					</button>
 				</li>
 			{/each}
@@ -184,24 +193,33 @@
 		border-color: #4979b3;
 		background: rgba(28, 42, 64, 0.85);
 	}
+	.row:focus-visible {
+		outline: 2px solid #7bd0f2;
+		outline-offset: 2px;
+	}
 	.row-title {
 		font-weight: 600;
 		font-size: 12.5px;
 		color: #e5edf5;
 		line-height: 1.3;
 	}
+	.row-agency {
+		margin-top: 0.2rem;
+		color: #cfd9e6;
+		font-size: 11px;
+		font-weight: 600;
+	}
+	.row-dept {
+		margin-top: 0.15rem;
+		color: #94a3b8;
+		font-size: 10.5px;
+	}
 	.row-meta {
 		margin-top: 0.2rem;
 		display: flex;
-		gap: 0.35rem;
+		gap: 0.35rem 0.55rem;
 		flex-wrap: wrap;
 		color: #94a3b8;
 		font-size: 11px;
-	}
-	.row-salary {
-		margin-top: 0.2rem;
-		color: #7bd0f2;
-		font-size: 11px;
-		font-weight: 600;
 	}
 </style>

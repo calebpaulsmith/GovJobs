@@ -262,6 +262,11 @@
 					openMarkerStack(feature);
 					return;
 				}
+				if (layerId === LAYER_IDS.localitiesFill) {
+					openLocalityStack(props);
+					fitFocusedFeature(m, layerId, feature);
+					return;
+				}
 				mapState.jobStack = null;
 				mapState.selectedFeature = {
 					source: layerId,
@@ -325,6 +330,19 @@
 			items: features
 				.map((candidate) => ({ properties: candidate.properties ?? {} }))
 				.sort((a, b) => stackSortKey(a.properties).localeCompare(stackSortKey(b.properties)))
+		};
+	}
+
+	function openLocalityStack(props: Record<string, unknown>): void {
+		const code = String(props.code ?? '').trim();
+		if (!code) return;
+		const name = String(props.name ?? code).trim();
+		mapState.selectedFeature = null;
+		mapState.jobStack = null;
+		mapState.listView = {
+			scope: 'locality',
+			code,
+			label: `${name} (${code})`
 		};
 	}
 
@@ -444,16 +462,12 @@
 		if (!coords) return;
 		(source as GeoJSONSource).getClusterExpansionZoom(Number(clusterId), (err, zoom) => {
 			if (err || zoom === undefined || zoom === null) return;
+			openClusterStack(source as GeoJSONSource, Number(clusterId), feature);
 			const targetZoom = Math.min(zoom, MAXZOOM);
 			const shouldZoom = targetZoom > m.getZoom() + 0.1;
 			if (shouldZoom) {
 				m.easeTo({ center: coords as [number, number], zoom: targetZoom });
-				if (zoom > MAXZOOM) {
-					window.setTimeout(() => openClusterStack(source as GeoJSONSource, Number(clusterId), feature), 725);
-				}
-				return;
 			}
-			openClusterStack(source as GeoJSONSource, Number(clusterId), feature);
 		});
 	}
 

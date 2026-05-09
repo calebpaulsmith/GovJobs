@@ -403,6 +403,36 @@ def test_jobs_geojson_includes_locality_code(conn, tmp_path):
     assert feature["properties"]["locality_code"] == "CHI"
 
 
+def test_jobs_geojson_falls_back_to_locality_polygon_for_source_coordinates(conn, tmp_path):
+    chi_loc = _write_polygon(tmp_path / "localities" / "CHI.geojson", _cook_box())
+    _seed_locality(
+        conn,
+        code="CHI",
+        name="Chicago-Naperville",
+        adjustment_pct=32.45,
+        county_fips=["17031"],
+        polygon_path=chi_loc,
+    )
+    upsert_job(
+        conn,
+        _job(
+            locations=[
+                {
+                    "city": "Chicago, Illinois",
+                    "state": "IL",
+                    "location_text": "Chicago, IL",
+                    "latitude": 41.8781,
+                    "longitude": -87.6298,
+                }
+            ],
+        ),
+    )
+
+    feature = jobs_geojson(conn, year=YEAR, repo_root=tmp_path)["features"][0]
+
+    assert feature["properties"]["locality_code"] == "CHI"
+
+
 def test_jobs_geojson_locality_code_is_none_when_county_unmatched(conn, tmp_path):
     # Geocode without a county_fips — no locality match expected.
     upsert_geocoded_location(

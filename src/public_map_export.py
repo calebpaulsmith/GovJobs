@@ -19,7 +19,7 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.reference_data import REST_OF_US_CODE
 
@@ -40,7 +40,9 @@ DEFAULT_METRO_TOLERANCE = 0.01
 # ---------- Open postings (the map's primary feature) -----------------------
 
 
-def _marker_dataset(conn: sqlite3.Connection, *, year: int) -> list[dict[str, Any]]:
+def _marker_dataset(
+    conn: sqlite3.Connection, *, year: int, repo_root: Path | None = None
+) -> list[dict[str, Any]]:
     """Return enriched marker rows used by both the GeoJSON and the polygon
     aggregations.
 
@@ -101,10 +103,14 @@ def _marker_dataset(conn: sqlite3.Connection, *, year: int) -> list[dict[str, An
         (int(year),),
     ).fetchall()
 
+    locality_lookup = _locality_point_lookup(conn, year=year, repo_root=repo_root)
     dataset: list[dict[str, Any]] = []
     for row in rows:
         if row["lat"] is None or row["lon"] is None:
             continue
+        lat = float(row["lat"])
+        lon = float(row["lon"])
+        locality_code = row["locality_code"] or locality_lookup(lon, lat)
         dataset.append(
             {
                 "job_id": int(row["job_id"]),
@@ -121,11 +127,11 @@ def _marker_dataset(conn: sqlite3.Connection, *, year: int) -> list[dict[str, An
                 "city": row["jl_city"],
                 "state": (row["jl_state"] or "").upper() or None,
                 "geo_quality": row["geo_quality"],
-                "lat": float(row["lat"]),
-                "lon": float(row["lon"]),
+                "lat": lat,
+                "lon": lon,
                 "county_fips": row["county_fips"],
                 "cbsa_code": row["cbsa_code"],
-                "locality_code": row["locality_code"],
+                "locality_code": locality_code,
             }
         )
     return dataset
@@ -162,6 +168,7 @@ def open_postings_features(
     conn: sqlite3.Connection,
     *,
     year: int | None = None,
+    repo_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Return one GeoJSON-ready feature per (job, location) with a coordinate.
 
@@ -184,7 +191,7 @@ def open_postings_features(
     resolved_year = year if year is not None else current_reference_year(conn)
     return [
         _feature_from_marker(marker)
-        for marker in _marker_dataset(conn, year=resolved_year)
+        for marker in _marker_dataset(conn, year=resolved_year, repo_root=repo_root)
     ]
 
 
@@ -276,11 +283,12 @@ def jobs_geojson(
     conn: sqlite3.Connection,
     *,
     year: int | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Wrap `open_postings_features` in a GeoJSON FeatureCollection."""
     return {
         "type": "FeatureCollection",
-        "features": open_postings_features(conn, year=year),
+        "features": open_postings_features(conn, year=year, repo_root=repo_root),
     }
 
 
@@ -716,7 +724,7 @@ def states_geojson(
     locality-adjusted pay outpaces its cost of living; <100 means it lags.
     """
     resolved_year = year if year is not None else current_reference_year(conn)
-    markers = _marker_dataset(conn, year=resolved_year)
+    markers = _marker_dataset(conn, year=resolved_year, repo_root=repo_root)
     postings_by_state = _count_by(markers, "state")
     opm_by_state = opm_state_aggregates(conn)
     rpp_by_state = _rpp_lookup(conn, geo_type="state")
@@ -784,7 +792,7 @@ def localities_geojson(
     locality-pay-area level.
     """
     resolved_year = year if year is not None else current_reference_year(conn)
-    markers = _marker_dataset(conn, year=resolved_year)
+    markers = _marker_dataset(conn, year=resolved_year, repo_root=repo_root)
     postings_by_locality = _count_by(markers, "locality_code")
     rpp_by_cbsa = _rpp_lookup(conn, geo_type="cbsa")
 
@@ -1306,6 +1314,95 @@ def _load_polygon(polygon_path: str | None, repo_root: Path) -> dict[str, Any] |
     if isinstance(data, dict) and data.get("type") in {"Polygon", "MultiPolygon"}:
         return data
     return None
+
+
+def _locality_point_lookup(
+    conn: sqlite3.Connection, *, year: int, repo_root: Path | None
+) -> Callable[[float, float], str | None]:
+    if repo_root is None:
+        return lambda _lon, _lat: None
+
+    rows = conn.execute(
+        """
+        SELECT code, polygon_path
+        FROM locality_pay_areas
+        WHERE year = ? AND COALESCE(code, '') <> ''
+        ORDER BY code
+        """,
+        (int(year),),
+    ).fetchall()
+    candidates: list[tuple[str, dict[str, Any], tuple[float, float, float, float]]] = []
+    for row in rows:
+        geometry = _load_polygon(row["polygon_path"], repo_root)
+        bounds = _geometry_bounds(geometry)
+        if geometry is None or bounds is None:
+            continue
+        candidates.append((str(row["code"]).upper(), geometry, bounds))
+
+    def lookup(lon: float, lat: float) -> str | None:
+        for code, geometry, bounds in candidates:
+            min_lon, min_lat, max_lon, max_lat = bounds
+            if lon < min_lon or lon > max_lon or lat < min_lat or lat > max_lat:
+                continue
+            if _point_in_geometry(lon, lat, geometry):
+                return code
+        return None
+
+    return lookup
+
+
+def _geometry_bounds(geometry: dict[str, Any] | None) -> tuple[float, float, float, float] | None:
+    if not geometry:
+        return None
+    points: list[list[float]] = []
+    _collect_geometry_points(geometry.get("coordinates"), points)
+    if not points:
+        return None
+    lons = [float(point[0]) for point in points]
+    lats = [float(point[1]) for point in points]
+    return min(lons), min(lats), max(lons), max(lats)
+
+
+def _collect_geometry_points(value: Any, points: list[list[float]]) -> None:
+    if not isinstance(value, list):
+        return
+    if len(value) >= 2 and isinstance(value[0], (int, float)) and isinstance(value[1], (int, float)):
+        points.append(value)
+        return
+    for item in value:
+        _collect_geometry_points(item, points)
+
+
+def _point_in_geometry(lon: float, lat: float, geometry: dict[str, Any]) -> bool:
+    g_type = geometry.get("type")
+    coords = geometry.get("coordinates") or []
+    if g_type == "Polygon":
+        return _point_in_polygon(lon, lat, coords)
+    if g_type == "MultiPolygon":
+        return any(_point_in_polygon(lon, lat, poly) for poly in coords)
+    return False
+
+
+def _point_in_polygon(lon: float, lat: float, rings: list[list[list[float]]]) -> bool:
+    if not rings or not _point_in_ring(lon, lat, rings[0]):
+        return False
+    return not any(_point_in_ring(lon, lat, hole) for hole in rings[1:])
+
+
+def _point_in_ring(lon: float, lat: float, ring: list[list[float]]) -> bool:
+    inside = False
+    if len(ring) < 4:
+        return inside
+    j = len(ring) - 1
+    for i, point in enumerate(ring):
+        xi, yi = float(point[0]), float(point[1])
+        xj, yj = float(ring[j][0]), float(ring[j][1])
+        if (yi > lat) != (yj > lat):
+            x_intersect = (xj - xi) * (lat - yi) / (yj - yi) + xi
+            if lon < x_intersect:
+                inside = not inside
+        j = i
+    return inside
 
 
 def simplify_geometry(

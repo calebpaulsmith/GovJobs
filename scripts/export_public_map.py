@@ -75,7 +75,7 @@ def main() -> int:
     init_schema(conn)
     try:
         year = current_reference_year(conn)
-        geojson = jobs_geojson(conn, year=year)
+        geojson = jobs_geojson(conn, year=year, repo_root=REPO)
         closed_geojson = closed_jobs_geojson(conn, year=year)
         details = job_details(conn)
         opm = opm_state_aggregates(conn)
