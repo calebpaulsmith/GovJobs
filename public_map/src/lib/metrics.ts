@@ -17,6 +17,7 @@ export type MetricKey =
 	| 'pay_vs_col';
 
 export type MetricFormat = 'count' | 'percent' | 'index';
+export type MetricStatus = 'ready' | 'wip' | 'under-construction';
 
 export interface MetricDef {
 	key: MetricKey;
@@ -32,6 +33,11 @@ export interface MetricDef {
 	colorStops: [number, string][];
 	// Color used when the property is null/missing.
 	nullColor: string;
+	// Declared status. Auto-demotion in Map.svelte can downgrade to 'wip' at
+	// runtime when ≥ 50% of state features are null for this metric.
+	status: MetricStatus;
+	// Shown in the metric switcher when status is 'wip'.
+	wipNote?: string;
 }
 
 const SEQ_BLUE: [number, string][] = [
@@ -89,7 +95,8 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'postings',
 		format: 'count',
 		colorStops: SEQ_BLUE,
-		nullColor: '#13202e'
+		nullColor: '#13202e',
+		status: 'ready'
 	},
 	workforce: {
 		key: 'workforce',
@@ -100,7 +107,9 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'workforce',
 		format: 'count',
 		colorStops: SEQ_PURPLE,
-		nullColor: '#1a1a2e'
+		nullColor: '#1a1a2e',
+		status: 'ready',
+		wipNote: 'OPM workforce data not yet loaded — run the OPM import in Data Admin.'
 	},
 	accessions: {
 		key: 'accessions',
@@ -111,7 +120,9 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'accessions',
 		format: 'count',
 		colorStops: SEQ_GREEN,
-		nullColor: '#10241a'
+		nullColor: '#10241a',
+		status: 'ready',
+		wipNote: 'OPM accessions data not yet loaded — run the OPM import in Data Admin.'
 	},
 	separations: {
 		key: 'separations',
@@ -122,7 +133,9 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'separations',
 		format: 'count',
 		colorStops: SEQ_GREEN,
-		nullColor: '#10241a'
+		nullColor: '#10241a',
+		status: 'ready',
+		wipNote: 'OPM separations data not yet loaded — run the OPM import in Data Admin.'
 	},
 	remote_share: {
 		key: 'remote_share',
@@ -133,7 +146,9 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'remote_share',
 		format: 'percent',
 		colorStops: SEQ_REMOTE,
-		nullColor: '#1a2030'
+		nullColor: '#1a2030',
+		status: 'ready',
+		wipNote: 'Remote share requires at least one open posting per state.'
 	},
 	pay_vs_col: {
 		key: 'pay_vs_col',
@@ -145,7 +160,9 @@ export const METRICS: Record<MetricKey, MetricDef> = {
 		property: 'pay_vs_col',
 		format: 'index',
 		colorStops: DIVERGING_PAY_COL,
-		nullColor: '#1c1c1c'
+		nullColor: '#1c1c1c',
+		status: 'ready',
+		wipNote: 'Pay/COL requires both OPM locality pay and BEA RPP data.'
 	}
 };
 

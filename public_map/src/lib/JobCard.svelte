@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { loadJobDetails, loadPayTables, type JobDetails, type PayTables } from './data';
-	import { gradeRange, money, propString, salaryRange } from './format';
+	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
+	import { jobProfile } from './jobProfile.svelte';
+	import { mapState } from './store.svelte';
 
 	let { properties }: { properties: Record<string, unknown> } = $props();
 	let detail = $state<JobDetails | null>(null);
@@ -8,6 +10,43 @@
 	let error = $state<string | null>(null);
 	let loading = $state(false);
 	const isClosed = $derived(String(properties.status ?? detail?.status ?? '').toLowerCase() === 'closed');
+	const urgency = $derived(isClosed ? { text: '', level: null } : urgencyBadge(String(detail?.close_date ?? properties.close_date ?? '')));
+	const jobId = $derived(String(properties.id ?? ''));
+	const saved = $derived(jobProfile.isSaved(jobId));
+	const hidden = $derived(jobProfile.isHidden(jobId));
+
+	// Mark viewed when the card loads.
+	$effect(() => {
+		if (jobId) jobProfile.markViewed(jobId);
+	});
+
+	function toggleSave() {
+		if (!jobId) return;
+		if (saved) {
+			jobProfile.unsaveJob(jobId);
+		} else {
+			jobProfile.saveJob(jobId, {
+				title: String(detail?.title ?? properties.title ?? jobId),
+				agency: String(detail?.agency ?? properties.agency_code ?? ''),
+				close_date: String(detail?.close_date ?? properties.close_date ?? '') || null,
+				url: String(detail?.url ?? properties.url ?? '') || null
+			});
+		}
+		mapState.savedJobIds = jobProfile.savedJobs.reduce((s, j) => { s.add(j.id); return s; }, new Set<string>());
+	}
+
+	function toggleHide() {
+		if (!jobId) return;
+		if (hidden) {
+			jobProfile.unhideJob(jobId);
+		} else {
+			jobProfile.hideJob(jobId);
+			// Close the card after hiding.
+			mapState.selectedFeature = null;
+			mapState.jobStack = null;
+		}
+		mapState.hiddenJobIds = jobProfile.hiddenIds;
+	}
 
 	$effect(() => {
 		const id = String(properties.id ?? '');
@@ -47,6 +86,17 @@
 <section>
 	<p class="eyebrow">{isClosed ? 'Closed posting' : 'Open posting'}</p>
 	<h2>{propString(properties, 'title')}</h2>
+	{#if urgency.level}
+		<div class="urgency-badge urgency-{urgency.level}" role="status">{urgency.text}</div>
+	{/if}
+	<div class="profile-actions">
+		<button type="button" class="profile-btn" class:active={saved} onclick={toggleSave}>
+			{saved ? '★ Saved' : '☆ Save'}
+		</button>
+		<button type="button" class="profile-btn danger" onclick={toggleHide}>
+			{hidden ? 'Unhide' : 'Hide'}
+		</button>
+	</div>
 	{#if !isClosed && (detail?.url ?? properties.url)}
 		<a class="apply-btn" href={String(detail?.url ?? properties.url)} target="_blank" rel="noreferrer noopener">
 			Apply on USAJOBS &rarr;
@@ -97,7 +147,16 @@
 
 <style>
 	.eyebrow { margin: 0 0 0.25rem; color: #7bd0f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-	h2 { margin: 0 0 0.75rem; font-size: 20px; line-height: 1.15; }
+	h2 { margin: 0 0 0.5rem; font-size: 20px; line-height: 1.15; }
+	.urgency-badge { display: inline-block; margin: 0 0 0.5rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+	.urgency-critical { background: rgba(220, 80, 80, 0.18); border: 1px solid #dc5050; color: #f7a0a0; }
+	.urgency-soon { background: rgba(220, 160, 50, 0.18); border: 1px solid #e0a030; color: #f0c878; }
+	.profile-actions { display: flex; gap: 0.4rem; margin: 0 0 0.6rem; flex-wrap: wrap; }
+	.profile-btn { appearance: none; border: 1px solid #2c4870; background: rgba(28,42,64,0.4); color: #cfd9e6; padding: 0.22rem 0.65rem; border-radius: 999px; font-size: 12px; cursor: pointer; transition: all 120ms ease; }
+	.profile-btn:hover { border-color: #7bd0f2; color: #7bd0f2; }
+	.profile-btn.active { background: #4979b3; border-color: #7bd0f2; color: #fff; }
+	.profile-btn.danger { border-color: #6b2020; color: #f7a0a0; }
+	.profile-btn.danger:hover { border-color: #dc5050; }
 	.apply-btn { display: block; text-align: center; color: #06111f; background: #7bd0f2; border-radius: 6px; padding: 0.55rem 0.7rem; font-weight: 700; text-decoration: none; margin-bottom: 0.75rem; transition: background 120ms ease; }
 	.apply-btn:hover { background: #a8e0f5; }
 	.grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 0.8rem; margin: 0; }

@@ -28,6 +28,16 @@ class MapState {
 	pendingViewport = $state<MapViewport | null>(null);
 	filteredJobCount = $state(0);
 	totalJobCount = $state(0);
+	// D.5.6: metrics auto-demoted to 'wip' because ≥50% of state features are null.
+	demotedMetrics = $state<Set<MetricKey>>(new Set());
+	// D.5.6: reveal under-construction metrics in the switcher.
+	showExperimentalMetrics = $state<boolean>(false);
+	// D.5.19: job IDs hidden by the user; excluded from map/list/heat by default.
+	hiddenJobIds = $state<Set<string>>(new Set());
+	// D.5.19: job IDs saved by the user.
+	savedJobIds = $state<Set<string>>(new Set());
+	// D.5.19: profile drawer open.
+	profileOpen = $state<boolean>(false);
 }
 
 export interface MapViewport {

@@ -64,3 +64,23 @@ function propFromValue(value: unknown): string {
 	if (value === null || value === undefined || value === '') return '—';
 	return String(value);
 }
+
+export type UrgencyLevel = 'critical' | 'soon' | null;
+export interface UrgencyBadge {
+	text: string;
+	level: UrgencyLevel;
+}
+
+export function urgencyBadge(closeDate: string | null | undefined): UrgencyBadge {
+	if (!closeDate) return { text: '', level: null };
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
+	const close = new Date(closeDate);
+	close.setHours(0, 0, 0, 0);
+	const days = Math.round((close.getTime() - today.getTime()) / 86400000);
+	if (days < 0) return { text: '', level: null };
+	if (days === 0) return { text: 'Closes today', level: 'critical' };
+	if (days === 1) return { text: 'Closes tomorrow', level: 'critical' };
+	if (days <= 7) return { text: `Closes in ${days} days`, level: 'soon' };
+	return { text: '', level: null };
+}
