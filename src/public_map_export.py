@@ -138,6 +138,11 @@ def _marker_dataset(
 
 
 def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
+    # Keep the per-marker payload tight: only properties the map needs at
+    # render time for filtering, clustering, and urgency. Title, full
+    # location text, salary_max, and geo_quality live in jobs_detail.json
+    # and are loaded lazily when the user clicks a marker. This keeps
+    # jobs.geojson under Cloudflare Pages' 25 MiB per-file limit.
     return {
         "type": "Feature",
         "geometry": {
@@ -146,19 +151,14 @@ def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
         },
         "properties": {
             "id": marker["job_id"],
-            "title": marker["title"],
             "agency_code": marker["agency_code"],
             "series": marker["series"],
             "grade_low": marker["grade_low"],
             "grade_high": marker["grade_high"],
             "pay_plan": marker["pay_plan"],
             "salary_min": marker["salary_min"],
-            "salary_max": marker["salary_max"],
             "remote_status": marker["remote_status"],
             "close_date": marker["close_date"],
-            "city": marker["city"],
-            "state": marker["state"],
-            "geo_quality": marker["geo_quality"],
             "locality_code": marker["locality_code"],
         },
     }

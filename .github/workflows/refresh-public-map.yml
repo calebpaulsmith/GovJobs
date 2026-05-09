@@ -1,0 +1,129 @@
+name: Refresh public map
+
+# Runs unattended on a daily cron, and any time you trigger it manually
+# from GitHub (Actions tab → "Refresh public map" → "Run workflow").
+# Pulls fresh USAJOBS Search data, regenerates the public-map static bundle,
+# and pushes the result to master so Cloudflare Pages rebuilds the live site.
+
+on:
+  schedule:
+    # Every day at 09:00 UTC (~04:00 ET / 05:00 EDT). Adjust if you want a
+    # different cadence; cron is in UTC. Use https://crontab.guru to validate.
+    - cron: '0 9 * * *'
+
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Max USAJOBS Search pages (500 records per page; 50 = up to 25k records)'
+        required: false
+        default: '50'
+        type: string
+      skip_reference_data:
+        description: 'Skip reference-data refresh (faster; reuse last polygons / pay tables)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write   # commit + push bundle changes
+
+concurrency:
+  group: refresh-public-map
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      USAJOBS_USER_AGENT: ${{ secrets.USAJOBS_USER_AGENT }}
+      USAJOBS_AUTHORIZATION_KEY: ${{ secrets.USAJOBS_AUTHORIZATION_KEY }}
+      DATABASE_PATH: data/federal_jobs.sqlite
+      RAW_DATA_PATH: data/raw
+      PROCESSED_DATA_PATH: data/processed
+      MAX_FULL_DOWNLOAD_GB: '5'
+      MAX_DATABASE_GB: '10'
+      MAX_FULL_DOWNLOAD_ROWS: '5000000'
+      MAX_IMPORT_HOURS: '8'
+      LOG_LEVEL: INFO
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify USAJOBS credentials are configured
+        run: |
+          if [ -z "$USAJOBS_USER_AGENT" ] || [ -z "$USAJOBS_AUTHORIZATION_KEY" ]; then
+            echo "::error::USAJOBS_USER_AGENT and USAJOBS_AUTHORIZATION_KEY must be set as repo secrets."
+            echo "::error::Add them at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Cache the downloaded reference-data inputs (Census TIGER zips, BEA RPP,
+      # USAJOBS codelist, ZCTA gazetteer) so repeated runs don't re-download
+      # hundreds of MB. Keyed by month so we still pick up new vintages.
+      - name: Cache reference data downloads
+        uses: actions/cache@v4
+        with:
+          path: data/external/
+          key: refdata-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            refdata-${{ runner.os }}-
+
+      - name: Refresh postings + reference data + bundle
+        run: |
+          set -euo pipefail
+          MAX_PAGES="${{ github.event.inputs.max_pages || '50' }}"
+          SKIP_REF="${{ github.event.inputs.skip_reference_data || 'false' }}"
+          ARGS=("--max-pages" "$MAX_PAGES")
+          if [ "$SKIP_REF" = "true" ]; then
+            ARGS+=("--skip-reference-data")
+          fi
+          python scripts/refresh_postings.py "${ARGS[@]}"
+
+      - name: Show bundle summary
+        run: |
+          echo "=== bundle file sizes ==="
+          ls -lh public_map/static/data/
+          echo ""
+          echo "=== manifest summary ==="
+          python -c "import json; m=json.load(open('public_map/static/data/manifest.json')); print('generated_at:', m.get('generated_at')); print('job_count:', m.get('job_count')); print('feature_count:', m.get('feature_count')); print('layers:', m.get('layers'))"
+
+      - name: Commit and push bundle if changed
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public_map/static/data/
+          if git diff --cached --quiet; then
+            echo "No bundle changes to commit."
+            exit 0
+          fi
+          # Use a tag the user can scan for in the commit log.
+          git commit -m "auto: refresh public-map bundle $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Public-map refresh result"
+            echo ""
+            echo "- **Trigger:** ${{ github.event_name }}"
+            echo "- **Status:** ${{ job.status }}"
+            if [ -f public_map/static/data/manifest.json ]; then
+              echo ""
+              echo "### Bundle"
+              python -c "import json; m=json.load(open('public_map/static/data/manifest.json')); print(f\"- generated_at: {m.get('generated_at')}\"); print(f\"- job_count: {m.get('job_count')}\"); print(f\"- feature_count: {m.get('feature_count')}\")"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
