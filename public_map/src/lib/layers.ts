@@ -16,6 +16,7 @@ export const SOURCE_IDS = {
 	localities: 'localities',
 	jobsHeat: 'jobs-heat',
 	closedJobs: 'closed-jobs',
+	federalProperties: 'federal-properties',
 	addressPin: 'address-pin',
 	jobs: 'jobs'
 } as const;
@@ -29,6 +30,7 @@ export const LAYER_IDS = {
 	localitiesOutline: 'localities-outline',
 	postingHeat: 'posting-heat',
 	closedMarkers: 'closed-job-markers',
+	federalProperties: 'federal-properties-markers',
 	addressPinHalo: 'address-pin-halo',
 	addressPin: 'address-pin',
 	clusters: 'job-clusters',
@@ -216,6 +218,26 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
+	// 5b. Federal Real Property Profile (FRPP) buildings — neutral diamonds
+	//     visible at zoom >= 6 per ADR-0025. Drawn beneath job markers so
+	//     active postings always read on top. Off by default; toggled via
+	//     setFederalPropertiesVisible().
+	map.addLayer({
+		id: LAYER_IDS.federalProperties,
+		type: 'circle',
+		source: SOURCE_IDS.federalProperties,
+		minzoom: 6,
+		maxzoom: 9,
+		paint: {
+			'circle-color': '#cbd5e1',
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3, 9, 6],
+			'circle-stroke-color': '#1f2937',
+			'circle-stroke-width': 1,
+			'circle-opacity': 0,
+			'circle-stroke-opacity': 0
+		}
+	});
+
 	map.addLayer({
 		id: LAYER_IDS.clusters,
 		type: 'circle',
@@ -318,6 +340,16 @@ export function setStateFillMetric(map: MaplibreMap, metricKey: MetricKey): void
 export function setClosedJobsVisible(map: MaplibreMap, visible: boolean): void {
 	if (!map.getLayer(LAYER_IDS.closedMarkers)) return;
 	map.setPaintProperty(LAYER_IDS.closedMarkers, 'circle-opacity', visible ? 0.5 : 0);
+}
+
+export function setFederalPropertiesVisible(map: MaplibreMap, visible: boolean): void {
+	if (!map.getLayer(LAYER_IDS.federalProperties)) return;
+	map.setPaintProperty(LAYER_IDS.federalProperties, 'circle-opacity', visible ? 0.85 : 0);
+	map.setPaintProperty(
+		LAYER_IDS.federalProperties,
+		'circle-stroke-opacity',
+		visible ? 0.9 : 0
+	);
 }
 
 export function setPostingHeatVisible(map: MaplibreMap, visible: boolean): void {

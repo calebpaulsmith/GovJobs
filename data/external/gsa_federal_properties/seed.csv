@@ -1,0 +1,31 @@
+frpp_id,name,property_type,agency,agency_code,address,city,state,zip,county_fips,latitude,longitude,building_status
+GSA-DC-0001,Harry S. Truman Building,Office,Department of State,DS,2201 C St NW,Washington,DC,20520,11001,38.8945,-77.0489,Active
+GSA-DC-0002,Robert F. Kennedy Department of Justice Building,Office,Department of Justice,DJ,950 Pennsylvania Ave NW,Washington,DC,20530,11001,38.8939,-77.0258,Active
+GSA-DC-0003,Herbert C. Hoover Building,Office,Department of Commerce,CM,1401 Constitution Ave NW,Washington,DC,20230,11001,38.8939,-77.0331,Active
+GSA-DC-0004,Wilbur J. Cohen Federal Building,Office,Social Security Administration,SZ,330 Independence Ave SW,Washington,DC,20201,11001,38.8868,-77.0148,Active
+GSA-DC-0005,J. Edgar Hoover FBI Building,Office,Federal Bureau of Investigation,DJ,935 Pennsylvania Ave NW,Washington,DC,20535,11001,38.8951,-77.0252,Active
+GSA-DC-0006,Ronald Reagan Building and International Trade Center,Office,General Services Administration,GS,1300 Pennsylvania Ave NW,Washington,DC,20004,11001,38.8939,-77.0289,Active
+GSA-MD-0001,NIH Building 1,Research,National Institutes of Health,HE,1 Center Dr,Bethesda,MD,20892,24031,39.0008,-77.1031,Active
+GSA-MD-0002,NASA Goddard Space Flight Center,Research,National Aeronautics and Space Administration,NN,8800 Greenbelt Rd,Greenbelt,MD,20771,24033,38.9926,-76.8527,Active
+GSA-VA-0001,Pentagon,Office,Department of Defense,DD,1400 Defense Pentagon,Arlington,VA,22202,51013,38.8719,-77.0563,Active
+GSA-VA-0002,CIA Headquarters - George Bush Center for Intelligence,Office,Central Intelligence Agency,IC,1000 Colonial Farm Rd,McLean,VA,22101,51059,38.9518,-77.1466,Active
+GSA-NY-0001,Jacob K. Javits Federal Building,Office,General Services Administration,GS,26 Federal Plaza,New York,NY,10278,36061,40.7150,-74.0042,Active
+GSA-NY-0002,Daniel Patrick Moynihan United States Courthouse,Courthouse,General Services Administration,GS,500 Pearl St,New York,NY,10007,36061,40.7137,-74.0024,Active
+GSA-IL-0001,Everett McKinley Dirksen United States Courthouse,Courthouse,General Services Administration,GS,219 S Dearborn St,Chicago,IL,60604,17031,41.8788,-87.6296,Active
+GSA-IL-0002,John C. Kluczynski Federal Building,Office,General Services Administration,GS,230 S Dearborn St,Chicago,IL,60604,17031,41.8784,-87.6291,Active
+GSA-CA-0001,Phillip Burton Federal Building and United States Courthouse,Courthouse,General Services Administration,GS,450 Golden Gate Ave,San Francisco,CA,94102,06075,37.7805,-122.4196,Active
+GSA-CA-0002,Edward R. Roybal Federal Building,Office,General Services Administration,GS,255 E Temple St,Los Angeles,CA,90012,06037,34.0567,-118.2376,Active
+GSA-CA-0003,NASA Ames Research Center,Research,National Aeronautics and Space Administration,NN,Bldg N-200,Moffett Field,CA,94035,06085,37.4090,-122.0644,Active
+GSA-TX-0001,Earle Cabell Federal Building and Courthouse,Courthouse,General Services Administration,GS,1100 Commerce St,Dallas,TX,75242,48113,32.7777,-96.7965,Active
+GSA-TX-0002,Lyndon B. Johnson Space Center,Research,National Aeronautics and Space Administration,NN,2101 E NASA Pkwy,Houston,TX,77058,48201,29.5589,-95.0903,Active
+GSA-FL-0001,Federal Courthouse - Miami,Courthouse,General Services Administration,GS,400 N Miami Ave,Miami,FL,33128,12086,25.7790,-80.1955,Active
+GSA-FL-0002,John F. Kennedy Space Center,Research,National Aeronautics and Space Administration,NN,Kennedy Space Center,Merritt Island,FL,32899,12009,28.5728,-80.6490,Active
+GSA-GA-0001,Centers for Disease Control and Prevention - Roybal Campus,Research,Centers for Disease Control and Prevention,HE,1600 Clifton Rd NE,Atlanta,GA,30329,13089,33.7995,-84.3261,Active
+GSA-WA-0001,Henry M. Jackson Federal Building,Office,General Services Administration,GS,915 Second Ave,Seattle,WA,98174,53033,47.6056,-122.3340,Active
+GSA-CO-0001,Byron G. Rogers Federal Building and Courthouse,Courthouse,General Services Administration,GS,1929 Stout St,Denver,CO,80294,08031,39.7470,-104.9912,Active
+GSA-MA-0001,John W. McCormack Post Office and Courthouse,Courthouse,General Services Administration,GS,5 Post Office Sq,Boston,MA,02109,25025,42.3565,-71.0541,Active
+GSA-PA-0001,William J. Green Jr. Federal Building,Office,General Services Administration,GS,600 Arch St,Philadelphia,PA,19106,42101,39.9532,-75.1492,Active
+GSA-MO-0001,Charles Evans Whittaker United States Courthouse,Courthouse,General Services Administration,GS,400 E 9th St,Kansas City,MO,64106,29095,39.1015,-94.5814,Active
+GSA-AL-0001,Marshall Space Flight Center,Research,National Aeronautics and Space Administration,NN,Redstone Arsenal,Huntsville,AL,35808,01089,34.6499,-86.6747,Active
+GSA-OH-0001,Howard M. Metzenbaum United States Courthouse,Courthouse,General Services Administration,GS,201 Superior Ave E,Cleveland,OH,44114,39035,41.5039,-81.6889,Active
+GSA-AK-0001,Federal Building - Anchorage,Office,General Services Administration,GS,222 W 7th Ave,Anchorage,AK,99513,02020,61.2173,-149.8910,Active

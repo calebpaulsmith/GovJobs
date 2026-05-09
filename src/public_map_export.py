@@ -310,6 +310,74 @@ def closed_jobs_geojson(
     }
 
 
+def federal_properties_geojson(conn: sqlite3.Connection) -> dict[str, Any]:
+    """FeatureCollection of GSA Federal Real Property Profile (FRPP) buildings.
+
+    Per ADR-0025 these are rendered on the public map as a separate
+    neutral-diamond layer at zoom >= 6 to give the user spatial context that
+    exists independent of any open posting. Returns a Point FeatureCollection;
+    coordinates are WGS84. Skips rows missing latitude/longitude.
+    """
+    if not _table_exists(conn, "federal_properties"):
+        return {"type": "FeatureCollection", "features": []}
+
+    rows = conn.execute(
+        """
+        SELECT
+            frpp_id,
+            name,
+            property_type,
+            agency,
+            agency_code,
+            address,
+            city,
+            state,
+            zip,
+            county_fips,
+            latitude,
+            longitude,
+            building_status
+        FROM federal_properties
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY state, name
+        """
+    ).fetchall()
+
+    features: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            lon = float(row["longitude"])
+            lat = float(row["latitude"])
+        except (TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        properties = {
+            "id": row["frpp_id"],
+            "name": row["name"],
+            "property_type": row["property_type"],
+            "agency": row["agency"],
+            "agency_code": row["agency_code"],
+            "address": row["address"],
+            "city": row["city"],
+            "state": row["state"],
+            "zip": row["zip"],
+            "county_fips": row["county_fips"],
+            "building_status": row["building_status"],
+        }
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [_round_or_none(lon), _round_or_none(lat)],
+                },
+                "properties": {k: v for k, v in properties.items() if v is not None},
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
 # ---------- Per-job detail panel --------------------------------------------
 
 

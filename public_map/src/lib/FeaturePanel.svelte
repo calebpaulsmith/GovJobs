@@ -107,6 +107,21 @@
 			<LocalityDetail properties={mapState.selectedFeature.properties} />
 		{:else if mapState.selectedFeature.source === LAYER_IDS.countiesOutline}
 			<CountyDetail properties={mapState.selectedFeature.properties} />
+		{:else if mapState.selectedFeature.source === LAYER_IDS.federalProperties}
+			<section>
+				<p class="eyebrow">GSA federal property</p>
+				<h2>{propString(mapState.selectedFeature.properties, 'name')}</h2>
+				<dl class="grid">
+					<dt>Agency</dt><dd>{propString(mapState.selectedFeature.properties, 'agency')}</dd>
+					<dt>Type</dt><dd>{propString(mapState.selectedFeature.properties, 'property_type')}</dd>
+					<dt>Address</dt><dd>{propString(mapState.selectedFeature.properties, 'address')}</dd>
+					<dt>City</dt><dd>{propString(mapState.selectedFeature.properties, 'city')}</dd>
+					<dt>State</dt><dd>{propString(mapState.selectedFeature.properties, 'state')}</dd>
+					<dt>ZIP</dt><dd>{propString(mapState.selectedFeature.properties, 'zip')}</dd>
+					<dt>Status</dt><dd>{propString(mapState.selectedFeature.properties, 'building_status')}</dd>
+				</dl>
+				<p class="src">Source: GSA Federal Real Property Profile (FRPP) per ADR-0025.</p>
+			</section>
 		{:else}
 			<section>
 				<p class="eyebrow">Metro area</p>
@@ -138,5 +153,6 @@
 	.grid { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.8rem; margin: 0; }
 	dt { color: var(--c-muted, #94a3b8); }
 	dd { margin: 0; font-weight: 600; text-align: right; color: var(--c-text-2, #cfd9e6); }
+	.src { margin-top: 0.6rem; font-size: 10px; color: var(--c-muted, #64748b); }
 	@media (max-width: 640px) { .panel { top: auto; bottom: 6.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 48vh; } }
 </style>
