@@ -43,6 +43,27 @@ export interface ZipCentroid {
 	county_fips?: string;
 }
 
+export interface PayGridLocality {
+	code?: string | null;
+	name?: string | null;
+	adjustment_pct?: number | null;
+	inclusion_type?: string | null;
+	source?: string | null;
+}
+
+export type PayGridStatus = 'exact' | 'approximated' | 'unavailable';
+
+export interface PayGrid {
+	status: PayGridStatus;
+	year: number;
+	pay_plan?: string | null;
+	locality?: PayGridLocality | null;
+	method?: 'locality_row' | 'base_plus_adjustment' | null;
+	grades?: Record<string, Record<string, number>>;
+	notes?: string[];
+	missing_reason?: string | null;
+}
+
 export interface JobDetails {
 	id: number;
 	title: string;
@@ -65,6 +86,7 @@ export interface JobDetails {
 	url?: string | null;
 	locality_code?: string | null;
 	locations?: JobLocation[];
+	pay_grid?: PayGrid | null;
 }
 
 export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;

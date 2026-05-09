@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { loadJobDetails, loadPayTables, type JobDetails, type PayTables } from './data';
+	import { loadJobDetails, loadPayTables, type JobDetails, type PayGrid, type PayTables } from './data';
 	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { jobProfile } from './jobProfile.svelte';
@@ -69,6 +69,10 @@
 			});
 	});
 
+	// Per D.5.11 the exporter pre-computes a per-job pay_grid with a status
+	// flag (exact / approximated / unavailable). The local payTables.json
+	// snapshot is used only as a backstop when the snapshot was produced
+	// before D.5.11 shipped (older bundles have no detail.pay_grid).
 	type PayLookup = {
 		plan: string;
 		year: string | undefined;
@@ -79,24 +83,56 @@
 
 	function payLookup(job: JobDetails | null): PayLookup {
 		const plan = String(job?.pay_plan ?? properties.pay_plan ?? 'GS');
-		const year = payTables ? Object.keys(payTables[plan] ?? {}).sort().at(-1) : undefined;
-		const locality = String(job?.locality_code ?? properties.locality_code ?? 'BASE') || 'BASE';
+		const year = job?.pay_grid?.year
+			? String(job.pay_grid.year)
+			: payTables
+				? Object.keys(payTables[plan] ?? {}).sort().at(-1)
+				: undefined;
+		const locality = String(
+			job?.pay_grid?.locality?.code ?? job?.locality_code ?? properties.locality_code ?? 'BASE'
+		) || 'BASE';
 		const grade = String(job?.grade_low ?? properties.grade_low ?? '');
 		const byYear = year && payTables ? payTables[plan]?.[year] : undefined;
 		const fallbackToBase = locality !== 'BASE' && !byYear?.[locality] && Boolean(byYear?.BASE);
 		return { plan, year, locality, fallbackToBase, grade };
 	}
 
-	function tableRows(job: JobDetails | null): [string, string][] {
+	function gridFromDetail(grid: PayGrid | null | undefined, gradeKey: string): [string, string][] {
+		if (!grid?.grades) return [];
+		const padded = gradeKey.padStart(2, '0');
+		const steps = grid.grades[padded] ?? grid.grades[gradeKey];
+		if (!steps) return [];
+		return Object.entries(steps)
+			.sort(([a], [b]) => Number(a) - Number(b))
+			.map(([step, rate]) => [`Step ${Number(step)}`, money(rate)]);
+	}
+
+	function fallbackTableRows(job: JobDetails | null): [string, string][] {
 		const { plan, year, locality, grade } = payLookup(job);
 		if (!payTables || !year) return [];
 		const byYear = payTables[plan]?.[year];
 		const localityTable = byYear?.[locality] ?? byYear?.BASE;
-		const steps = localityTable?.[grade];
+		const steps = localityTable?.[grade.padStart(2, '0')] ?? localityTable?.[grade];
 		if (!steps) return [];
 		return Object.entries(steps)
 			.sort(([a], [b]) => Number(a) - Number(b))
-			.map(([step, rate]) => [`Step ${step}`, money(rate)]);
+			.map(([step, rate]) => [`Step ${Number(step)}`, money(rate)]);
+	}
+
+	function tableRows(job: JobDetails | null): [string, string][] {
+		const grade = String(job?.grade_low ?? properties.grade_low ?? '');
+		const fromGrid = gridFromDetail(job?.pay_grid, grade);
+		if (fromGrid.length) return fromGrid;
+		return fallbackTableRows(job);
+	}
+
+	function payStatus(job: JobDetails | null): 'exact' | 'approximated' | 'unavailable' | 'snapshot' {
+		const status = job?.pay_grid?.status;
+		if (status === 'exact' || status === 'approximated' || status === 'unavailable') {
+			return status;
+		}
+		// Older bundle without pay_grid; treat as snapshot-driven (no provenance).
+		return fallbackTableRows(job).length ? 'snapshot' : 'unavailable';
 	}
 </script>
 
@@ -175,31 +211,43 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if tableRows(detail).length}
-			{@const lookup = payLookup(detail)}
+		{@const lookup = payLookup(detail)}
+		{@const status = payStatus(detail)}
+		{@const rows = tableRows(detail)}
+		{#if rows.length && status !== 'unavailable'}
 			<h3>
 				Locality-adjusted pay table
+				{#if status === 'exact'}
+					<span class="pay-status pay-status-exact" title="Exact: locality-specific OPM rows used.">exact</span>
+				{:else if status === 'approximated'}
+					<span class="pay-status pay-status-approx" title="Approximated: derived from base × locality % because no locality-specific row exists for this combination.">approximated</span>
+				{:else if status === 'snapshot'}
+					<span class="pay-status pay-status-snap" title="Older bundle without per-job provenance — verify in admin.">snapshot</span>
+				{/if}
 				<InfoTooltip title="How this table was built" align="end">
 					<span>Step rates for this posting's pay plan, grade, and locality. Source year is the most recent year present in the bundled pay scale.</span>
 					<span class="formula">step_rate = base_step × (1 + locality_pct ÷ 100)</span>
-					<span class="formula">plan = {lookup.plan} • year = {lookup.year ?? '—'} • locality = {lookup.locality}{lookup.fallbackToBase ? ' (fell back to BASE)' : ''} • grade = {lookup.grade || '—'}</span>
-					<span class="src">Source: OPM GS pay tables × locality % adjustments (pay_scales × locality_pay_areas)</span>
+					<span class="formula">plan = {lookup.plan} • year = {detail?.pay_grid?.year ?? lookup.year ?? '—'} • locality = {detail?.pay_grid?.locality?.code ?? lookup.locality}{lookup.fallbackToBase ? ' (fell back to BASE)' : ''} • grade = {lookup.grade || '—'}{detail?.pay_grid?.locality?.adjustment_pct != null ? ` • locality_pct = ${detail.pay_grid.locality.adjustment_pct}%` : ''}</span>
+					<span class="src">Source: pay_scales × locality_pay_areas (pre-computed at export time per D.5.11)</span>
 				</InfoTooltip>
 			</h3>
 			<table>
 				<tbody>
-					{#each tableRows(detail) as [step, rate] (step)}
+					{#each rows as [step, rate] (step)}
 						<tr><th>{step}</th><td>{rate}</td></tr>
 					{/each}
 				</tbody>
 			</table>
 		{:else}
-			{@const lookup = payLookup(detail)}
-			<p class="note">
-				No matching static pay-table row for plan {lookup.plan} / locality {lookup.locality} / grade {lookup.grade || '—'}.
+			<h3>Pay table</h3>
+			<p class="note pay-missing" role="status">
+				Pay scale not yet ingested for plan {lookup.plan} / locality {detail?.pay_grid?.locality?.code ?? lookup.locality} / grade {lookup.grade || '—'} (year {detail?.pay_grid?.year ?? lookup.year ?? '—'}).
+				{#if detail?.pay_grid?.missing_reason}<br /><span class="missing-reason">{detail.pay_grid.missing_reason}</span>{/if}
+				<br />
+				<a class="admin-link" href="/?admin=pay" target="_blank" rel="noreferrer noopener" title="Opens the local Streamlit admin page if you have it running.">Refresh pay scales in Public Map Admin →</a>
 				<InfoTooltip title="Why no pay table?" align="end">
-					<span>The bundled pay-scale snapshot does not contain a row for this combination. The Public Map Admin page can refresh OPM pay scales for the active reference year.</span>
-					<span class="src">Source: pay_scales (last refreshed via scripts/ingest_opm_gs_pay.py / ingest_opm_locality_pay.py)</span>
+					<span>The bundled snapshot does not contain rows for this (plan, year, grade). The Public Map Admin page (pages/11_Public_Map_Admin.py) refreshes OPM pay scales for the active reference year, then re-runs the export.</span>
+					<span class="src">Source: pay_scales (last refreshed via scripts/ingest_gs_pay.py / ingest_locality_pay.py)</span>
 				</InfoTooltip>
 			</p>
 		{/if}
@@ -230,6 +278,14 @@
 	th { text-align: left; color: var(--c-muted, #94a3b8); font-weight: 500; }
 	td { text-align: right; font-weight: 700; color: var(--c-text, #e5edf5); }
 	.note, .error { margin: 0.8rem 0 0; font-size: 12px; line-height: 1.45; color: var(--c-muted, #94a3b8); }
+	.pay-status { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; vertical-align: middle; }
+	.pay-status-exact { background: rgba(80, 180, 120, 0.18); border: 1px solid #4f9f6a; color: var(--c-success, #9be0b4); }
+	.pay-status-approx { background: rgba(220, 160, 50, 0.18); border: 1px solid #b48a3a; color: var(--c-warn, #f0c878); }
+	.pay-status-snap { background: rgba(140, 140, 160, 0.16); border: 1px solid #6a6a82; color: var(--c-muted, #94a3b8); }
+	.pay-missing { padding: 0.55rem 0.65rem; border: 1px dashed var(--c-border, #4a5a72); border-radius: 6px; }
+	.missing-reason { display: inline-block; margin-top: 0.15rem; color: var(--c-muted, #94a3b8); font-style: italic; }
+	.admin-link { display: inline-block; margin-top: 0.3rem; color: var(--c-accent, #7bd0f2); text-decoration: none; font-weight: 600; }
+	.admin-link:hover { text-decoration: underline; }
 	.closed-note { margin: 0 0 0.75rem; padding: 0.55rem 0.65rem; border: 1px solid var(--c-border, #3a4556); border-radius: 6px; background: var(--c-row-bg, rgba(135,146,163,0.14)); color: var(--c-text-2, #cfd9e6); line-height: 1.45; }
 	.error { color: var(--c-danger, #f1bcbc); }
 </style>

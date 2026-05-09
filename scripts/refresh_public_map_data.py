@@ -184,11 +184,11 @@ def build_steps() -> list[Step]:
                 )
             )
     else:
-        # Per ADR-0027, default to the checked-in 2025 GS base table seed.
+        # Per ADR-0027, default to the checked-in 2026 GS base table seed.
         steps.append(
             Step(
                 key="ingest_gs_pay::seed",
-                label="GS pay table (2025 seed)",
+                label="GS pay table (2026 seed)",
                 args=[_python(), "scripts/ingest_gs_pay.py"],
             )
         )

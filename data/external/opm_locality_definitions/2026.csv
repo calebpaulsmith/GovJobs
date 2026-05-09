@@ -1,0 +1,427 @@
+locality_code,year,county_fips,inclusion_type,locality_name
+DCB,2026,11001,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24003,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24005,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24009,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24013,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24017,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24021,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24025,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24027,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24031,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24033,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24035,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24037,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,24510,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51013,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51043,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51047,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51059,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51061,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51099,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51107,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51153,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51157,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51177,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51179,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51187,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51510,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51600,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51610,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51630,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51683,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,51685,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,54003,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,54037,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,42001,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,42055,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DCB,2026,42133,core,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+CHI,2026,17031,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17037,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17043,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17063,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17089,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17091,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17093,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17097,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17099,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17111,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17197,core,Chicago-Naperville IL-IN-WI
+CHI,2026,17201,core,Chicago-Naperville IL-IN-WI
+CHI,2026,18073,core,Chicago-Naperville IL-IN-WI
+CHI,2026,18089,core,Chicago-Naperville IL-IN-WI
+CHI,2026,18091,core,Chicago-Naperville IL-IN-WI
+CHI,2026,18111,core,Chicago-Naperville IL-IN-WI
+CHI,2026,18127,core,Chicago-Naperville IL-IN-WI
+CHI,2026,55059,core,Chicago-Naperville IL-IN-WI
+CHI,2026,55127,core,Chicago-Naperville IL-IN-WI
+NYC,2026,36005,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36047,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36061,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36081,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36085,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36059,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36103,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36119,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36087,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36079,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36071,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36027,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36105,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,36111,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34003,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34013,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34017,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34019,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34021,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34023,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34025,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34027,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34029,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34031,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34035,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34037,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34039,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,34041,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,09001,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,09005,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,09009,core,New York-Newark NY-NJ-CT-PA
+NYC,2026,42103,core,New York-Newark NY-NJ-CT-PA
+SFO,2026,06001,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06013,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06033,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06041,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06045,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06055,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06069,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06075,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06077,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06081,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06085,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06087,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06095,core,San Jose-San Francisco-Oakland CA
+SFO,2026,06097,core,San Jose-San Francisco-Oakland CA
+LOS,2026,06029,core,Los Angeles-Long Beach CA
+LOS,2026,06037,core,Los Angeles-Long Beach CA
+LOS,2026,06059,core,Los Angeles-Long Beach CA
+LOS,2026,06065,core,Los Angeles-Long Beach CA
+LOS,2026,06071,core,Los Angeles-Long Beach CA
+LOS,2026,06079,core,Los Angeles-Long Beach CA
+LOS,2026,06083,core,Los Angeles-Long Beach CA
+LOS,2026,06111,core,Los Angeles-Long Beach CA
+BOS,2026,25001,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25005,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25009,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25013,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25015,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25017,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25021,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25023,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25025,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,25027,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33001,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33005,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33011,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33013,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33015,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,33017,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,44001,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,44003,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,44005,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,44007,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,44009,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,09003,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,09007,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,09011,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,09013,core,Boston-Worcester-Providence MA-RI-NH-CT
+BOS,2026,09015,core,Boston-Worcester-Providence MA-RI-NH-CT
+SEA,2026,53033,core,Seattle-Tacoma WA
+SEA,2026,53035,core,Seattle-Tacoma WA
+SEA,2026,53053,core,Seattle-Tacoma WA
+SEA,2026,53061,core,Seattle-Tacoma WA
+SEA,2026,53067,core,Seattle-Tacoma WA
+ATL,2026,13013,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13015,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13045,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13057,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13059,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13063,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13067,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13077,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13089,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13097,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13113,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13117,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13121,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13135,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13139,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13151,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13217,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13223,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13247,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+ATL,2026,13297,core,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+DAL,2026,48085,core,Dallas-Fort Worth TX-OK
+DAL,2026,48113,core,Dallas-Fort Worth TX-OK
+DAL,2026,48121,core,Dallas-Fort Worth TX-OK
+DAL,2026,48139,core,Dallas-Fort Worth TX-OK
+DAL,2026,48143,core,Dallas-Fort Worth TX-OK
+DAL,2026,48221,core,Dallas-Fort Worth TX-OK
+DAL,2026,48231,core,Dallas-Fort Worth TX-OK
+DAL,2026,48251,core,Dallas-Fort Worth TX-OK
+DAL,2026,48257,core,Dallas-Fort Worth TX-OK
+DAL,2026,48363,core,Dallas-Fort Worth TX-OK
+DAL,2026,48367,core,Dallas-Fort Worth TX-OK
+DAL,2026,48397,core,Dallas-Fort Worth TX-OK
+DAL,2026,48425,core,Dallas-Fort Worth TX-OK
+DAL,2026,48439,core,Dallas-Fort Worth TX-OK
+DAL,2026,48497,core,Dallas-Fort Worth TX-OK
+HOU,2026,48039,core,Houston-The Woodlands TX
+HOU,2026,48071,core,Houston-The Woodlands TX
+HOU,2026,48157,core,Houston-The Woodlands TX
+HOU,2026,48167,core,Houston-The Woodlands TX
+HOU,2026,48201,core,Houston-The Woodlands TX
+HOU,2026,48291,core,Houston-The Woodlands TX
+HOU,2026,48339,core,Houston-The Woodlands TX
+HOU,2026,48473,core,Houston-The Woodlands TX
+DEN,2026,08001,core,Denver-Aurora CO
+DEN,2026,08005,core,Denver-Aurora CO
+DEN,2026,08013,core,Denver-Aurora CO
+DEN,2026,08014,core,Denver-Aurora CO
+DEN,2026,08019,core,Denver-Aurora CO
+DEN,2026,08031,core,Denver-Aurora CO
+DEN,2026,08035,core,Denver-Aurora CO
+DEN,2026,08039,core,Denver-Aurora CO
+DEN,2026,08047,core,Denver-Aurora CO
+DEN,2026,08059,core,Denver-Aurora CO
+DEN,2026,08093,core,Denver-Aurora CO
+DEN,2026,08123,core,Denver-Aurora CO
+PHI,2026,42017,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42029,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42045,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42091,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42101,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42011,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42025,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42077,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42095,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,42107,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34001,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34005,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34007,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34009,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34011,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34015,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,34033,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,10001,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,10003,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,10005,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHI,2026,24015,core,Philadelphia-Reading-Camden PA-NJ-DE-MD
+MSP,2026,27003,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27019,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27025,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27037,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27053,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27059,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27079,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27095,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27123,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27139,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27141,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27143,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27163,core,Minneapolis-St. Paul MN-WI
+MSP,2026,27171,core,Minneapolis-St. Paul MN-WI
+MSP,2026,55093,core,Minneapolis-St. Paul MN-WI
+MSP,2026,55109,core,Minneapolis-St. Paul MN-WI
+DTW,2026,26049,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26087,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26091,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26093,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26099,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26115,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26125,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26147,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26161,core,Detroit-Warren-Ann Arbor MI
+DTW,2026,26163,core,Detroit-Warren-Ann Arbor MI
+MIA,2026,12011,core,Miami-Port St. Lucie-Fort Lauderdale FL
+MIA,2026,12085,core,Miami-Port St. Lucie-Fort Lauderdale FL
+MIA,2026,12086,core,Miami-Port St. Lucie-Fort Lauderdale FL
+MIA,2026,12087,core,Miami-Port St. Lucie-Fort Lauderdale FL
+MIA,2026,12099,core,Miami-Port St. Lucie-Fort Lauderdale FL
+MIA,2026,12111,core,Miami-Port St. Lucie-Fort Lauderdale FL
+PHX,2026,04013,core,Phoenix-Mesa AZ
+PHX,2026,04021,core,Phoenix-Mesa AZ
+SAC,2026,06017,core,Sacramento-Roseville CA-NV
+SAC,2026,06061,core,Sacramento-Roseville CA-NV
+SAC,2026,06067,core,Sacramento-Roseville CA-NV
+SAC,2026,06101,core,Sacramento-Roseville CA-NV
+SAC,2026,06113,core,Sacramento-Roseville CA-NV
+SDC,2026,06073,core,San Diego-Chula Vista-Carlsbad CA
+LVG,2026,32003,core,Las Vegas-Henderson NV-AZ
+LVG,2026,32023,core,Las Vegas-Henderson NV-AZ
+ORL,2026,12009,core,Orlando-Lakeland-Deltona FL
+ORL,2026,12095,core,Orlando-Lakeland-Deltona FL
+ORL,2026,12097,core,Orlando-Lakeland-Deltona FL
+ORL,2026,12117,core,Orlando-Lakeland-Deltona FL
+TPA,2026,12053,core,Tampa-St. Petersburg-Clearwater FL
+TPA,2026,12057,core,Tampa-St. Petersburg-Clearwater FL
+TPA,2026,12101,core,Tampa-St. Petersburg-Clearwater FL
+TPA,2026,12103,core,Tampa-St. Petersburg-Clearwater FL
+HRT,2026,09003,duplicate-suppressed,Hartford-East Hartford CT-MA
+PIT,2026,42003,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42007,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42019,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42051,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42073,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42125,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,42129,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,54009,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,54029,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+PIT,2026,54051,core,Pittsburgh-New Castle-Weirton PA-OH-WV
+RIC,2026,51036,core,Richmond VA
+RIC,2026,51041,core,Richmond VA
+RIC,2026,51075,core,Richmond VA
+RIC,2026,51085,core,Richmond VA
+RIC,2026,51087,core,Richmond VA
+RIC,2026,51097,core,Richmond VA
+RIC,2026,51127,core,Richmond VA
+RIC,2026,51145,core,Richmond VA
+RIC,2026,51149,core,Richmond VA
+RIC,2026,51570,core,Richmond VA
+RIC,2026,51670,core,Richmond VA
+RIC,2026,51730,core,Richmond VA
+RIC,2026,51760,core,Richmond VA
+RAL,2026,37063,core,Raleigh-Durham-Cary NC
+RAL,2026,37069,core,Raleigh-Durham-Cary NC
+RAL,2026,37101,core,Raleigh-Durham-Cary NC
+RAL,2026,37135,core,Raleigh-Durham-Cary NC
+RAL,2026,37183,core,Raleigh-Durham-Cary NC
+CHA,2026,37025,core,Charlotte-Concord NC-SC
+CHA,2026,37071,core,Charlotte-Concord NC-SC
+CHA,2026,37109,core,Charlotte-Concord NC-SC
+CHA,2026,37119,core,Charlotte-Concord NC-SC
+CHA,2026,37159,core,Charlotte-Concord NC-SC
+CHA,2026,37179,core,Charlotte-Concord NC-SC
+CHA,2026,45023,core,Charlotte-Concord NC-SC
+CHA,2026,45057,core,Charlotte-Concord NC-SC
+CHA,2026,45091,core,Charlotte-Concord NC-SC
+CIN,2026,21015,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,21037,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,21077,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,21081,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,21117,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,39017,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,39025,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,39061,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,39135,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+CIN,2026,39165,core,Cincinnati-Wilmington-Maysville OH-KY-IN
+COL,2026,39041,core,Columbus-Marion-Zanesville OH
+COL,2026,39045,core,Columbus-Marion-Zanesville OH
+COL,2026,39049,core,Columbus-Marion-Zanesville OH
+COL,2026,39073,core,Columbus-Marion-Zanesville OH
+COL,2026,39089,core,Columbus-Marion-Zanesville OH
+COL,2026,39097,core,Columbus-Marion-Zanesville OH
+COL,2026,39117,core,Columbus-Marion-Zanesville OH
+COL,2026,39129,core,Columbus-Marion-Zanesville OH
+COL,2026,39159,core,Columbus-Marion-Zanesville OH
+CLE,2026,39007,core,Cleveland-Akron-Canton OH
+CLE,2026,39035,core,Cleveland-Akron-Canton OH
+CLE,2026,39055,core,Cleveland-Akron-Canton OH
+CLE,2026,39085,core,Cleveland-Akron-Canton OH
+CLE,2026,39093,core,Cleveland-Akron-Canton OH
+CLE,2026,39103,core,Cleveland-Akron-Canton OH
+CLE,2026,39133,core,Cleveland-Akron-Canton OH
+CLE,2026,39151,core,Cleveland-Akron-Canton OH
+CLE,2026,39153,core,Cleveland-Akron-Canton OH
+IND,2026,18011,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18057,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18063,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18081,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18097,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18109,core,Indianapolis-Carmel-Muncie IN
+IND,2026,18133,core,Indianapolis-Carmel-Muncie IN
+KCY,2026,20091,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,20103,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,20107,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,20121,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29013,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29037,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29047,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29049,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29095,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29107,core,Kansas City-Overland Park-Kansas City MO-KS
+KCY,2026,29165,core,Kansas City-Overland Park-Kansas City MO-KS
+STL,2026,17117,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,17119,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,17133,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,17163,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,29071,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,29099,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,29183,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,29189,core,St. Louis-St. Charles-Farmington MO-IL
+STL,2026,29510,core,St. Louis-St. Charles-Farmington MO-IL
+NSH,2026,47021,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47037,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47043,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47147,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47149,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47159,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47165,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47187,core,Nashville-Davidson--Murfreesboro TN
+NSH,2026,47189,core,Nashville-Davidson--Murfreesboro TN
+SAN,2026,48029,core,San Antonio-New Braunfels-Pearsall TX
+SAN,2026,48091,core,San Antonio-New Braunfels-Pearsall TX
+SAN,2026,48187,core,San Antonio-New Braunfels-Pearsall TX
+AUS,2026,48021,core,Austin-Round Rock-Georgetown TX
+AUS,2026,48055,core,Austin-Round Rock-Georgetown TX
+AUS,2026,48209,core,Austin-Round Rock-Georgetown TX
+AUS,2026,48453,core,Austin-Round Rock-Georgetown TX
+AUS,2026,48491,core,Austin-Round Rock-Georgetown TX
+HRT,2026,09011,core,Hartford-East Hartford CT-MA
+POR,2026,41005,core,Portland-Vancouver-Salem OR-WA
+POR,2026,41009,core,Portland-Vancouver-Salem OR-WA
+POR,2026,41051,core,Portland-Vancouver-Salem OR-WA
+POR,2026,41053,core,Portland-Vancouver-Salem OR-WA
+POR,2026,41067,core,Portland-Vancouver-Salem OR-WA
+POR,2026,41071,core,Portland-Vancouver-Salem OR-WA
+POR,2026,53011,core,Portland-Vancouver-Salem OR-WA
+POR,2026,53059,core,Portland-Vancouver-Salem OR-WA
+SLC,2026,49011,core,Salt Lake City-Provo-Orem UT-ID
+SLC,2026,49035,core,Salt Lake City-Provo-Orem UT-ID
+SLC,2026,49039,core,Salt Lake City-Provo-Orem UT-ID
+SLC,2026,49045,core,Salt Lake City-Provo-Orem UT-ID
+SLC,2026,49049,core,Salt Lake City-Provo-Orem UT-ID
+SLC,2026,49057,core,Salt Lake City-Provo-Orem UT-ID
+HI,2026,15001,core,State of Hawaii
+HI,2026,15003,core,State of Hawaii
+HI,2026,15005,core,State of Hawaii
+HI,2026,15007,core,State of Hawaii
+HI,2026,15009,core,State of Hawaii
+AK,2026,02013,core,State of Alaska
+AK,2026,02016,core,State of Alaska
+AK,2026,02020,core,State of Alaska
+AK,2026,02050,core,State of Alaska
+AK,2026,02060,core,State of Alaska
+AK,2026,02068,core,State of Alaska
+AK,2026,02070,core,State of Alaska
+AK,2026,02090,core,State of Alaska
+AK,2026,02100,core,State of Alaska
+AK,2026,02105,core,State of Alaska
+AK,2026,02110,core,State of Alaska
+AK,2026,02122,core,State of Alaska
+AK,2026,02130,core,State of Alaska
+AK,2026,02150,core,State of Alaska
+AK,2026,02158,core,State of Alaska
+AK,2026,02164,core,State of Alaska
+AK,2026,02170,core,State of Alaska
+AK,2026,02180,core,State of Alaska
+AK,2026,02185,core,State of Alaska
+AK,2026,02188,core,State of Alaska
+AK,2026,02195,core,State of Alaska
+AK,2026,02198,core,State of Alaska
+AK,2026,02220,core,State of Alaska
+AK,2026,02230,core,State of Alaska
+AK,2026,02240,core,State of Alaska
+AK,2026,02261,core,State of Alaska
+AK,2026,02275,core,State of Alaska
+AK,2026,02282,core,State of Alaska
+AK,2026,02290,core,State of Alaska

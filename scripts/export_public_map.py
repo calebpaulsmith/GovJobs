@@ -77,7 +77,7 @@ def main() -> int:
         year = current_reference_year(conn)
         geojson = jobs_geojson(conn, year=year, repo_root=REPO)
         closed_geojson = closed_jobs_geojson(conn, year=year)
-        details = job_details(conn)
+        details = job_details(conn, year=year)
         opm = opm_state_aggregates(conn)
         agencies = agency_options(conn)
         series = series_options(conn)

@@ -1,0 +1,61 @@
+locality_code,year,adjustment_pct,locality_name
+ABQ,2026,18.10,Albuquerque-Santa Fe-Las Vegas NM
+ALB,2026,21.39,Albany-Schenectady NY
+ATL,2026,24.52,Atlanta--Athens-Clarke County--Sandy Springs GA-AL
+AUS,2026,21.78,Austin-Round Rock-Georgetown TX
+BIR,2026,18.32,Birmingham-Hoover-Talladega AL
+BOS,2026,32.21,Boston-Worcester-Providence MA-RI-NH-CT
+BUF,2026,22.74,Buffalo-Cheektowaga-Olean NY
+BUR,2026,19.20,Burlington-South Burlington-Barre VT
+CHA,2026,22.45,Charlotte-Concord NC-SC
+CHI,2026,32.45,Chicago-Naperville IL-IN-WI
+CIN,2026,23.10,Cincinnati-Wilmington-Maysville OH-KY-IN
+CLE,2026,24.45,Cleveland-Akron-Canton OH
+COL,2026,22.32,Columbus-Marion-Zanesville OH
+CSP,2026,19.93,Colorado Springs CO
+DAL,2026,27.66,Dallas-Fort Worth TX-OK
+DAV,2026,18.04,Davenport-Moline-Rock Island IA-IL
+DAY,2026,22.59,Dayton-Springfield-Kettering OH
+DCB,2026,33.26,Washington-Baltimore-Arlington DC-MD-VA-WV-PA
+DEN,2026,30.31,Denver-Aurora CO
+DSM,2026,19.52,Des Moines-Ames-West Des Moines IA
+DTW,2026,28.68,Detroit-Warren-Ann Arbor MI
+FRE,2026,19.39,Fresno-Madera-Hanford CA
+HAR,2026,19.84,Harrisburg-Lebanon PA
+HOU,2026,36.97,Houston-The Woodlands TX
+HRT,2026,30.91,Hartford-East Hartford CT-MA
+HUN,2026,22.39,Huntsville-Decatur-Albertville AL-TN
+IND,2026,19.85,Indianapolis-Carmel-Muncie IN
+KCY,2026,19.44,Kansas City-Overland Park-Kansas City MO-KS
+LAR,2026,19.85,Laredo TX
+LOS,2026,36.04,Los Angeles-Long Beach CA
+LVG,2026,22.71,Las Vegas-Henderson NV-AZ
+MIA,2026,25.44,Miami-Port St. Lucie-Fort Lauderdale FL
+MIL,2026,24.44,Milwaukee-Racine-Waukesha WI
+MLB,2026,19.49,Palm Bay-Melbourne-Titusville FL
+MSP,2026,26.43,Minneapolis-St. Paul MN-WI
+NSH,2026,21.59,Nashville-Davidson--Murfreesboro TN
+NYC,2026,36.16,New York-Newark NY-NJ-CT-PA
+OMA,2026,19.40,Omaha-Council Bluffs-Fremont NE-IA
+ORL,2026,19.34,Orlando-Lakeland-Deltona FL
+PHI,2026,28.21,Philadelphia-Reading-Camden PA-NJ-DE-MD
+PHX,2026,22.42,Phoenix-Mesa AZ
+PIT,2026,22.69,Pittsburgh-New Castle-Weirton PA-OH-WV
+POR,2026,27.91,Portland-Vancouver-Salem OR-WA
+RAL,2026,22.02,Raleigh-Durham-Cary NC
+REN,2026,19.53,Reno-Carson City-Fernley NV
+RIC,2026,22.32,Richmond VA
+SAC,2026,28.20,Sacramento-Roseville CA-NV
+SAN,2026,19.65,San Antonio-New Braunfels-Pearsall TX
+SDC,2026,33.05,San Diego-Chula Vista-Carlsbad CA
+SEA,2026,31.81,Seattle-Tacoma WA
+SFO,2026,45.41,San Jose-San Francisco-Oakland CA
+SLC,2026,19.04,Salt Lake City-Provo-Orem UT-ID
+SPO,2026,19.04,Spokane-Spokane Valley-Coeur d'Alene WA-ID
+STL,2026,21.31,St. Louis-St. Charles-Farmington MO-IL
+TPA,2026,19.51,Tampa-St. Petersburg-Clearwater FL
+TUS,2026,19.27,Tucson-Nogales AZ
+VAB,2026,19.55,Virginia Beach-Norfolk VA-NC
+AK,2026,30.27,State of Alaska
+HI,2026,21.52,State of Hawaii
+RUS,2026,17.00,Rest of U.S.

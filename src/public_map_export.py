@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from src.pay_calculator import calculate_job_pay_table
 from src.reference_data import REST_OF_US_CODE
 
 logger = logging.getLogger(__name__)
@@ -312,13 +313,109 @@ def closed_jobs_geojson(
 # ---------- Per-job detail panel --------------------------------------------
 
 
-def job_details(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+def _build_pay_grid(
+    conn: sqlite3.Connection,
+    *,
+    pay_plan: str | None,
+    year: int,
+    city: str | None,
+    state: str | None,
+    grade_low: Any,
+    grade_high: Any,
+) -> dict[str, Any]:
+    """Pre-compute the per-job locality-adjusted pay grid + status flag.
+
+    Status semantics (D.5.11):
+    - ``exact`` — every cell came from a locality-specific row in
+      ``pay_scales`` (``method='locality_row'``). The bundled snapshot has
+      OPM's published locality table for this (plan, year, locality).
+    - ``approximated`` — at least one cell was derived as ``base × (1 + pct)``
+      because no locality-specific row exists. Still useful, but operator
+      should verify against the OPM PDF before relying on cents-precision.
+    - ``unavailable`` — no rows at all for this (plan, year, grade range).
+      JobCard renders the "Pay scale not yet ingested — see admin" message.
+    """
+    if not (pay_plan or "").strip() or grade_low is None or str(grade_low).strip() == "":
+        return {
+            "status": "unavailable",
+            "year": int(year),
+            "pay_plan": (pay_plan or "").upper() or None,
+            "missing_reason": "Posting has no pay plan or grade.",
+        }
+
+    table = calculate_job_pay_table(
+        conn,
+        pay_plan_code=str(pay_plan).upper(),
+        year=int(year),
+        city=city,
+        state=state,
+        grade_low=grade_low,
+        grade_high=grade_high if grade_high not in (None, "") else grade_low,
+    )
+
+    grades_payload: dict[str, dict[str, float]] = {}
+    methods: set[str] = set()
+    for grade, steps in (table.get("grades") or {}).items():
+        cells: dict[str, float] = {}
+        for step_key, cell in (steps or {}).items():
+            rate = cell.get("rate")
+            if rate is None:
+                continue
+            cells[str(step_key)] = round(float(rate), 2)
+            methods.add(cell.get("method") or "")
+        if cells:
+            grades_payload[str(grade)] = cells
+
+    if not grades_payload:
+        return {
+            "status": "unavailable",
+            "year": int(year),
+            "pay_plan": (pay_plan or "").upper() or None,
+            "locality": table.get("locality"),
+            "missing_reason": (
+                f"pay_scales has no rows for plan {(pay_plan or '').upper()}, "
+                f"year {year}, grade {grade_low}. See Public Map Admin to refresh "
+                "OPM pay scales for this reference year."
+            ),
+            "notes": table.get("notes") or [],
+        }
+
+    if methods == {"locality_row"}:
+        status = "exact"
+    elif "locality_row" in methods:
+        status = "exact"  # all filled cells were direct rows; mixed methods
+    else:
+        status = "approximated"
+
+    return {
+        "status": status,
+        "year": int(year),
+        "pay_plan": (pay_plan or "").upper() or None,
+        "locality": table.get("locality"),
+        "method": (
+            "locality_row" if status == "exact" else "base_plus_adjustment"
+        ),
+        "grades": grades_payload,
+        "notes": table.get("notes") or [],
+    }
+
+
+def job_details(
+    conn: sqlite3.Connection,
+    *,
+    year: int | None = None,
+) -> dict[str, dict[str, Any]]:
     """Return `{job_id: {detail fields}}` for every open posting.
 
     The map fetches this lazily when the user clicks a marker, so we keep
     each entry small but include enough context for a single-page card:
-    title, agency, dates, salary, every duty location, and the apply URL.
+    title, agency, dates, salary, every duty location, the apply URL, and
+    the pre-computed locality-adjusted pay grid (D.5.11). The pay grid is
+    computed against the job's first listed duty location; JobCard shows the
+    grid when ``status`` is ``exact``/``approximated`` and a "see admin"
+    fallback when ``status`` is ``unavailable``.
     """
+    resolved_year = int(year) if year is not None else current_reference_year(conn)
     job_rows = conn.execute(
         """
         SELECT
@@ -370,6 +467,17 @@ def job_details(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     details: dict[str, dict[str, Any]] = {}
     for row in job_rows:
         job_id = int(row["job_id"])
+        locations = locations_by_job.get(job_id, [])
+        first_loc = locations[0] if locations else {"city": None, "state": None}
+        pay_grid = _build_pay_grid(
+            conn,
+            pay_plan=row["pay_plan"],
+            year=resolved_year,
+            city=first_loc.get("city"),
+            state=first_loc.get("state"),
+            grade_low=row["grade_low"],
+            grade_high=row["grade_high"],
+        )
         details[str(job_id)] = {
             "id": job_id,
             "title": row["title"],
@@ -388,7 +496,8 @@ def job_details(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
             "close_date": row["close_date"],
             "hiring_paths": row["hiring_paths"],
             "url": row["url"],
-            "locations": locations_by_job.get(job_id, []),
+            "locations": locations,
+            "pay_grid": pay_grid,
         }
     return details
 

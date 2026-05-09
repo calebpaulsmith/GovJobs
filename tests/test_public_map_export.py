@@ -11,10 +11,12 @@ from src.database import (
     upsert_geocoded_location,
     upsert_job,
     upsert_zip_centroid,
+    utc_now,
 )
 from src.public_map_export import (
     agency_options,
     closed_jobs_geojson,
+    current_reference_year,
     geocoding_summary,
     job_details,
     jobs_geojson,
@@ -408,3 +410,117 @@ def test_zip_centroids_payload_exports_static_lookup(conn):
             "county_fips": "17031",
         }
     ]
+
+
+# ---------- D.5.11: per-job pay_grid + status flag --------------------------
+
+
+def _seed_locality(conn, *, code, year, name, adjustment_pct, counties):
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO locality_pay_areas (
+            code, year, name, description, adjustment_pct,
+            polygon_path, source, source_url, imported_at
+        ) VALUES (?, ?, ?, NULL, ?, NULL, 'test', NULL, ?)
+        """,
+        (code, year, name, adjustment_pct, now),
+    )
+    for fips in counties:
+        conn.execute(
+            """
+            INSERT INTO locality_pay_counties (locality_code, year, county_fips, inclusion_type)
+            VALUES (?, ?, ?, 'core')
+            """,
+            (code, year, fips),
+        )
+    conn.commit()
+
+
+def _seed_pay_row(conn, *, pay_plan_code, year, grade, step, locality_code, rate):
+    conn.execute(
+        """
+        INSERT INTO pay_scales (
+            pay_plan, year, grade, step, locality_code,
+            annual_rate, source, source_url, imported_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'test', NULL, ?)
+        """,
+        (pay_plan_code, year, grade, step, locality_code, rate, utc_now()),
+    )
+    conn.commit()
+
+
+def test_job_details_pay_grid_status_exact_when_locality_row_present(conn):
+    _seed_chicago(conn)
+    _seed_locality(
+        conn, code="CHI", year=2026, name="Chicago-Naperville",
+        adjustment_pct=32.45, counties=["17031"],
+    )
+    # Seed a locality-specific row for grade 12 step 1 — the calculator
+    # should use it verbatim (status='exact').
+    _seed_pay_row(
+        conn, pay_plan_code="GS", year=2026, grade="12", step=1,
+        locality_code="CHI", rate=110_803.00,
+    )
+    upsert_job(conn, _job())
+
+    detail = next(iter(job_details(conn, year=2026).values()))
+
+    grid = detail["pay_grid"]
+    assert grid["status"] == "exact"
+    assert grid["year"] == 2026
+    assert grid["pay_plan"] == "GS"
+    assert grid["locality"]["code"] == "CHI"
+    assert grid["grades"]["12"]["01"] == 110_803.00
+
+
+def test_job_details_pay_grid_status_approximated_when_only_base_row(conn):
+    _seed_chicago(conn)
+    _seed_locality(
+        conn, code="CHI", year=2026, name="Chicago-Naperville",
+        adjustment_pct=32.45, counties=["17031"],
+    )
+    # Only a base row — the calculator should derive base × (1 + pct).
+    _seed_pay_row(
+        conn, pay_plan_code="GS", year=2026, grade="12", step=1,
+        locality_code="", rate=80_000.00,
+    )
+    upsert_job(conn, _job())
+
+    detail = next(iter(job_details(conn, year=2026).values()))
+
+    grid = detail["pay_grid"]
+    assert grid["status"] == "approximated"
+    # 80000 × (1 + 32.45/100) = 105960.00
+    assert grid["grades"]["12"]["01"] == 105_960.00
+
+
+def test_job_details_pay_grid_status_unavailable_when_no_rows(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job())
+
+    detail = next(iter(job_details(conn, year=2026).values()))
+
+    grid = detail["pay_grid"]
+    assert grid["status"] == "unavailable"
+    assert "missing_reason" in grid
+    assert "pay_scales" in grid["missing_reason"].lower()
+
+
+def test_job_details_pay_grid_unavailable_when_no_pay_plan(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job(pay_plan="", grade_low="", grade_high=""))
+
+    detail = next(iter(job_details(conn, year=2026).values()))
+    grid = detail["pay_grid"]
+    assert grid["status"] == "unavailable"
+
+
+def test_current_reference_year_prefers_pay_scales_max_year(conn):
+    # Seed pay rows for 2024, 2025, 2026 — the resolver must pick 2026.
+    for year in (2024, 2025, 2026):
+        _seed_pay_row(
+            conn, pay_plan_code="GS", year=year, grade="01", step=1,
+            locality_code="", rate=20_000.00 + year,
+        )
+    assert current_reference_year(conn) == 2026
