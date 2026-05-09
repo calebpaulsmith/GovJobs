@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { GeoJSONSource, Map as MaplibreMap, MapboxGeoJSONFeature, StyleSpecification } from 'mapbox-gl';
-	import { configureMapboxRuntime, pickStyleForTheme, HAS_MAPBOX_TOKEN } from './basemap';
+	import {
+		assertBasemapInvariants,
+		configureMapboxRuntime,
+		pickStyleForTheme,
+		HAS_MAPBOX_TOKEN
+	} from './basemap';
 	import {
 		loadClosedJobs,
 		loadCounties,
@@ -48,6 +53,11 @@
 		configureMapboxRuntime(mapboxgl);
 
 		const style = pickStyleForTheme(mapState.theme);
+		if (import.meta.env.DEV) {
+			// Catches accidental reintroduction of `glyphs:` / symbol layers
+			// during local development. In production we trust the unit test.
+			assertBasemapInvariants(style);
+		}
 		map = new mapboxgl.Map({
 			container,
 			style: style as string | StyleSpecification,
