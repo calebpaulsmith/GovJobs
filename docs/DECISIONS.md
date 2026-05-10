@@ -435,3 +435,34 @@ ADR-0022 explicitly forbade parsing or copying résumé content in V2. That boun
 
 The full design — staging-folder layout, instruction templates, tier-preset semantics, preflight-ingestion contract, and Phase 1–3 implementation queue — lives in `docs/LLM_EXPORT_SPEC.md` and the corresponding ROADMAP entry (Phase 12).
 
+---
+
+## ADR-0032 — Remote Mode is a purchasing-power view, not a "cheap places" map
+Date: 2026-05-10
+Status: Proposed
+
+**Context.** A growing share of federal postings are remote-eligible, and the user wants Remote Mode to help job seekers who are willing to relocate decide *where* to live. The naive framing — "show me cheap places" — misses the structural feature of federal remote work: locality pay follows the assigned duty station, not the residence. A GS-13 with a Washington-DCB duty station who lives in rural Alabama keeps DCB-locality pay against Alabama-locality costs; an "anywhere remote" job that keys off RUS pays the same in rural Alabama as in Atlanta. The interesting question is therefore "where does my locality-adjusted pay stretch furthest?" — a purchasing-power question, not a cost-of-living question.
+
+A second framing decision: subjective composite quality-of-life scores (Sperling's BestPlaces, "best small cities" rankings, school grades, crime indices) are opaque and politically charged. They cut against the public map's transparent-and-sourced posture established in ADR-0024 and the calculation-traceback tooltips of D.5.13. Remote Mode must avoid them and surface only signals whose source and formula a user can audit.
+
+**Decision.**
+
+1. **Remote Mode is a togglable mode, not a default layer.** A "Remote" pill in the masthead activates it. The mode swaps the metric switcher to a purchasing-power-focused set, fades non-remote markers (or hides them via a setting), opens a Remote Jobs panel, and reveals a Locality Leaderboard. Toggling off restores the previous metric and viewport.
+2. **The central visualization is a purchasing-power choropleth, not a heat map.** Heat maps imply density of something. Remote Mode renders a county-level choropleth where the value is `(duty_station_locality_pay − residence_county_COL_adjusted_baseline) ÷ residence_county_COL`, anchored to a user-selected pay anchor (GS grade/step + duty-station locality, or a custom wage). State-level fallback only when county COL is missing. Reuses `cost_of_living_index.by_county` (D.5.10) and `pay_scales` 2026 (D.5.14) — zero new ingests for the core view.
+3. **A pay anchor is required.** No anchor → no choropleth. The default anchor is whatever the user last set in the Compensation Comparator (D.5.17), or a sane GS-13 step 1 / RUS default for first-time visitors. Changing the anchor recolors the choropleth and reranks the leaderboard live.
+4. **The Remote Jobs panel is the same JobList component, geographically unfiltered.** Filters from `FilterPanel` (agency, series, grade, pay plan, hiring path, urgency, fill signals, viewed/saved/hidden) all apply normally. Geography chips are hidden because they don't make sense in this mode. Each job row badges whether it is "anywhere remote" (portable) or "remote with duty station X" (locality-locked) so users see the pay-portability axis at a glance.
+5. **The Locality Leaderboard is a sortable table, not just a map readout.** Columns: locality / county, posting count for the active filters, RPP, GS-13 step 1 in that locality, purchasing-power index for the active anchor, presence of FRPP buildings (count, sourced from D.5.9). Default sort is purchasing-power desc. Clicking a row fits the map to that geography (reusing the D.5.5 fit-bounds behavior).
+6. **No subjective composite quality-of-life scores.** Scores like Sperling's, AreaVibes, Niche, "best places" rankings — out. Each individual signal we add must declare its source, formula, and freshness in a calculation-traceback tooltip per D.5.13. School ratings, crime indices, and "vibe" metrics are explicitly rejected; they are dependent on personal context, hard to interpret honestly, and politically charged.
+7. **V1 ships with existing data only. V1.1 adds three sourced signals.** V1 uses `cost_of_living_index`, `pay_scales`, `localities.geojson`, `counties.geojson`, the existing FRPP layer, and the existing remote-eligibility flag on jobs. V1.1 adds three new ingests, each behind its own `data_source_status` row and self-bootstrapping per ADR-0027:
+   - **State tax burden.** State income tax (effective rate by AGI band) + median effective property tax rate. Source: Tax Foundation public data tables. Surfaced as a column in the leaderboard and a tooltip on the choropleth.
+   - **Broadband availability.** FCC National Broadband Map county-level fixed-broadband ≥ 100/20 Mbps coverage percentage. Surfaced as a column and a tooltip; remote-work-critical so it gets visual weight.
+   - **Distance to a major airport.** FAA Part 139 airport list with great-circle distance from county centroid. For "occasional fly-back-for-the-all-hands" reality. Single number, sourced.
+
+   Climate, school ratings, crime, and walkability are deferred to a later proposal — not because they're unimportant, but because the maintenance cost of keeping them honest exceeds their decision-value for federal remote workers given what we already surface.
+
+8. **Hidden risk: locality re-designation.** The job card's pay grid (D.5.11) is correct *under the current duty-station designation*. Federal duty-station rules can change, and an "anywhere remote" position can be re-designated with a specific duty station after hire. The Remote Jobs panel surfaces this risk in a single-sentence note next to the anywhere-remote badge: "Duty station may be assigned later; locality pay follows the eventual assignment." Source-cite OPM guidance on remote duty stations.
+
+**Consequences.** Public Map V1.5 grows by one phase, **D.5.27 — Remote Mode**, split into V1 (no new ingests) and V1.1 (three new ingests). The locality-adjusted purchasing-power calculation lives in a new helper, `public_map/src/lib/remote.ts`, that wraps the existing `compensation.compute()` (D.5.17) so the math stays in one place — no duplicate calculator paths. The leaderboard component reuses the existing JobList and `InfoTooltip` patterns. CLAUDE.md gains invariant #26 codifying the purchasing-power framing and the no-subjective-QoL rule. The three V1.1 ingests are independent — each is shippable on its own, each has a `data_source_status` entry, each is self-bootstrapping with a checked-in seed CSV per ADR-0027.
+
+This ADR does not commit to a default-on Remote Mode, a Remote-only landing page, or a separate `/remote` route. Remote Mode remains a state of the existing public map.
+
