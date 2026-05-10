@@ -29,7 +29,6 @@
 		setClosedJobsVisible,
 		setChoroplethVisible,
 		setFederalPropertiesVisible,
-		setPostingHeatVisible,
 		setStateFillMetric
 	} from './layers';
 	import { mapState, type Manifest } from './store.svelte';
@@ -44,7 +43,13 @@
 	let jobDetails: Record<string, JobDetails> = {};
 	let addressPinTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const MAXZOOM = 9;
+	// Street-level zoom (~19) per 2026-05-10 operator request. The original
+	// hard cap of 9 came from ADR-0017 ("layered, zoom-driven map; no
+	// street-level views") but the operator now wants individual marker
+	// inspection at street level. The polygon overlays (states / counties /
+	// metros / localities) keep their per-layer maxzoom at 9 so they fade out
+	// before the basemap goes street-level.
+	const MAXZOOM = 19;
 	const MINZOOM = 3;
 
 	onMount(async () => {
@@ -112,7 +117,6 @@
 				addOrUpdateSource(map, SOURCE_IDS.counties, counties);
 				addOrUpdateSource(map, SOURCE_IDS.metros, metros);
 				addOrUpdateSource(map, SOURCE_IDS.localities, localities);
-				addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
 				addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
 				addOrUpdateSource(map, SOURCE_IDS.federalProperties, federalProperties);
 				addOrUpdateSource(map, SOURCE_IDS.addressPin, emptyCollection());
@@ -132,13 +136,11 @@
 		// React to metric changes and the on/off shading toggle.
 		const m = mapState.metric;
 		const shadingOn = mapState.choroplethEnabled;
-		const heatOn = mapState.postingHeatEnabled;
 		const closedOn = mapState.closedJobsEnabled;
 		const frppOn = mapState.federalPropertiesEnabled;
 		if (mounted && map && map.isStyleLoaded()) {
 			setStateFillMetric(map, m);
 			setChoroplethVisible(map, shadingOn);
-			setPostingHeatVisible(map, heatOn);
 			setClosedJobsVisible(map, closedOn);
 			setFederalPropertiesVisible(map, frppOn);
 		}
@@ -154,7 +156,6 @@
 		const displayStates = cloneCollection(allStates);
 		deriveRemoteShare(displayStates, filteredJobs);
 		mapState.filteredJobCount = filteredJobs.features.length;
-		addOrUpdateSource(map, SOURCE_IDS.jobsHeat, filteredJobs);
 		addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
 		addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 		addOrUpdateSource(map, SOURCE_IDS.states, displayStates);

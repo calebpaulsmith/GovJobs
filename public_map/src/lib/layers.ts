@@ -9,12 +9,13 @@ import type { Map as MaplibreMap, ExpressionSpecification } from 'mapbox-gl';
 import type { FeatureCollection } from './data';
 import { fillColorExpression, METRICS, type MetricKey } from './metrics';
 
+// `jobsHeat` source + `postingHeat` layer were archived 2026-05-10 to
+// public_map/src/lib/_archived/heatmap/. See that folder's README for revival.
 export const SOURCE_IDS = {
 	states: 'states',
 	counties: 'counties',
 	metros: 'metros',
 	localities: 'localities',
-	jobsHeat: 'jobs-heat',
 	closedJobs: 'closed-jobs',
 	federalProperties: 'federal-properties',
 	addressPin: 'address-pin',
@@ -28,7 +29,6 @@ export const LAYER_IDS = {
 	metrosOutline: 'metros-outline',
 	localitiesFill: 'localities-fill',
 	localitiesOutline: 'localities-outline',
-	postingHeat: 'posting-heat',
 	closedMarkers: 'closed-job-markers',
 	federalProperties: 'federal-properties-markers',
 	addressPinHalo: 'address-pin-halo',
@@ -109,44 +109,7 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
-	// 2. Posting heat surface — visible 3-9 and fed by active filters.
-	map.addLayer({
-		id: LAYER_IDS.postingHeat,
-		type: 'heatmap',
-		source: SOURCE_IDS.jobsHeat,
-		minzoom: 3,
-		maxzoom: 9,
-		paint: {
-			'heatmap-weight': [
-				'interpolate',
-				['linear'],
-				['to-number', ['get', 'salary_min'], 0],
-				0,
-				0.65,
-				150000,
-				1.1
-			],
-			'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 0.7, 7, 1.4, 9, 1.0],
-			'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 18, 7, 28, 9, 20],
-			'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.25, 9, 0.25],
-			'heatmap-color': [
-				'interpolate',
-				['linear'],
-				['heatmap-density'],
-				0,
-				'rgba(28, 42, 64, 0)',
-				0.2,
-				'#2c5b8a',
-				0.45,
-				'#4979b3',
-				0.7,
-				'#7bd0f2',
-				1,
-				'#fff2a8'
-			]
-		}
-	});
-	map.moveLayer(LAYER_IDS.statesOutline);
+	// (Posting heat surface removed 2026-05-10; see _archived/heatmap/.)
 
 	// 3. Counties outline — visible 7-9.
 	map.addLayer({
@@ -221,16 +184,16 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 	// 5b. Federal Real Property Profile (FRPP) buildings — neutral diamonds
 	//     visible at zoom >= 6 per ADR-0025. Drawn beneath job markers so
 	//     active postings always read on top. Off by default; toggled via
-	//     setFederalPropertiesVisible().
+	//     setFederalPropertiesVisible(). Maxzoom lifted to 19 on 2026-05-10
+	//     so federal properties remain visible at street level.
 	map.addLayer({
 		id: LAYER_IDS.federalProperties,
 		type: 'circle',
 		source: SOURCE_IDS.federalProperties,
 		minzoom: 6,
-		maxzoom: 9,
 		paint: {
 			'circle-color': '#cbd5e1',
-			'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3, 9, 6],
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3, 9, 6, 14, 7, 19, 8],
 			'circle-stroke-color': '#1f2937',
 			'circle-stroke-width': 1,
 			'circle-opacity': 0,
@@ -242,6 +205,9 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		id: LAYER_IDS.clusters,
 		type: 'circle',
 		source: SOURCE_IDS.jobs,
+		// Clusters disengage at clusterMaxZoom (=8 in addOrUpdateSource); past
+		// that the cluster aggregation breaks apart into individual points so
+		// no explicit upper bound is needed here.
 		minzoom: 3,
 		filter: ['has', 'point_count'],
 		paint: {
@@ -282,7 +248,9 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 	//    narrowly filtered set (e.g. one agency with 24 postings spread
 	//    across 50 states) doesn't disappear at low zoom: those points
 	//    are too sparse to cluster within 40 px and would otherwise have
-	//    nothing to render. Size interpolates so low-zoom dots stay tiny.
+	//    nothing to render. Size interpolates so low-zoom dots stay tiny;
+	//    explicit stops at 14 / 19 keep them readable at street-level zoom
+	//    (cap raised from 9 → 19 on 2026-05-10).
 	map.addLayer({
 		id: LAYER_IDS.markers,
 		type: 'circle',
@@ -291,7 +259,7 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		filter: ['!', ['has', 'point_count']],
 		paint: {
 			'circle-color': '#7bd0f2',
-			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 5, 3, 7, 4, 9, 6],
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 5, 3, 7, 4, 9, 6, 14, 8, 19, 10],
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1,
 			'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.85, 9, 0.95]
@@ -349,18 +317,6 @@ export function setFederalPropertiesVisible(map: MaplibreMap, visible: boolean):
 		LAYER_IDS.federalProperties,
 		'circle-stroke-opacity',
 		visible ? 0.9 : 0
-	);
-}
-
-export function setPostingHeatVisible(map: MaplibreMap, visible: boolean): void {
-	if (!map.getLayer(LAYER_IDS.postingHeat)) return;
-	const opacity: ExpressionSpecification | number = visible
-		? (['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.25, 9, 0.25] as ExpressionSpecification)
-		: 0;
-	map.setPaintProperty(
-		LAYER_IDS.postingHeat,
-		'heatmap-opacity',
-		opacity as unknown as ExpressionSpecification
 	);
 }
 

@@ -92,7 +92,7 @@
 				{#if hiddenJobs.length === 0}
 					<p class="empty">No hidden jobs. Use the "Hide" button on any job card to remove it from the map.</p>
 				{:else}
-					<p class="note">Hidden jobs are excluded from the map, heat layer, and job lists by default.</p>
+					<p class="note">Hidden jobs are excluded from the map markers and job lists by default.</p>
 					<ul>
 						{#each hiddenJobs as job (job.id)}
 							{@const d = details[job.id]}

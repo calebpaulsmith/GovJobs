@@ -7,7 +7,8 @@ class MapState {
 	// toggles this by clicking the currently-active metric pill in the
 	// MetricSwitcher (clicking another metric re-enables it).
 	choroplethEnabled = $state<boolean>(true);
-	postingHeatEnabled = $state<boolean>(true);
+	// `postingHeatEnabled` removed 2026-05-10; the heat layer was archived to
+	// public_map/src/lib/_archived/heatmap/. See that folder's README for revival.
 	closedJobsEnabled = $state<boolean>(false);
 	// D.5.9: GSA Federal Real Property layer (neutral diamonds at zoom >= 6).
 	// Off by default so it doesn't crowd job markers; toggled from the

@@ -35,10 +35,6 @@
 		mapState.choroplethEnabled = !mapState.choroplethEnabled;
 	}
 
-	function toggleHeat() {
-		mapState.postingHeatEnabled = !mapState.postingHeatEnabled;
-	}
-
 	function toggleClosedJobs() {
 		mapState.closedJobsEnabled = !mapState.closedJobsEnabled;
 	}
@@ -83,16 +79,6 @@
 				: 'Shading is off — click to turn on'}
 		>
 			Shade {mapState.choroplethEnabled ? 'on' : 'off'}
-		</button>
-		<button
-			type="button"
-			class="shade-toggle"
-			class:on={mapState.postingHeatEnabled}
-			onclick={toggleHeat}
-			aria-pressed={mapState.postingHeatEnabled}
-			title={mapState.postingHeatEnabled ? 'Posting heat is on' : 'Posting heat is off'}
-		>
-			Heat {mapState.postingHeatEnabled ? 'on' : 'off'}
 		</button>
 		<button
 			type="button"
