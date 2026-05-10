@@ -37,6 +37,9 @@ class MapState {
 	demotedMetrics = $state<Set<MetricKey>>(new Set());
 	// D.5.6: reveal under-construction metrics in the switcher.
 	showExperimentalMetrics = $state<boolean>(false);
+	// 2026-05-10 operator request: collapse the bottom metric switcher
+	// behind a small expand button when not actively recoloring states.
+	metricSwitcherOpen = $state<boolean>(false);
 	// D.5.19: job IDs hidden by the user; excluded from map/list/heat by default.
 	hiddenJobIds = $state<Set<string>>(new Set());
 	// D.5.19: job IDs saved by the user.

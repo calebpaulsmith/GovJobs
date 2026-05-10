@@ -60,7 +60,21 @@
 	const activeIsWip = $derived(effectiveStatus(mapState.metric) === 'wip');
 </script>
 
+{#if !mapState.metricSwitcherOpen}
+	<button
+		type="button"
+		class="switcher-trigger"
+		data-layout-slot={slotAttr(LAYOUT_SLOTS.metric)}
+		onclick={() => (mapState.metricSwitcherOpen = true)}
+		aria-expanded="false"
+		aria-controls="metric-switcher"
+		title="Show choropleth and overlay controls"
+	>
+		<span aria-hidden="true">▴</span> Map controls
+	</button>
+{:else}
 <div
+	id="metric-switcher"
 	class="switcher"
 	role="radiogroup"
 	aria-label="Choropleth metric"
@@ -68,6 +82,15 @@
 >
 	<div class="title-row">
 		<div class="title">Color states by</div>
+		<button
+			type="button"
+			class="collapse-btn"
+			onclick={() => (mapState.metricSwitcherOpen = false)}
+			aria-label="Hide map controls"
+			title="Hide map controls"
+		>
+			✕
+		</button>
 		<button
 			type="button"
 			class="shade-toggle"
@@ -181,8 +204,62 @@
 		</div>
 	{/if}
 </div>
+{/if}
 
 <style>
+	/* Collapsed-state trigger pill. Sits in the same layout slot as the
+	   expanded switcher so the layout grid contract holds. */
+	.switcher-trigger {
+		position: absolute;
+		bottom: var(--slot-metric-bottom);
+		left: var(--slot-metric-left);
+		right: var(--slot-metric-right);
+		transform: var(--slot-metric-transform);
+		width: max-content;
+		max-width: var(--slot-metric-width);
+		margin: 0 auto;
+		appearance: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.4rem 0.95rem;
+		background: rgba(14, 23, 38, 0.92);
+		border: 1px solid #2a3a52;
+		border-radius: 999px;
+		backdrop-filter: blur(8px);
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+		color: #cfd9e6;
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+		z-index: 5;
+	}
+	.switcher-trigger:hover,
+	.switcher-trigger:focus-visible {
+		border-color: #7bd0f2;
+		color: #7bd0f2;
+		outline: none;
+	}
+	.switcher-trigger span {
+		font-size: 14px;
+		line-height: 1;
+	}
+	.collapse-btn {
+		appearance: none;
+		margin-left: auto;
+		border: none;
+		background: transparent;
+		color: #94a3b8;
+		cursor: pointer;
+		font-size: 14px;
+		line-height: 1;
+		padding: 0.15rem 0.35rem;
+	}
+	.collapse-btn:hover,
+	.collapse-btn:focus-visible {
+		color: #e5edf5;
+		outline: none;
+	}
 	.switcher {
 		/* Position from public_map/src/lib/layout.ts (slot 'metric'). */
 		position: absolute;

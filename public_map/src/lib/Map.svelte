@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import type { GeoJSONSource, Map as MaplibreMap, MapboxGeoJSONFeature, StyleSpecification } from 'mapbox-gl';
+	import type {
+		GeoJSONSource,
+		Map as MaplibreMap,
+		MapboxGeoJSONFeature,
+		Popup as MapboxPopup,
+		StyleSpecification
+	} from 'mapbox-gl';
 	import {
 		assertBasemapInvariants,
 		configureMapboxRuntime,
@@ -42,6 +48,10 @@
 	let allClosedJobs: FeatureCollection | null = null;
 	let jobDetails: Record<string, JobDetails> = {};
 	let addressPinTimer: ReturnType<typeof setTimeout> | null = null;
+	// Single reusable hover tooltip for marker / markersStack / closed / FRPP.
+	// Created once per map mount; positioned and shown on mouseenter, hidden
+	// on mouseleave, re-positioned on mousemove for stacks that span pixels.
+	let hoverPopup: MapboxPopup | null = null;
 
 	// Street-level zoom (~19) per 2026-05-10 operator request. The original
 	// hard cap of 9 came from ADR-0017 ("layered, zoom-driven map; no
@@ -72,13 +82,35 @@
 			zoom: 4,
 			minZoom: MINZOOM,
 			maxZoom: MAXZOOM,
-			attributionControl: true,
+			// Default attribution control adds "Improve this map" pointing at
+			// the Mapbox feedback tool — operator review on 2026-05-10 asked
+			// to drop it. We replace the default with our own custom-only
+			// attribution so we keep Mapbox + OSM credit (required by both
+			// providers' terms) without the feedback link.
+			attributionControl: false,
 			projection: 'mercator'
 		});
 
 		map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), 'top-right');
 		map.addControl(new mapboxgl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
+		map.addControl(
+			new mapboxgl.AttributionControl({
+				compact: true,
+				customAttribution: HAS_MAPBOX_TOKEN
+					? '© <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener">Mapbox</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+					: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+			}),
+			'bottom-right'
+		);
 		map.on('moveend', () => updateViewport());
+
+		hoverPopup = new mapboxgl.Popup({
+			closeButton: false,
+			closeOnClick: false,
+			offset: 14,
+			className: 'tgp-hover-popup',
+			maxWidth: '260px'
+		});
 
 		map.on('load', async () => {
 			if (!map) return;
@@ -192,6 +224,8 @@
 
 	onDestroy(() => {
 		if (addressPinTimer) clearTimeout(addressPinTimer);
+		hoverPopup?.remove();
+		hoverPopup = null;
 		map?.remove();
 		map = null;
 	});
@@ -388,6 +422,98 @@
 				m.getCanvas().style.cursor = '';
 			});
 		}
+
+		// Hover tooltips on the marker-bearing layers. Shows "<title> — <city>,
+		// <state>" for a single posting and "N jobs at <city>, <state>" for a
+		// stacked-coord bubble. The dominant location label wins for stacks
+		// where the geocoder collapsed minor variants (~1% of stacks per the
+		// 2026-05-10 audit; e.g. "Oklahoma City, OK" vs "Oklahoma County, OK"
+		// at the same coord).
+		const tooltipLayers = [
+			LAYER_IDS.markersStack,
+			LAYER_IDS.markers,
+			LAYER_IDS.closedMarkers,
+			LAYER_IDS.federalProperties
+		];
+		for (const id of tooltipLayers) {
+			m.on('mousemove', id, (e) => {
+				if (!hoverPopup) return;
+				if (id === LAYER_IDS.closedMarkers && !mapState.closedJobsEnabled) return;
+				if (id === LAYER_IDS.federalProperties && !mapState.federalPropertiesEnabled) return;
+				const feature = e.features?.[0];
+				if (!feature) return;
+				const coords = feature.geometry?.type === 'Point' ? feature.geometry.coordinates : null;
+				if (!coords) return;
+				const html = renderTooltipHtml(id, feature);
+				if (!html) {
+					hoverPopup.remove();
+					return;
+				}
+				hoverPopup.setLngLat(coords as [number, number]).setHTML(html).addTo(m);
+			});
+			m.on('mouseleave', id, () => {
+				hoverPopup?.remove();
+			});
+		}
+	}
+
+	function renderTooltipHtml(layerId: string, feature: MapboxGeoJSONFeature): string {
+		const props = feature.properties ?? {};
+		if (layerId === LAYER_IDS.closedMarkers) {
+			const title = String(props.title ?? '').trim() || 'Closed posting';
+			const closeDate = String(props.close_date ?? '').trim();
+			return `<div class="tgp-tip-title">${escapeHtml(title)}</div>` +
+				(closeDate ? `<div class="tgp-tip-meta">closed ${escapeHtml(closeDate)}</div>` : '');
+		}
+		if (layerId === LAYER_IDS.federalProperties) {
+			const name = String(props.name ?? '').trim() || 'Federal property';
+			const agency = String(props.agency ?? '').trim();
+			return `<div class="tgp-tip-title">${escapeHtml(name)}</div>` +
+				(agency ? `<div class="tgp-tip-meta">${escapeHtml(agency)}</div>` : '');
+		}
+		// markers / markersStack: build label from same-coord siblings so
+		// "12 jobs at Chicago, IL" reflects the dominant location text.
+		const siblings = markerFeaturesAtSamePoint(feature);
+		const stackCount = siblings.length;
+		const label = dominantLocationLabel(siblings.length > 0 ? siblings : [{ properties: props }]);
+		if (stackCount > 1) {
+			return `<div class="tgp-tip-title">${stackCount.toLocaleString()} jobs at ${escapeHtml(label || 'this location')}</div>` +
+				`<div class="tgp-tip-meta">click to list all postings</div>`;
+		}
+		const title = String(props.title ?? '').trim() || 'Posting';
+		return `<div class="tgp-tip-title">${escapeHtml(title)}</div>` +
+			(label ? `<div class="tgp-tip-meta">${escapeHtml(label)}</div>` : '');
+	}
+
+	function dominantLocationLabel(items: { properties: Record<string, unknown> | null }[]): string {
+		if (items.length === 0) return '';
+		const tally = new Map<string, number>();
+		for (const item of items) {
+			const props = item.properties ?? {};
+			const city = String(props.city ?? '').trim();
+			const state = String(props.state ?? '').trim();
+			const label = [city, state].filter(Boolean).join(', ');
+			if (!label) continue;
+			tally.set(label, (tally.get(label) ?? 0) + 1);
+		}
+		let best = '';
+		let bestCount = 0;
+		for (const [label, count] of tally) {
+			if (count > bestCount) {
+				best = label;
+				bestCount = count;
+			}
+		}
+		return best;
+	}
+
+	function escapeHtml(value: string): string {
+		return value
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	function labelFor(layerId: string): string {
@@ -698,5 +824,33 @@
 		.back-national {
 			bottom: 11rem;
 		}
+	}
+
+	/* Hover tooltip for marker / markersStack / closed / FRPP. Mapbox renders
+	   the popup container outside our component tree, so the rules must be
+	   :global to land. Match the dark / light surface tokens used elsewhere
+	   so the tooltip reads in either theme. */
+	:global(.tgp-hover-popup .mapboxgl-popup-content) {
+		background: var(--c-panel, rgba(14, 23, 38, 0.96));
+		color: var(--c-text-2, #cfd9e6);
+		border: 1px solid var(--c-border, #2a3a52);
+		border-radius: 8px;
+		padding: 0.45rem 0.6rem;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+		font-size: 12px;
+		line-height: 1.35;
+		pointer-events: none;
+	}
+	:global(.tgp-hover-popup .mapboxgl-popup-tip) {
+		display: none;
+	}
+	:global(.tgp-hover-popup .tgp-tip-title) {
+		color: var(--c-text, #e5edf5);
+		font-weight: 600;
+	}
+	:global(.tgp-hover-popup .tgp-tip-meta) {
+		color: var(--c-muted, #94a3b8);
+		margin-top: 0.15rem;
+		font-size: 11px;
 	}
 </style>

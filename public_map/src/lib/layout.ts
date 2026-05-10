@@ -112,18 +112,22 @@ const PANEL_INTRINSIC_HEIGHT = '14rem'; // shared content-height assumption for 
 
 export const LAYOUT_RECTS: Record<LayoutSlot, SlotRects> = {
 	masthead: {
+		// Width capped to the gap between the two 24rem side columns so the
+		// brand + manifest + action buttons can never bleed into the address
+		// search or saved-searches dropdown. The pill content wraps inside
+		// (white-space allowed) when the cap forces it.
 		desktop: {
 			top: '1rem',
 			left: '50%',
 			transform: 'translateX(-50%)',
-			intrinsicWidth: '32rem',
+			maxWidth: 'calc(100vw - 52rem)',
 			intrinsicHeight: '2.5rem'
 		},
 		tablet: {
 			top: '1rem',
 			left: '50%',
 			transform: 'translateX(-50%)',
-			intrinsicWidth: '28rem',
+			maxWidth: 'calc(100vw - 52rem)',
 			intrinsicHeight: '2.5rem'
 		},
 		mobile: {
