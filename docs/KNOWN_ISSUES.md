@@ -135,7 +135,15 @@ The token loading behavior in production is correct — only the test isolation 
 - Failure path now includes the upstream response body (truncated to 200 chars) in the error message so the next debugging round is faster.
 - `UPSTREAM_TIMEOUT_MS` raised from 8 s → 20 s; cold HistoricJoa hits regularly take 5–10 s.
 
-**Verification still required:** redeploy the Function and re-run step 2 of the smoke procedure above; expect `status: 'ok'` with `total > 0`.
+**Verified live 2026-05-09 22:15Z** against `https://map.thegrandpipeline.com/api/job-history` after redeploy:
+- Cold call (HSCB / 6mo): 4.9 s, `status: 'ok'`, total = 106, 5 monthly buckets.
+- Cold call (HSCB / 1yr): 4.3 s, `status: 'ok'`, total = 405, 11 monthly buckets.
+- Edge cache (HE38 / 6mo): cold 3.9 s → warm 2 ms (1900× speedup, `status: 'ok'`, total = 163).
+- JobCard end-to-end: opened a Wildland Fire posting in McDermitt NV, expanded Posting Intelligence — query was built correctly from `mapState.filters` ∪ JobCard fields (`agency IN01 · series 6907 · grade 6 · state NV`), 1 yr default rendered 2 timeline bars + drill-in button. Switching to the 5 yr pill re-fired the upstream call and updated the panel.
+
+**Spinoff issues uncovered during the live test — both fixed 2026-05-09:**
+- ~~Two of three sampled agency codes (`TRDA`, `NN16`) returned upstream payloads that JSON-parsed as empty (Function reported `Unexpected end of JSON input`).~~ **Fixed:** the Function now reads the upstream as text first, treats an empty body as `{data: []}`, and only fails when there is content that fails to parse as JSON. Agencies with zero matching postings now correctly return `{status: 'ok', total: 0, monthly: []}`.
+- ~~The Function's failure cache TTL is 5 min by design but burned in cached failures from the pre-User-Agent-fix deployment, so the first wave of post-redeploy queries served stale `unavailable` responses for ~5 min.~~ **Fixed:** the cache key now includes the first 7 chars of `env.CF_PAGES_COMMIT_SHA` (auto-populated by Cloudflare Pages). Each deploy gets a fresh cache namespace, so old cached payloads — including failures — are silently bypassed on the first request after a deploy. The 24h success TTL is preserved for performance within a single deploy.
 
 **Fix / verification checklist (run in order against the live deploy):**
 1. `curl -sS 'https://<canonical-host>/api/job-history?agency_code=HSCB&window=1mo' | head -c 800` — expect `{"status":"ok","window":"1mo",...}`. A `<!DOCTYPE html>` response means the SPA fallback caught the path (Functions not deployed; see fix below).

@@ -37,9 +37,17 @@ import {
 // `EventContext` ships with @cloudflare/workers-types in production. We
 // declare a minimal shape so this file type-checks under the local SvelteKit
 // tsconfig too — Pages will still load it as a Function at deploy time.
+//
+// `env.CF_PAGES_COMMIT_SHA` is auto-populated by Cloudflare Pages with the
+// commit that produced the current deploy. We mix it into the cache key so
+// every deploy invalidates prior cached payloads — including failure
+// payloads, which would otherwise persist for their full TTL across a fix.
 interface PagesContext {
 	request: Request;
 	waitUntil(promise: Promise<unknown>): void;
+	env?: {
+		CF_PAGES_COMMIT_SHA?: string;
+	};
 }
 
 const HISTORICJOA_HOST = 'https://data.usajobs.gov';
@@ -73,8 +81,14 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
 	const window = normalizeWindow(url.searchParams.get('window'));
 
 	// Build a stable cache key URL so equivalent queries (different param
-	// order, mixed case) collapse to the same edge cache entry.
-	const canonical = `${url.origin}${url.pathname}?${cacheKey(query, window)}`;
+	// order, mixed case) collapse to the same edge cache entry. The deploy's
+	// commit SHA (first 7 chars) is mixed into the key so every deploy gets a
+	// fresh cache namespace — old cached responses from prior deploys are
+	// silently bypassed on the first request after a deploy. This is what
+	// keeps a stale "unavailable" cached failure from outliving the bug fix
+	// that would have made it succeed.
+	const buildTag = (context.env?.CF_PAGES_COMMIT_SHA ?? 'dev').slice(0, 7);
+	const canonical = `${url.origin}${url.pathname}?build=${buildTag}&${cacheKey(query, window)}`;
 	const cacheRequest = new Request(canonical, { method: 'GET' });
 
 	const edgeCache = (globalThis as unknown as { caches?: { default: Cache } }).caches?.default;
@@ -141,7 +155,23 @@ async function fetchHistoryPayload(
 				`HistoricJoa returned ${upstream.status}${body ? ': ' + body.slice(0, 200) : ''}`
 			);
 		}
-		const json = (await upstream.json()) as Record<string, unknown>;
+		// HistoricJoa occasionally returns 200 with an empty body (observed for
+		// agency codes that exist but have zero matching postings in the window).
+		// `.json()` on an empty stream throws SyntaxError — treat that as
+		// "no records, no continuation token" rather than a hard failure.
+		const bodyText = await upstream.text();
+		let json: Record<string, unknown>;
+		if (!bodyText.trim()) {
+			json = { data: [] };
+		} else {
+			try {
+				json = JSON.parse(bodyText) as Record<string, unknown>;
+			} catch {
+				throw new Error(
+					`HistoricJoa returned 200 with non-JSON body: ${bodyText.slice(0, 200)}`
+				);
+			}
+		}
 		const records = Array.isArray(json['data']) ? (json['data'] as unknown[]) : [];
 		for (const raw of records) trimmed.push(trimRecord(raw));
 		pages += 1;
