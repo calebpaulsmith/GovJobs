@@ -139,13 +139,17 @@ def _marker_dataset(
 
 
 def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
-    # Per-marker payload: only what the map needs at render time. Title,
-    # salary_max, and geo_quality stay out (they live in jobs_detail.json,
-    # lazy-loaded on JobCard mount). City and state are kept because the
-    # JobCard's "Clicked location" row needs to remember which specific
-    # marker the user clicked — `detail.locations[]` is the unordered full
-    # list and can't tell us the click target. This keeps jobs.geojson
-    # comfortably under Cloudflare Pages' 25 MiB per-file limit.
+    # Per-marker payload: only what the map needs at render time. Title and
+    # salary_max stay out (they live in jobs_detail.json, lazy-loaded on
+    # JobCard mount). City and state are kept because the JobCard's
+    # "Clicked location" row needs to remember which specific marker the user
+    # clicked — `detail.locations[]` is the unordered full list and can't
+    # tell us the click target. `geo_quality` is kept (~30 KB gzipped on a
+    # 30k-feature bundle) so operators can tell at a glance whether a marker
+    # landed on USAJOBS-supplied source coords, a city centroid, or a state
+    # centroid — opaque markers in the middle of nowhere are confusing
+    # without it. This still keeps jobs.geojson comfortably under Cloudflare
+    # Pages' 25 MiB per-file limit.
     return {
         "type": "Feature",
         "geometry": {
@@ -165,6 +169,7 @@ def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
             "city": marker["city"],
             "state": marker["state"],
             "locality_code": marker["locality_code"],
+            "geo_quality": marker["geo_quality"],
         },
     }
 

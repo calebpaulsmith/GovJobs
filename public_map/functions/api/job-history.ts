@@ -45,6 +45,12 @@ interface PagesContext {
 const HISTORICJOA_HOST = 'https://data.usajobs.gov';
 const HISTORICJOA_PATH = '/api/historicjoa';
 
+// USAJOBS requires the User-Agent to identify the developer (per their public
+// API docs at https://developer.usajobs.gov/general-information/). The
+// canonical form is the project owner's email so they can reach us if our
+// traffic causes problems.
+const UPSTREAM_USER_AGENT = 'thegrandpipeline-map (calebpaulsmith@gmail.com)';
+
 // Hard upstream cap. HistoricJoa returns 500 records per page; 5 pages ≈
 // 2,500 records is plenty for filtered slice timelines (the 10yr window for
 // a busy agency is the worst case, and even then we surface the truncation
@@ -53,7 +59,7 @@ const MAX_PAGES = 5;
 const PAGE_SIZE_HINT = 500;
 const RECORD_CAP = MAX_PAGES * PAGE_SIZE_HINT;
 const EDGE_TTL_SECONDS = 24 * 60 * 60;
-const UPSTREAM_TIMEOUT_MS = 8_000;
+const UPSTREAM_TIMEOUT_MS = 20_000;
 
 export async function onRequestGet(context: PagesContext): Promise<Response> {
 	const url = new URL(context.request.url);
@@ -127,7 +133,13 @@ async function fetchHistoryPayload(
 		const upstreamUrl = `${HISTORICJOA_HOST}${HISTORICJOA_PATH}?${nextParams.toString()}`;
 		const upstream = await fetchWithTimeout(upstreamUrl, UPSTREAM_TIMEOUT_MS);
 		if (!upstream.ok) {
-			throw new Error(`HistoricJoa returned ${upstream.status}`);
+			// Surface the upstream body in the error message so failures are
+			// debuggable from the JobCard error pill / browser console without
+			// shipping the full payload back to every visitor.
+			const body = await upstream.text().catch(() => '');
+			throw new Error(
+				`HistoricJoa returned ${upstream.status}${body ? ': ' + body.slice(0, 200) : ''}`
+			);
 		}
 		const json = (await upstream.json()) as Record<string, unknown>;
 		const records = Array.isArray(json['data']) ? (json['data'] as unknown[]) : [];
@@ -188,7 +200,14 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
 	try {
 		return await fetch(url, {
 			method: 'GET',
-			headers: { Accept: 'application/json', 'User-Agent': 'thegrandpipeline-map/job-history' },
+			headers: {
+				// Per USAJOBS docs the Host header pins the API surface and the
+				// User-Agent must identify the developer. Without an email-style
+				// User-Agent the API rejects the request.
+				Host: 'data.usajobs.gov',
+				Accept: 'application/hr+json',
+				'User-Agent': UPSTREAM_USER_AGENT
+			},
 			signal: controller.signal
 		});
 	} finally {
