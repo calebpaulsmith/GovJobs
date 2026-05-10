@@ -484,13 +484,14 @@ def test_acs_county_rents_seed_csv_loads_against_seeded_bea_rows(conn):
 
 
 def test_2026_gs_seed_imports_full_grid_and_resolves_reference_year(conn):
-    """The checked-in 2026 seed loads cleanly and pay_scales gains a 2026 row
-    set. Reference year resolution must then return 2026."""
+    """The checked-in 2026 seed loads cleanly and pay_scales gains base + 58
+    locality grids parsed from official OPM XML. Reference year resolution
+    must then return 2026."""
     from scripts.ingest_gs_pay import SEED_CSV
     from src.public_map_export import current_reference_year
 
     assert SEED_CSV.exists(), f"missing 2026 GS seed at {SEED_CSV}"
-    assert SEED_CSV.name == "2026_base.csv"
+    assert SEED_CSV.name == "2026.official.csv"
 
     written = import_gs_pay_from_csv(
         conn,
@@ -499,14 +500,38 @@ def test_2026_gs_seed_imports_full_grid_and_resolves_reference_year(conn):
         source="opm:gs_pay",
         default_source_url=None,
     )
-    # 15 grades × 10 steps = 150 cells.
-    assert written == 150
+    # 15 grades × 10 steps × (1 base + 58 localities) = 8,850 cells.
+    assert written == 8_850
 
-    rows = conn.execute(
-        "SELECT COUNT(*) AS n FROM pay_scales WHERE pay_plan='GS' AND year=2026"
+    base_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM pay_scales "
+        "WHERE pay_plan='GS' AND year=2026 AND locality_code=''"
     ).fetchone()
-    assert rows["n"] == 150
+    assert base_count["n"] == 150
+    locality_count = conn.execute(
+        "SELECT COUNT(DISTINCT locality_code) AS n FROM pay_scales "
+        "WHERE pay_plan='GS' AND year=2026 AND locality_code != ''"
+    ).fetchone()
+    assert locality_count["n"] == 58
     assert current_reference_year(conn) == 2026
+
+    # Spot-check three official OPM 2026 values.
+    cells = {
+        ("01", 1, ""): 22584,
+        ("13", 1, ""): 90925,
+        ("13", 1, "DCB"): 121785,
+    }
+    for (grade, step, locality), expected in cells.items():
+        row = conn.execute(
+            "SELECT annual_rate FROM pay_scales WHERE pay_plan='GS' AND year=2026 "
+            "AND grade=? AND step=? AND locality_code=?",
+            (grade, step, locality),
+        ).fetchone()
+        assert row is not None, f"missing GS-{grade} step {step} locality={locality!r}"
+        assert int(row["annual_rate"]) == expected, (
+            f"GS-{grade} step {step} locality={locality!r}: "
+            f"got {row['annual_rate']}, expected {expected}"
+        )
 
 
 def test_2026_locality_pay_seed_loads_with_year_2026():

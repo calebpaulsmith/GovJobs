@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import date
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ from src.data_import import ImportResult
 from src.data_recon import Recommendation
 from src.public_map_corpus import (
     TOP_25_AGENCY_CODES,
+    department_codes_from_db,
     run_public_map_corpus_preset,
     trailing_90_closed_params,
 )
@@ -63,6 +65,69 @@ def test_top_25_preset_runs_one_current_scope_per_agency(monkeypatch):
     assert len(calls) == len(TOP_25_AGENCY_CODES)
     assert calls[0] == {"Organization": TOP_25_AGENCY_CODES[0]}
     assert result.records_imported == len(TOP_25_AGENCY_CODES) * 3
+
+
+def _conn_with_agencies(rows: list[tuple[str, str | None, int]]) -> sqlite3.Connection:
+    """Build an in-memory agency_codes table for slicing tests."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE agency_codes (code TEXT, name TEXT, department_code TEXT, "
+        "department_name TEXT, active INTEGER, source TEXT, updated_at TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO agency_codes (code, department_code, department_name, active) "
+        "VALUES (?, ?, ?, ?)",
+        [(r[0], r[1], r[1] or "", r[2]) for r in rows],
+    )
+    return conn
+
+
+def test_department_codes_from_db_dedups_and_excludes_blanks_and_inactive():
+    conn = _conn_with_agencies(
+        [
+            ("VATA", "VA", 1),
+            ("VAXY", "VA", 1),  # duplicate department
+            ("HSCB", "HS", 1),
+            ("FOO0", None, 1),  # null department code
+            ("BAR0", "", 1),    # blank department code
+            ("OLD0", "OLD", 0),  # inactive
+        ]
+    )
+    assert department_codes_from_db(conn) == ["HS", "VA"]
+
+
+def test_federal_full_by_department_iterates_one_search_per_department(monkeypatch):
+    conn = _conn_with_agencies(
+        [
+            ("VATA", "VA", 1),
+            ("HSCB", "HS", 1),
+            ("ARXA", "AR", 1),
+        ]
+    )
+    calls = []
+
+    def fake_current(conn_arg, config, query_params, *, max_pages):
+        calls.append((query_params, max_pages))
+        return ImportResult(pages_completed=3, records_imported=900, manifest_id=len(calls))
+
+    monkeypatch.setattr("src.public_map_corpus.import_current_search", fake_current)
+
+    result = run_public_map_corpus_preset(
+        conn,
+        SimpleNamespace(),
+        "federal_full_by_department",
+        current_max_pages=20,
+        run_recon_fn=lambda config: [],
+    )
+
+    assert calls == [
+        ({"Organization": "AR"}, 20),
+        ({"Organization": "HS"}, 20),
+        ({"Organization": "VA"}, 20),
+    ]
+    assert result.records_imported == 3 * 900
+    assert result.pages_completed == 3 * 3
+    assert sorted(result.manifest_ids) == [1, 2, 3]
 
 
 def test_historic_closed_preset_uses_close_date_window(monkeypatch):
