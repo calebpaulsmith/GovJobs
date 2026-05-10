@@ -121,16 +121,22 @@
 		overflow: hidden;
 	}
 	.masthead {
-		/* Position from public_map/src/lib/layout.ts (slot 'masthead'). */
+		/* Position from public_map/src/lib/layout.ts (slot 'masthead'). The
+		   max-width cap is what stops the brand + manifest + buttons from
+		   bleeding into the top-left address-search column at desktop +
+		   tablet widths. Content wraps inside the pill when it exceeds the
+		   cap, which is preferable to overlapping the side panels. */
 		position: absolute;
 		top: var(--slot-masthead-top);
 		left: var(--slot-masthead-left);
 		right: var(--slot-masthead-right);
 		transform: var(--slot-masthead-transform);
+		max-width: var(--slot-masthead-max-width);
 		z-index: 4;
 		display: flex;
 		gap: 1.25rem;
 		align-items: center;
+		flex-wrap: wrap;
 		padding: 0.55rem 0.95rem;
 		background: var(--c-panel-blur, rgba(14, 23, 38, 0.85));
 		border: 1px solid var(--c-border, #2a3a52);

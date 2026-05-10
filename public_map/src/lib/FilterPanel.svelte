@@ -347,16 +347,20 @@
 		display: var(--slot-filters-display, block);
 	}
 	/* Runtime shifts are desktop+tablet only — at mobile the FilterPanel
-	   docks at the bottom and is mutually exclusive with FeaturePanel. */
+	   docks at the bottom and is mutually exclusive with FeaturePanel.
+	   Deltas are sized so the FilterPanel sits just below the open dropdown
+	   of the relevant sibling (address dropdown ~12rem, saved-search
+	   dropdown ~14rem). Updated 2026-05-10 when the side column moved up
+	   to top: 1rem and filters base moved from 12.45rem to 8.3rem. */
 	@media (min-width: 720px) {
 		.filters.address-open {
-			top: calc(var(--slot-filters-top) + 12.05rem);
+			top: calc(var(--slot-filters-top) + 5rem);
 		}
 		.filters.saved-open {
-			top: calc(var(--slot-filters-top) + 14.55rem);
+			top: calc(var(--slot-filters-top) + 11rem);
 		}
 		.filters.saved-open.address-open {
-			top: calc(var(--slot-filters-top) + 24.55rem);
+			top: calc(var(--slot-filters-top) + 23rem);
 		}
 	}
 	.toggle,

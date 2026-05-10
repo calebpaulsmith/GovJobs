@@ -160,9 +160,12 @@
 		font-size: 12px;
 		transition: top 160ms ease;
 	}
+	/* Push SavedSearchMenu down so the open AddressSearch dropdown clears
+	   the toggle. AddressSearch base is 1rem with dropdown ~12rem tall, so
+	   ending at ~13rem; SavedSearchMenu shifts to start ~1rem below that. */
 	@media (min-width: 720px) {
 		.saved-searches.address-open {
-			top: calc(var(--slot-saved-search-top) + 12.15rem);
+			top: calc(var(--slot-saved-search-top) + 9rem);
 		}
 	}
 	.toggle,
