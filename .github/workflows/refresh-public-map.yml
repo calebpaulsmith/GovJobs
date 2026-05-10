@@ -109,9 +109,48 @@ jobs:
             echo "No bundle changes to commit."
             exit 0
           fi
-          # Use a tag the user can scan for in the commit log.
           git commit -m "auto: refresh public-map bundle $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push
+
+          # Smart push: a human may have pushed source changes (which can
+          # also touch the bundle) between when this workflow started and
+          # now. Rebase onto the latest origin/master; if rebase hits a
+          # conflict, the only paths that can conflict are the auto-
+          # generated bundle files in public_map/static/data/, because the
+          # workflow doesn't touch anything else. Re-run the export to
+          # produce the deterministic bundle for the rebased state and
+          # continue. Cap retries so a real bug fails loudly.
+          for attempt in 1 2 3; do
+            git fetch origin master
+            if git rebase origin/master; then
+              git push origin HEAD:master && exit 0
+              echo "::warning::push rejected on attempt $attempt; retrying"
+              continue
+            fi
+
+            # Rebase failed. Verify every conflicted path lives under the
+            # auto-generated bundle directory; if anything else conflicts
+            # we abort and surface the failure.
+            unmerged="$(git diff --name-only --diff-filter=U)"
+            echo "Conflicted paths on attempt $attempt:"
+            echo "$unmerged"
+            non_bundle="$(echo "$unmerged" | grep -Ev '^public_map/static/data/' || true)"
+            if [ -n "$non_bundle" ]; then
+              echo "::error::Conflicts outside the auto-generated bundle: $non_bundle"
+              git rebase --abort || true
+              exit 1
+            fi
+
+            echo "Bundle-only conflict; regenerating from current DB and continuing rebase."
+            python scripts/export_public_map.py
+            git add public_map/static/data/
+            git rebase --continue || {
+              echo "::error::rebase --continue failed after bundle regen"
+              git rebase --abort || true
+              exit 1
+            }
+          done
+          echo "::error::Could not push bundle after 3 rebase attempts"
+          exit 1
 
       - name: Job summary
         if: always()

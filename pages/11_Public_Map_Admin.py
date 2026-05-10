@@ -158,6 +158,113 @@ def _job_totals(conn) -> dict[str, int]:
     }
 
 
+def _last_completed_import(conn) -> dict | None:
+    """Return the most recent successful row from import_manifests, or None.
+
+    Picks the latest by ``completed_at`` so a half-finished newer manifest
+    doesn't outrank a finished older one.
+    """
+    row = conn.execute(
+        """
+        SELECT id, source, endpoint, status, started_at, completed_at,
+               actual_records, pages_completed, filters_json
+        FROM import_manifests
+        WHERE status = 'completed'
+        ORDER BY COALESCE(completed_at, started_at) DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _bundle_summary() -> dict | None:
+    """Return ``manifest.json`` freshness fields, or ``None`` if missing."""
+    path = PUBLIC_MAP_DATA / "manifest.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return {
+        "generated_at": payload.get("generated_at"),
+        "reference_year": payload.get("reference_year"),
+        "job_count": int(payload.get("job_count") or 0),
+        "feature_count": int(payload.get("feature_count") or 0),
+    }
+
+
+def _bundle_is_stale(conn, bundle: dict | None) -> bool:
+    """Bundle is stale when an import completed AFTER the bundle was generated.
+
+    A stale flag tells the operator to re-run the export so the public map
+    reflects the latest local data.
+    """
+    if not bundle or not bundle.get("generated_at"):
+        return True
+    last = _last_completed_import(conn)
+    if not last:
+        return False
+    completed = last.get("completed_at") or last.get("started_at") or ""
+    return bool(completed) and completed > bundle["generated_at"]
+
+
+def _render_headline(conn) -> None:
+    """Top-of-page summary: last import + DB totals + bundle freshness.
+
+    Appears as the first content under the title so the operator can see at
+    a glance whether the local data is fresher than what's in the bundle.
+    """
+    last = _last_completed_import(conn)
+    totals = _job_totals(conn)
+    bundle = _bundle_summary()
+    stale = _bundle_is_stale(conn, bundle)
+
+    cols = st.columns([2, 1, 1, 1, 1])
+
+    if last:
+        when_label = _age_label(last.get("completed_at") or last.get("started_at"))
+        endpoint = (last.get("endpoint") or last.get("source") or "?").lstrip("/")
+        records = int(last.get("actual_records") or 0)
+        cols[0].metric(
+            "Last completed import",
+            when_label,
+            delta=f"{records:,} rows · {endpoint}",
+            delta_color="off",
+        )
+    else:
+        cols[0].metric("Last completed import", "never", delta="run an importer below")
+
+    cols[1].metric("Open USAJOBS", f"{totals['open_usajobs']:,}")
+    cols[2].metric("All USAJOBS", f"{totals['total_usajobs']:,}")
+
+    if bundle:
+        bundle_age = _age_label(bundle.get("generated_at"))
+        cols[3].metric(
+            "Bundle generated",
+            bundle_age,
+            delta=f"{bundle.get('job_count', 0):,} markers",
+            delta_color="off",
+        )
+        cols[4].metric("Reference year", bundle.get("reference_year") or "—")
+    else:
+        cols[3].metric("Bundle generated", "missing")
+        cols[4].metric("Reference year", "—")
+
+    if stale:
+        if bundle and bundle.get("generated_at"):
+            st.warning(
+                "Bundle is older than the latest import — the public map will not reflect "
+                "the most recent local data until you re-export. Use **Refresh all** below "
+                "or run `python scripts/export_public_map.py`."
+            )
+        else:
+            st.info(
+                "No bundle on disk yet. Run **Refresh all** below or "
+                "`python scripts/export_public_map.py` to produce one."
+            )
+
+
 def _refresh_ticker_frame(items: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -572,7 +679,13 @@ def main() -> None:
     )
 
     conn = app_connection()
+
+    # Headline: last import + DB totals + bundle freshness. First thing the
+    # operator sees so a stale bundle is impossible to miss.
+    _render_headline(conn)
+
     summary = freshness_summary(conn)
+    st.subheader("Data-source health")
     cols = st.columns(5)
     cols[0].metric("Tracked", summary["total"])
     cols[1].metric("Succeeded", summary["succeeded"])
