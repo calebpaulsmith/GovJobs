@@ -466,3 +466,68 @@ Status: Proposed
 
 **Consequences.** Public Map V1.5 gains **D.5.27 — Localities screen**, with V1 and V1.1 sub-deliverables. The locality-rollup math lives in `public_map/src/lib/localities.ts`; the optional GS purchasing-power column reuses `compensation.compute()` (D.5.17) so the math stays in one place. The screen reuses `JobList.svelte` and `InfoTooltip.svelte`. The previously drafted "Remote Mode as a togglable map mode" framing is rejected; the relocation use case is served by the Remote-only preset on the new screen, not by a separate mode. CLAUDE.md invariant #26 is rewritten accordingly.
 
+## ADR-0033 — Browse-first mosaic, shareable view URLs, and radius search
+Date: 2026-05-10
+Status: Proposed
+
+**Context.** Operator review on 2026-05-10 produced three coupled requests:
+
+1. The landing experience should not be an all-map. It should be a mosaic: a small map (top-left quadrant), the smallest available geographic card for the current viewport (top-right quadrant), and a scrollable postings list (bottom half) with enough per-job content to evaluate without clicking — at minimum the summary and qualifications excerpts. Clicking a row zooms the map to that job and opens the existing JobCard; if the user keeps scrolling past the selected row, the card dismisses and the map flies back to its prior viewport, which is the fit-bounds of all jobs in the current filter.
+2. The view must be shareable. A copyable link should round-trip the exact view: filters, metric, viewport, theme, selected job, list scroll offset, and any radius-search chips. Pure URL params handle most cases; a "Copy short link" button backed by Cloudflare Workers KV produces a friendly hash URL for places where the long form is unwieldy.
+3. Narrowing location to a city should zoom the map there and constrain results to a fixed-radius circle (25 / 50 / 100 / 250 mi presets) around the geocoded point. Today `AddressSearch` flies but does not filter; the chip-driven radius primitive is missing.
+
+The user-picked answers from the four blocking questions: screen name **Browse**, default rollout **new default for everyone**, share link **both URL + short link**, radius **preset chips 25 / 50 / 100 / 250**.
+
+**Decision.**
+
+1. **Browse is the default screen; Map-only and Localities remain accessible.** Masthead navigation is three pills: `Browse` (default) | `Map only` | `Localities`. URL routes:
+   - `/` redirects to `/browse`
+   - `/browse` — new mosaic
+   - `/map` — today's all-map view, preserved unchanged (no functionality is removed)
+   - `/localities` — D.5.27 screen
+2. **Mosaic layout (desktop ≥ 1024 px).**
+   - Top-left, 50% × 50%: map
+   - Top-right, 50% × 50%: `SmallestAreaCard` showing the smallest geographic context enclosing the current viewport center (locality > metro > county > state — tie-break in §Open Questions)
+   - Bottom, 100% × 50%: `JobList` in **rich mode** (a new prop on the existing component, not a new component, per the "Browse" decision that keeps the JobList file name intact). Each row exposes title, agency, locality + distance-from-radius-chip (when one is active), pay range, urgency badge, summary excerpt (≤ 200 chars), qualifications excerpt (≤ 200 chars), Save / Hide actions, and `QuickAdd`-on-hover chips for series, grade, agency, and pay plan.
+   - Tablet (640 – 1023 px): map + smallest-area card stack on top (33% height), list takes 67%.
+   - Mobile (< 640 px): three vertical sections, map collapses to a 200 px thumbnail with tap-to-expand modal, smallest-area card collapses to a one-line summary chip.
+3. **Click-to-zoom + scroll-away-restores.**
+   - Row click → capture current viewport into `mapState.priorViewport`, set `mapState.selectedJobId`, `flyTo` job coords at zoom 12 (single-coord) or `fitBounds` (multi-location), open the existing JobCard as a floating overlay anchored to the row.
+   - When the selected row scrolls more than 1.5× its own height past the top of the list viewport, dismiss the JobCard and `flyTo(mapState.priorViewport)`.
+   - Manual close (X) does the same.
+   - Polygon clicks at low zoom additively scope the list (implicitly add a `geo:` chip) instead of replacing the user's filters — preserves CLAUDE.md invariant #17.
+4. **Shareable view URLs.**
+   - URL params encode everything the user can see: filters, metric, viewport, theme, `selectedJobId`, `listScrollOffset` (0 – 1 fraction), radius chips. Existing repeated-key conventions extend naturally; new keys are `selected=<jobId>`, `scroll=<fraction>`, `radius=<lng>,<lat>,<miles>` (repeated).
+   - `Copy share link` button in the masthead next to the Saved Searches menu. Clicking it POSTs the full param string to a new Cloudflare Pages Function `public_map/functions/api/share.ts`, which writes to KV namespace `tgp_share` keyed by a 7-character base32 hash and returns the short URL `https://thegrandpipeline.com/map/s/<hash>`. TTL is 90 days via `expirationTtl: 7776000`.
+   - Short-link resolution: `public_map/functions/map/s/[hash].ts` reads KV and 302-redirects to `/browse?<params>`. A KV miss renders a friendly "this share link has expired" page with the current `/browse` (unfiltered).
+   - Failure mode: if the Function call non-2xxs, the button shows the long URL with a "short link unavailable" inline notice. Users can always copy the long form.
+   - Shared link with a job that has since closed: do not 404; resolve to the rest of the view (filters, viewport) with a banner "the highlighted posting has closed; here's the same filter on current postings."
+   - Saved searches bump to schema v2 to carry radius chips alongside existing fields.
+5. **Radius search.**
+   - `AddressSearch.svelte` extends to commit a chip on selection rather than only flying to. Chip schema: `{ type: 'radius', center: [lng, lat], radius_miles: 25 | 50 | 100 | 250, label: string }`. Default radius on first commit is 50 mi.
+   - Chip UI: pill text "Chicago, IL · 50 mi ▾"; the `▾` opens a four-option popover; the chip's × removes it.
+   - Filter math: client-side haversine against each job's first listed coords. Multi-location jobs match if any coord is in-radius. Anywhere-remote postings match by default with a toggle on the chip to exclude them.
+   - URL state: repeated `radius=lng,lat,miles` keys; multiple radius chips are ORed with each other and ANDed with the rest per CLAUDE.md invariant #17.
+   - JobList rich-mode rows show distance from chip center when exactly one radius chip is active.
+   - Counter in the list header: "X within 50 mi of Chicago + Y remote-anywhere."
+
+**Consequences.**
+
+- Public Map V1.5 gains three new sub-phases: **D.5.28** (Browse mosaic), **D.5.29** (Shareable view URLs), **D.5.30** (Radius search). All three are V1.5, not V2, because they are public-map-only and do not touch the local Streamlit dashboard.
+- ADR-0024 invariant #12 (fixed panel grid) becomes per-mode, not global. `layout.ts` accepts a `mode: 'browse' | 'map-only'` parameter; the existing Map-only mode preserves today's grid byte-for-byte. Two CLAUDE.md invariants are added (#27 for Browse-default behavior, #28 for shareability).
+- Cloudflare Workers KV becomes a runtime dependency. The free tier (1 GB / 100k reads / 1k writes daily) covers expected volume; setup is documented in `docs/REMOTE_OPERATIONS.md`.
+- `jobs_detail.json` exporter gains `summary_excerpt` and `qualifications_excerpt` fields (≤ 200 chars each) so the rich JobList row renders without lazy-loading on every scroll. Existing full fields stay for JobCard. Bundle-size impact estimated at +1.5 – 2 MB; if that pushes the bundle over the 25 MiB Cloudflare Pages file ceiling, fall back to lazy excerpts.
+- The current all-map experience is not removed. Operators and power users who prefer it can switch to "Map only" in the masthead; the URL `/map` continues to work unchanged. The risk of user surprise from a hard default-switch is mitigated by the toggle's prominence.
+- Radius chips are additive geographies. They stack with state / locality / city chips (the existing geographic-search additivity from CLAUDE.md invariant #17) and are filterable in saved searches.
+
+**Open questions deferred to implementation.**
+
+1. **Smallest-area tie-break.** When the viewport encloses both a locality and a county, which wins? Proposed: locality > metro > county > state, based on viewport center; if no polygon encloses the center (e.g. ocean / Alaska gap), fall back to the smallest polygon whose bbox intersects the viewport.
+2. **JobCard overlay anchoring.** Centered modal-ish, or arrow-anchored to the clicked row? Proposed: arrow-anchored to the row with the card constrained to the list's right edge, scrolls with content but stays visible.
+3. **Scroll-away threshold.** Proposed 1.5× row height. Confirm via prototype.
+4. **Mobile thumbnail map interactivity.** Proposed: static preview that tap-expands to a full-screen modal map; pan/zoom only in the modal.
+5. **Polygon-click implicit chip behavior in Browse mode.** Proposed: yes, polygon click adds a `geo:` chip and narrows the list, on top of the existing fit-bounds + ScopedAreaActions panel.
+6. **Anywhere-remote interaction with radius search.** Proposed: included by default with a per-chip exclude toggle; counter shows the breakdown explicitly so users see the inclusion.
+7. **Closed jobs in shared URLs.** Proposed: never 404; resolve filters/viewport and show a banner about the closed posting.
+8. **Bundle-size ceiling.** If `summary_excerpt` + `qualifications_excerpt` push the bundle over 25 MiB, switch to lazy-load excerpts via a Cloudflare Pages Function fed by the local DB snapshot; document the threshold in `docs/PUBLIC_MAP_PIPELINE.md`.
+
