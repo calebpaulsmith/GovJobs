@@ -35,7 +35,13 @@ export const LAYER_IDS = {
 	addressPin: 'address-pin',
 	clusters: 'job-clusters',
 	clusterCount: 'job-cluster-count',
-	markers: 'job-markers'
+	// Single non-cluster marker (one job at this coord) — small dot.
+	markers: 'job-markers',
+	// Multi-job stack at the same coord — numbered bubble like a cluster, so
+	// the operator can SEE that the dot represents more than one posting.
+	// Click handler routes to openMarkerStack just like a single-marker click.
+	markersStack: 'job-markers-stack',
+	markersStackCount: 'job-markers-stack-count'
 } as const;
 
 const FADE = (zoomIn: number, zoomOut: number, peak = 1, off = 0): ExpressionSpecification =>
@@ -244,25 +250,102 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
-	// 6. Individual (non-clustered) markers. Visible at every zoom so a
-	//    narrowly filtered set (e.g. one agency with 24 postings spread
-	//    across 50 states) doesn't disappear at low zoom: those points
-	//    are too sparse to cluster within 40 px and would otherwise have
-	//    nothing to render. Size interpolates so low-zoom dots stay tiny;
-	//    explicit stops at 14 / 19 keep them readable at street-level zoom
-	//    (cap raised from 9 → 19 on 2026-05-10).
+	// 6a. Individual single-job markers. Visible at every zoom so a narrowly
+	//     filtered set (e.g. one agency with 24 postings spread across 50
+	//     states) doesn't disappear at low zoom: those points are too
+	//     sparse to cluster within 40 px and would otherwise have nothing
+	//     to render. Restricted to `stack_count <= 1` so a coordinate with
+	//     multiple postings doesn't render as a misleading single dot;
+	//     those go through the markersStack layer below. Explicit stops at
+	//     14 / 19 keep them readable at street-level zoom (cap raised from
+	//     9 → 19 on 2026-05-10).
 	map.addLayer({
 		id: LAYER_IDS.markers,
 		type: 'circle',
 		source: SOURCE_IDS.jobs,
 		minzoom: 3,
-		filter: ['!', ['has', 'point_count']],
+		filter: [
+			'all',
+			['!', ['has', 'point_count']],
+			['<=', ['coalesce', ['get', 'stack_count'], 1], 1]
+		],
 		paint: {
 			'circle-color': '#7bd0f2',
 			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 5, 3, 7, 4, 9, 6, 14, 8, 19, 10],
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1,
 			'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.85, 9, 0.95]
+		}
+	});
+
+	// 6b. Stacked-coordinate markers — multiple postings share an exact
+	//     (lon, lat). Painted as a numbered bubble (visually identical to
+	//     a cluster bubble) so the operator can tell at a glance that the
+	//     dot stands for more than one job. Stack_count is stamped client-
+	//     side post-filter in Map.svelte::stampStackCounts. The cluster
+	//     layer above already covers low-zoom proximity aggregation; this
+	//     layer fills the gap when Mapbox de-clusters at clusterMaxZoom (8)
+	//     but the postings still share an exact coord.
+	map.addLayer({
+		id: LAYER_IDS.markersStack,
+		type: 'circle',
+		source: SOURCE_IDS.jobs,
+		minzoom: 3,
+		filter: [
+			'all',
+			['!', ['has', 'point_count']],
+			['>', ['coalesce', ['get', 'stack_count'], 1], 1]
+		],
+		paint: {
+			'circle-color': [
+				'step',
+				['coalesce', ['get', 'stack_count'], 1],
+				'#3677b3',
+				25,
+				'#4ea3d6',
+				100,
+				'#7bd0f2'
+			],
+			'circle-radius': [
+				'step',
+				['coalesce', ['get', 'stack_count'], 1],
+				10,
+				5,
+				13,
+				25,
+				16,
+				100,
+				20
+			],
+			'circle-stroke-color': '#0a0f1a',
+			'circle-stroke-width': 1.5,
+			'circle-opacity': 0.92
+		}
+	});
+
+	// 6c. Number label drawn over each stacked-coordinate bubble. Mirrors
+	//     the cluster-count symbol layer's text styling so the two read
+	//     identically. text-allow-overlap lets stacked-coord points still
+	//     show numbers when many sit at the same pixel.
+	map.addLayer({
+		id: LAYER_IDS.markersStackCount,
+		type: 'symbol',
+		source: SOURCE_IDS.jobs,
+		minzoom: 3,
+		filter: [
+			'all',
+			['!', ['has', 'point_count']],
+			['>', ['coalesce', ['get', 'stack_count'], 1], 1]
+		],
+		layout: {
+			'text-field': ['to-string', ['coalesce', ['get', 'stack_count'], 1]],
+			'text-size': 12,
+			'text-allow-overlap': true
+		},
+		paint: {
+			'text-color': '#0a0f1a',
+			'text-halo-color': '#e5edf5',
+			'text-halo-width': 0.6
 		}
 	});
 

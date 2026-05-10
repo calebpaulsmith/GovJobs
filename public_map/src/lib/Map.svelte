@@ -102,7 +102,9 @@
 				jobDetails = details;
 				mapState.totalJobCount = jobs.features.length;
 
-				const filteredJobs = excludeHidden(filterJobs(jobs, mapState.filters, jobDetails));
+				const filteredJobs = stampStackCounts(
+					excludeHidden(filterJobs(jobs, mapState.filters, jobDetails))
+				);
 				const filteredClosedJobs = filterJobs(closedJobs, mapState.filters, jobDetails);
 				const displayStates = cloneCollection(allStates);
 
@@ -151,7 +153,9 @@
 		const filters = mapState.filters;
 		void mapState.hiddenJobIds;
 		if (!mounted || !map || !allJobs || !allClosedJobs || !allStates || !map.isStyleLoaded()) return;
-		const filteredJobs = excludeHidden(filterJobs(allJobs, filters, jobDetails));
+		const filteredJobs = stampStackCounts(
+			excludeHidden(filterJobs(allJobs, filters, jobDetails))
+		);
 		const filteredClosedJobs = filterJobs(allClosedJobs, filters, jobDetails);
 		const displayStates = cloneCollection(allStates);
 		deriveRemoteShare(displayStates, filteredJobs);
@@ -210,6 +214,45 @@
 			features: collection.features.filter(
 				(f) => !hiddenIds.has(String((f.properties ?? {}).id ?? ''))
 			)
+		};
+	}
+
+	/**
+	 * Stamp `stack_count` on each feature: the number of features sharing
+	 * its exact (lon, lat). Used by the marker layer split so a coordinate
+	 * with N >= 2 stacked jobs renders as a numbered bubble (matching the
+	 * cluster aesthetic) instead of a single dot that visually hides the
+	 * other N-1 postings. The `openMarkerStack` click handler already
+	 * detects same-coord stacks via `markerFeaturesAtSamePoint`; this stamp
+	 * is purely a visual hint so the operator can SEE the stack.
+	 *
+	 * Tolerance: 5 decimal places (~1.1m) — tighter than any of our
+	 * geocoders. Matches `sameCoordinate()` which the click router uses.
+	 */
+	function stampStackCounts(collection: FeatureCollection): FeatureCollection {
+		const counts = new Map<string, number>();
+		const keyFor = (feature: FeatureCollection['features'][number]): string => {
+			const geom = feature.geometry;
+			if (!geom || geom.type !== 'Point') return '';
+			const [lon, lat] = geom.coordinates;
+			if (typeof lon !== 'number' || typeof lat !== 'number') return '';
+			return `${lon.toFixed(5)},${lat.toFixed(5)}`;
+		};
+		for (const feature of collection.features) {
+			const key = keyFor(feature);
+			if (!key) continue;
+			counts.set(key, (counts.get(key) ?? 0) + 1);
+		}
+		return {
+			...collection,
+			features: collection.features.map((feature) => {
+				const key = keyFor(feature);
+				const stack_count = key ? counts.get(key) ?? 1 : 1;
+				return {
+					...feature,
+					properties: { ...(feature.properties ?? {}), stack_count }
+				};
+			})
 		};
 	}
 
@@ -288,6 +331,10 @@
 	function attachClickHandling(m: MaplibreMap): void {
 		const layerOrder = [
 			LAYER_IDS.clusters,
+			// markersStack must come before markers so a click on a stacked
+			// bubble routes to openMarkerStack regardless of which layer is
+			// "topmost" at the rendering pixel.
+			LAYER_IDS.markersStack,
 			LAYER_IDS.markers,
 			LAYER_IDS.closedMarkers,
 			LAYER_IDS.federalProperties,
@@ -311,7 +358,7 @@
 					zoomIntoCluster(m, feature);
 					return;
 				}
-				if (layerId === LAYER_IDS.markers) {
+				if (layerId === LAYER_IDS.markers || layerId === LAYER_IDS.markersStack) {
 					openMarkerStack(feature);
 					return;
 				}
@@ -346,6 +393,7 @@
 	function labelFor(layerId: string): string {
 		switch (layerId) {
 			case LAYER_IDS.markers:
+			case LAYER_IDS.markersStack:
 				return 'Job card';
 			case LAYER_IDS.closedMarkers:
 				return 'Closed posting';
