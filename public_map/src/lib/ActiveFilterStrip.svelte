@@ -174,12 +174,15 @@
 
 <style>
 	.strip {
+		/* Position from public_map/src/lib/layout.ts (slot 'chip-strip'). */
 		position: absolute;
-		top: 4.4rem;
-		left: 50%;
-		transform: translateX(-50%);
+		top: var(--slot-chip-strip-top);
+		bottom: var(--slot-chip-strip-bottom);
+		left: var(--slot-chip-strip-left);
+		right: var(--slot-chip-strip-right);
+		transform: var(--slot-chip-strip-transform);
 		z-index: 5;
-		max-width: min(72rem, calc(100vw - 2rem));
+		max-width: var(--slot-chip-strip-max-width);
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
@@ -310,11 +313,9 @@
 		border-color: var(--c-danger, #f7a0a0);
 	}
 
-	@media (max-width: 720px) {
+	/* Position at every breakpoint comes from --slot-chip-strip-* in layout.ts. */
+	@media (max-width: 719px) {
 		.strip {
-			top: auto;
-			bottom: 5.5rem;
-			max-width: calc(100vw - 1rem);
 			border-radius: 10px;
 			padding: 0.4rem 0.55rem;
 			overflow-x: auto;

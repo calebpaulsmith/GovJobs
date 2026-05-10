@@ -139,7 +139,8 @@
 {/if}
 
 <style>
-	.panel { position: absolute; right: 1rem; top: 5.25rem; width: min(24rem, calc(100vw - 2rem)); max-height: calc(100vh - 7.5rem); overflow: auto; background: var(--c-panel, rgba(14, 23, 38, 0.96)); border: 1px solid var(--c-border, #2a3a52); border-radius: 10px; padding: 0.8rem 0.95rem; font-size: 12px; color: var(--c-text-2, #cfd9e6); z-index: 5; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); backdrop-filter: blur(8px); }
+	/* Position from public_map/src/lib/layout.ts (slot 'feature'). */
+	.panel { position: absolute; top: var(--slot-feature-top); right: var(--slot-feature-right); bottom: var(--slot-feature-bottom); left: var(--slot-feature-left); width: var(--slot-feature-width); max-height: calc(100vh - 7.5rem); overflow: auto; background: var(--c-panel, rgba(14, 23, 38, 0.96)); border: 1px solid var(--c-border, #2a3a52); border-radius: 10px; padding: 0.8rem 0.95rem; font-size: 12px; color: var(--c-text-2, #cfd9e6); z-index: 5; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); backdrop-filter: blur(8px); }
 	header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
 	.layer, .eyebrow { color: var(--c-accent, #7bd0f2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 	.close { appearance: none; background: transparent; border: none; color: var(--c-muted, #94a3b8); font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
@@ -154,5 +155,7 @@
 	dt { color: var(--c-muted, #94a3b8); }
 	dd { margin: 0; font-weight: 600; text-align: right; color: var(--c-text-2, #cfd9e6); }
 	.src { margin-top: 0.6rem; font-size: 10px; color: var(--c-muted, #64748b); }
-	@media (max-width: 640px) { .panel { top: auto; bottom: 6.5rem; right: 0.5rem; left: 0.5rem; width: auto; max-height: 48vh; } }
+	/* Position at every breakpoint comes from --slot-feature-* in layout.ts.
+	   Only the per-breakpoint max-height needs an override here. */
+	@media (max-width: 719px) { .panel { width: auto; max-height: 48vh; } }
 </style>

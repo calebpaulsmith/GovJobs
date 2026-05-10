@@ -149,17 +149,21 @@
 
 <style>
 	.saved-searches {
+		/* Position from public_map/src/lib/layout.ts (slot 'saved-search'). */
 		position: absolute;
-		top: 8.85rem;
-		left: 1rem;
+		top: var(--slot-saved-search-top);
+		left: var(--slot-saved-search-left);
+		right: var(--slot-saved-search-right);
+		width: var(--slot-saved-search-width);
 		z-index: 7;
-		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
 		transition: top 160ms ease;
 	}
-	.saved-searches.address-open {
-		top: 21rem;
+	@media (min-width: 720px) {
+		.saved-searches.address-open {
+			top: calc(var(--slot-saved-search-top) + 12.15rem);
+		}
 	}
 	.toggle,
 	.menu {
@@ -271,13 +275,5 @@
 		outline: 2px solid #7bd0f2;
 		outline-offset: 2px;
 	}
-	@media (max-width: 640px) {
-		.saved-searches {
-			top: 9.4rem;
-			left: 0.5rem;
-		}
-		.saved-searches.address-open {
-			top: 21.5rem;
-		}
-	}
+	/* Position at every breakpoint comes from --slot-saved-search-* in layout.ts. */
 </style>

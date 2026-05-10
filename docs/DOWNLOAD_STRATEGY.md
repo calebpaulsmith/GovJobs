@@ -133,7 +133,7 @@ Next action:           Inventory the data.opm.gov downloads page during recon an
 Most recent run rewrites this section. Each block represents one dataset.
 
 ```text
-Run timestamp:       2026-05-09T18:29:50Z
+Run timestamp:       2026-05-10T00:43:15Z
 Dataset:             USAJOBS Search (current open JOAs)
 Endpoint:            GET /api/Search
 Date range:          n/a
@@ -151,25 +151,25 @@ Notes:
 ```
 
 ```text
-Run timestamp:       2026-05-09T18:29:50Z
+Run timestamp:       2026-05-10T00:43:15Z
 Dataset:             USAJOBS HistoricJoa
 Endpoint:            GET /api/HistoricJoa
-Date range:          all available → 2026-05-09
-Estimated records:   3,138,843
-Estimated raw size:  6.82 GB
-Estimated DB size:   4.71 GB
-Estimated import:    15.69 h
-API limits:          Public endpoint; probed unfiltered totalCount and first-page byte size.
-Confidence:          high
+Date range:          n/a
+Estimated records:   4,000,000
+Estimated raw size:  16.00 GB
+Estimated DB size:   6.00 GB
+Estimated import:    20.00 h
+API limits:          Public probe failed; documented estimate.
+Confidence:          low
 Probed:              True
 Recommended mode:    FOCUSED_FULL_DOWNLOAD
-Reason:              Full breaches raw 6.8GB > 5.0GB, hours 15.7 > 8.0. A focused slice (~20% of full, scoped to target agencies and series) fits.
+Reason:              Full breaches raw 16.0GB > 5.0GB, hours 20.0 > 8.0. A focused slice (~20% of full, scoped to target agencies and series) fits.
 Next action:         Run a focused import: FEMA / DHS / CISA / HUD / FIMA / USACE / EPA / USDA / DOI / DOT / HHS / EDA / SBA, plus series 0089, 0301, 0343, 1109, 0020, 0101, 0110, 0300, 0501, 0560.
-Notes:               
+Notes:               Probe returned no usable count. Verify endpoint availability.
 ```
 
 ```text
-Run timestamp:       2026-05-09T18:29:50Z
+Run timestamp:       2026-05-10T00:43:15Z
 Dataset:             USAJOBS AnnouncementText
 Endpoint:            GET /api/HistoricJoa/AnnouncementText
 Date range:          n/a
@@ -187,7 +187,7 @@ Notes:               Pulled selectively (saved jobs, high-match jobs, recent job
 ```
 
 ```text
-Run timestamp:       2026-05-09T18:29:50Z
+Run timestamp:       2026-05-10T00:43:15Z
 Dataset:             OPM Federal Workforce
 Endpoint:            File downloads via data.opm.gov / FedScope
 Date range:          n/a

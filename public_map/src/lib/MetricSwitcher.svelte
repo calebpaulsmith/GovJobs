@@ -198,12 +198,13 @@
 
 <style>
 	.switcher {
+		/* Position from public_map/src/lib/layout.ts (slot 'metric'). */
 		position: absolute;
-		bottom: 1rem;
-		left: 1rem;
-		right: 1rem;
-		max-width: 26rem;
-		margin: 0 auto;
+		bottom: var(--slot-metric-bottom);
+		left: var(--slot-metric-left);
+		right: var(--slot-metric-right);
+		width: var(--slot-metric-width);
+		transform: var(--slot-metric-transform);
 		padding: 0.75rem 0.9rem;
 		background: rgba(14, 23, 38, 0.92);
 		border: 1px solid #2a3a52;
@@ -349,13 +350,8 @@
 		color: #64748b;
 		font-size: 10px;
 	}
-	@media (max-width: 640px) {
-		.switcher {
-			bottom: 0.5rem;
-			left: 0.5rem;
-			right: 0.5rem;
-			max-width: none;
-		}
+	@media (max-width: 719px) {
+		/* Position at this breakpoint comes from --slot-metric-* in layout.ts. */
 		.legend,
 		.caption,
 		.wip-legend {

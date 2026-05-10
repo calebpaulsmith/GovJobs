@@ -329,24 +329,35 @@
 </section>
 
 <style>
+	/* Position vars come from public_map/src/lib/layout.ts via +layout.svelte.
+	   Local state-driven shifts (.address-open / .saved-open) are deltas off
+	   the base --slot-filters-top so layout.ts stays the single source of
+	   truth for the resting position. */
 	.filters {
 		position: absolute;
-		left: 1rem;
-		top: 12.45rem;
+		left: var(--slot-filters-left);
+		top: var(--slot-filters-top);
+		right: var(--slot-filters-right);
+		bottom: var(--slot-filters-bottom);
+		width: var(--slot-filters-width);
 		z-index: 6;
-		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
 		transition: top 160ms ease;
+		display: var(--slot-filters-display, block);
 	}
-	.filters.address-open {
-		top: 24.5rem;
-	}
-	.filters.saved-open {
-		top: 27rem;
-	}
-	.filters.saved-open.address-open {
-		top: 37rem;
+	/* Runtime shifts are desktop+tablet only — at mobile the FilterPanel
+	   docks at the bottom and is mutually exclusive with FeaturePanel. */
+	@media (min-width: 720px) {
+		.filters.address-open {
+			top: calc(var(--slot-filters-top) + 12.05rem);
+		}
+		.filters.saved-open {
+			top: calc(var(--slot-filters-top) + 14.55rem);
+		}
+		.filters.saved-open.address-open {
+			top: calc(var(--slot-filters-top) + 24.55rem);
+		}
 	}
 	.toggle,
 	.body {
@@ -531,19 +542,9 @@
 		cursor: not-allowed;
 		opacity: 0.45;
 	}
-	@media (max-width: 640px) {
-		.filters {
-			left: 0.5rem;
-			top: auto;
-			bottom: 6.5rem;
-		}
-		.filters.saved-open {
-			top: auto;
-		}
-		.filters.address-open,
-		.filters.saved-open.address-open {
-			top: auto;
-		}
+	/* Position at mobile is supplied by --slot-filters-* via layout.ts. Only
+	   internal layout (single-column rows) needs an override here. */
+	@media (max-width: 719px) {
 		.row,
 		.row.three {
 			grid-template-columns: 1fr;

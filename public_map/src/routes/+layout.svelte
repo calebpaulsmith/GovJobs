@@ -1,6 +1,16 @@
 <script lang="ts">
+	import { layoutCssBlock } from '$lib/layout';
+
 	let { children } = $props();
+
+	// Generated once at module load; layout.ts is the single source of truth
+	// for panel positioning per CLAUDE.md invariant #12.
+	const slotCss = layoutCssBlock();
 </script>
+
+<svelte:head>
+	{@html `<style>${slotCss}</style>`}
+</svelte:head>
 
 {@render children()}
 

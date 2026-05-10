@@ -121,10 +121,12 @@
 		overflow: hidden;
 	}
 	.masthead {
+		/* Position from public_map/src/lib/layout.ts (slot 'masthead'). */
 		position: absolute;
-		top: 1rem;
-		left: 50%;
-		transform: translateX(-50%);
+		top: var(--slot-masthead-top);
+		left: var(--slot-masthead-left);
+		right: var(--slot-masthead-right);
+		transform: var(--slot-masthead-transform);
 		z-index: 4;
 		display: flex;
 		gap: 1.25rem;
@@ -219,9 +221,11 @@
 	}
 	.theme-btn:hover { border-color: var(--c-accent, #7bd0f2); color: var(--c-accent, #7bd0f2); }
 	.attrib {
+		/* Position from public_map/src/lib/layout.ts (slot 'freshness'). */
 		position: absolute;
-		bottom: 0.4rem;
-		right: 0.6rem;
+		bottom: var(--slot-freshness-bottom);
+		right: var(--slot-freshness-right);
+		left: var(--slot-freshness-left);
 		display: flex;
 		gap: 0.9rem;
 		font-size: 10px;
@@ -230,13 +234,15 @@
 		z-index: 4;
 	}
 
-	@media (max-width: 640px) {
+	/* Position at every breakpoint comes from --slot-* in layout.ts. Only
+	   the per-breakpoint visual changes (column wrap, border radius) belong
+	   here. */
+	@media (max-width: 719px) {
 		.masthead {
 			flex-direction: column;
 			gap: 0.4rem;
 			align-items: flex-start;
 			border-radius: 8px;
-			top: 0.5rem;
 		}
 		.manifest {
 			border-left: none;

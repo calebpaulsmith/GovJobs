@@ -78,11 +78,13 @@
 
 <style>
 	.address-search {
+		/* Position from public_map/src/lib/layout.ts (slot 'search'). */
 		position: absolute;
-		top: 5.15rem;
-		left: 1rem;
+		top: var(--slot-search-top);
+		left: var(--slot-search-left);
+		right: var(--slot-search-right);
+		width: var(--slot-search-width);
 		z-index: 8;
-		width: min(24rem, calc(100vw - 2rem));
 		color: #cfd9e6;
 		font-size: 12px;
 	}
@@ -168,10 +170,5 @@
 		outline: 2px solid #7bd0f2;
 		outline-offset: 2px;
 	}
-	@media (max-width: 640px) {
-		.address-search {
-			top: 5.7rem;
-			left: 0.5rem;
-		}
-	}
+	/* Position at every breakpoint comes from --slot-search-* in layout.ts. */
 </style>
