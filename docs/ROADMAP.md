@@ -167,6 +167,95 @@ Files: `src/recommendations.py`, `src/ui_data.py`, `src/database.py`, `pages/1_S
 - [ ] PDF export.
 - [ ] Per-agency / per-series notes.
 - [ ] Career-ladder categorization.
+- [ ] **Phase 12 — LLM Project Export (see below).**
+
+---
+
+## Phase 12 — LLM Project Export
+
+A user-initiated export that packages saved jobs (or a current Search filter) plus the user's résumé, locality-adjusted pay, cost-of-living context, scoring breakdown, and hiring-climate signals into a single zip the user drops into a Claude Project, ChatGPT Project, or generic chat. Specialized for federal job hunting; not a generic file packager.
+
+**Authoritative references** (read both before executing any phase below):
+- [docs/DECISIONS.md](DECISIONS.md) → ADR-0031 (and ADR-0022's narrowing) for *why*.
+- [docs/LLM_EXPORT_SPEC.md](LLM_EXPORT_SPEC.md) for *how* — staging-folder layout, instruction templates, tier-preset semantics, preflight-ingestion contract, module layout, API surface, UI contract, test fixtures, and out-of-scope items.
+
+The spec is the source of truth. This ROADMAP entry is the implementation queue.
+
+### Phase 12.0 — Paperwork ✅
+- [x] ADR-0031 in [docs/DECISIONS.md](DECISIONS.md).
+- [x] ADR-0022 marked superseded (narrowed, not reversed).
+- [x] [docs/LLM_EXPORT_SPEC.md](LLM_EXPORT_SPEC.md) created.
+- [x] [CLAUDE.md](../CLAUDE.md) updated: V2 résumé "metadata only" rule replaced with the user-initiated-export carve-out; new feature listed under "Current architecture state."
+- [x] This ROADMAP entry.
+
+**Exit:** the user has approved the ADR + spec + ROADMAP entry. **Done.**
+
+### Phase 12.1 — Backend pipeline
+
+Files to create:
+- `src/llm_export/__init__.py`
+- `src/llm_export/tiers.py`
+- `src/llm_export/staging.py`
+- `src/llm_export/signals.py`
+- `src/llm_export/preflight.py`
+- `src/llm_export/bundler.py` (port from FileSlicer's `packer/bundler.py`; attribute origin in module docstring)
+- `src/llm_export/manifest.py` (port from FileSlicer's `packer/manifest.py`; attribute origin)
+- `src/llm_export/instructions.py`
+- `src/llm_export/pipeline.py`
+- `data/llm_tiers.json` (ship defaults per spec; verified date stamped on creation)
+- `tests/test_llm_export.py` (with fixtures under `tests/fixtures/llm_export/`)
+
+Files to modify:
+- [src/database.py](../src/database.py): nothing required if reusing `import_manifests` with a new `kind="llm_export_preflight"` (the spec's recommended path). If a dedicated `llm_export_cache` table is added instead, bump schema version.
+
+Implementation checklist:
+- [ ] Tier presets module: load shipped defaults from `data/llm_tiers.json`, apply user override layer, support per-run overrides without persisting.
+- [ ] Staging-folder builder: per-job Markdown shape per spec, résumé copy, notes from `applications` + `application_events`, `00_OVERVIEW.md`, `00_PRIVACY.md`, `00_START_HERE.md`.
+- [ ] Signals module: agency-level OPM trend, closing-window medians per `(agency × series × grade)`, total-openings lookup. Series-level OPM trend is Phase 12.3 polish.
+- [ ] Preflight: detect missing slices, fetch via [src/usajobs_historic_api.py](../src/usajobs_historic_api.py), persist raw to `data/raw/`, write `import_manifests`, honor 7-day freshness window, honor wall-clock ceiling.
+- [ ] Bundler: token-budget Markdown bundling with `DOC_xxxx` identity headers.
+- [ ] Manifest writer: MD + CSV + JSON, round-trip identical.
+- [ ] Instructions templates: Claude / ChatGPT / generic. Privacy block at top. User custom guidance appended.
+- [ ] Pipeline: orchestrate everything, return `ExportResult`, accept progress callback, handle dry-run for tests.
+- [ ] Tests per spec § "Test fixtures." All HTTP mocked.
+
+**Exit:** `pytest -q tests/test_llm_export.py` is green; a manual call to `run_export(...)` against the local SQLite produces a valid zip with the expected layout, manifest round-trips, and the per-job Markdown for at least three jobs renders the full Hiring-climate / COL / Pay-table / Scoring blocks.
+
+### Phase 12.2 — Streamlit UI
+
+Files to modify:
+- [pages/2_Saved_Jobs.py](../pages/2_Saved_Jobs.py): add "Export to LLM Project" button + modal.
+- [pages/1_Search_Jobs.py](../pages/1_Search_Jobs.py): same button + modal, with the volume preview / top-N trim per spec.
+- [pages/8_Settings.py](../pages/8_Settings.py): add **Tier presets** panel.
+
+Implementation checklist:
+- [ ] Export modal per spec § "Streamlit UI contract." Target selector, tier preset + editable knobs, include-résumé + version multi-select, include-COL / include-hiring-climate / include-closing-window checkboxes, free-text custom-guidance textarea, yellow privacy `st.warning` + "I understand" checkbox gating the Run button.
+- [ ] Search Jobs entry point: volume preview before run; top-N trim with reasoning shown in `00_OVERVIEW.md`.
+- [ ] Progress UI during run: per-job render, preflight fetch progress, bundling, zip; Skip button for preflight.
+- [ ] `st.download_button` returns the zip; success banner.
+- [ ] Settings panel: review/edit/reset tier presets; show verified date and the FileSlicer-style "guidance, not official platform limits" disclaimer.
+
+**Exit:** end-to-end manual test: from Saved Jobs (≥ 5 jobs) and from a Search filter (> tier `max_files` to exercise the trim), the user can export, download, unzip, open `00_START_HERE.md`, and follow the steps. Privacy "I understand" gating works. Settings panel persists overrides across reloads.
+
+### Phase 12.3 — Polish + samples
+
+Implementation checklist:
+- [ ] "Sample export" button (1–3 jobs) for previewing the format without committing — spec § "Open questions deferred" #4.
+- [ ] Series-level OPM trend in the Hiring-climate block when the data supports it.
+- [ ] Update [docs/EXPORTS.md](EXPORTS.md) (or create it) with screenshots of the modal, an example bundle's `00_START_HERE.md`, and an example per-job Markdown.
+- [ ] Verify privacy notice copy with the user before V2 ship.
+- [ ] Add an entry to [CLAUDE.md](../CLAUDE.md) "Current architecture state" once the feature is shipped.
+
+**Exit:** docs include a working screenshot, sample export works, no regressions to other V2 pages.
+
+### Phase 12 — Definition of done (all sub-phases)
+
+- All checklists in 12.1, 12.2, and 12.3 are checked.
+- `pytest -q` is green.
+- `streamlit run app.py` launches; both export entry points work end-to-end on the local SQLite.
+- A real Claude Project test: user uploads the zip's contents, pastes the instructions block, and the Project answers a "compare these jobs to my résumé" prompt with citations to `DOC_<NNNN>` identifiers.
+- A real ChatGPT Project test: same.
+- The privacy notice and "I understand" gate cannot be bypassed.
 
 ## Version 3 — AI / RAG
 

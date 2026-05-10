@@ -284,13 +284,15 @@ Status: Accepted
 
 ## ADR-0022 - Resume versions are metadata-only in V2
 Date: 2026-05-06
-Status: Accepted
+Status: Superseded by ADR-0031 (narrowed, not reversed)
 
 **Context.** The application tracker needs to know which rÃ©sumÃ© package was used, but full rÃ©sumÃ© parsing belongs with the later AI/RAG work and should not be mixed into the local CRUD tracker.
 
 **Decision.** Add a `resume_versions` table and Streamlit page for labels, filenames, local paths, target series/grade, active/archive status, and notes. The Application Tracker can select an active label, but the app does not upload, parse, score, or rewrite rÃ©sumÃ© content in V2.
 
 **Consequences.** Application records become more consistent without introducing sensitive-document processing. V3 can later add rÃ©sumÃ© parsing against this metadata boundary.
+
+**Update 2026-05-10 (ADR-0031).** This ADR is narrowed, not reversed. The "no auto-parse / no auto-score / no auto-rewrite" boundary still holds for every in-app flow. ADR-0031's LLM Project Export is the one exception: it copies user-selected résumé file(s) verbatim into a bundle the user explicitly downloads. The dashboard itself still does not parse résumé contents.
 
 ---
 
@@ -405,4 +407,31 @@ Status: Accepted
 2. **Operator verification (before V1 deploy).** `pages/11_Public_Map_Admin.py` gains a "Reference year (D.5.14)" panel that shows three sampled GS cells (GS-1 step 1 base, GS-13 step 1 base, GS-15 step 10 base), the resolved reference year, and the official OPM 2026 PDF URL. Any operator with internet access opens the PDF, checks the three cells, and either accepts the seed (cells match within $1) or replaces `data/external/opm_gs_pay/2026_base.csv` with the verified rows and re-runs `python scripts/ingest_gs_pay.py`. The existing year-over-year diff already flags large unexpected jumps. V1 is **not** callable done until an operator has logged a clean spot-check against OPM's published 2026 values.
 
 **Consequences.** Public-map exports always have a populated reference year, even before the operator can reach OPM directly. The bootstrap seed is clearly labeled with `source_url=https://www.opm.gov/.../2026/general-schedule/` and the seed CSV is not used as final V1 data — D.5.14 is marked partial in `docs/ROADMAP.md` until the operator verification step is logged. `pay_calculator.calculate_job_pay_table` works against the 2026 rows the same way it worked against 2025, so D.5.11 (per-job pay grid with status flag) inherits the 2026 cutover automatically. If the rounding rule in OPM's actual PDF differs from `round(rate × 1.01)` for a given cell (annual rates derive from hourly × 2087, with their own rounding chain), the diff will be at most a dollar or two per cell — the spot-check tolerance is set so that anything outside ±$1 fires.
+
+---
+
+## ADR-0031 — LLM Project Export is a vendored, GovJobs-specific feature
+Date: 2026-05-10
+Status: Accepted
+Supersedes: ADR-0022 (résumé content boundary)
+
+**Context.** A sibling tool, `Fileslicer` (a.k.a. `llm_project_packer`), already produces project-context bundles (Markdown bundles + manifest + per-target instructions) for ChatGPT Projects, Claude Projects, generic chats, and RAG. The user wants a similar capability inside GovJobs — but specialized for job hunting: each saved job rendered with structured fields, scoring, hiring-climate signals, locality-adjusted pay, and a cost-of-living block; the user's actual résumé file(s) bundled in; one-click drop-in for Claude Projects or ChatGPT Projects with pre-built instructions. The eventual goal is a knowledge assistant inside the dashboard, but that is explicitly out of scope here.
+
+Two integration paths were considered: (a) `pip install -e ../Fileslicer/llm_project_packer` and import `run_packaging_job` directly, or (b) vendor a small, GovJobs-specific export pipeline. The user chose (b): the GovJobs export must be lean (no repair-manual / FEMA-policy / generic-RAG modes), domain-specialized (résumé + jobs + COL + OPM trend + closing-window in one bundle), self-contained (no external repo coupling), and trust-forward (privacy notice baked in, vendor-curated tier presets that the user can override). FileSlicer's CLAUDE.md hard rule "Token presets are packaging targets, not official platform context-window limits" is preserved verbatim in spirit — we surface tier numbers as guidance, dated, and editable.
+
+ADR-0022 explicitly forbade parsing or copying résumé content in V2. That boundary made sense for the in-app Application Tracker but blocks the killer feature of this export (résumé + jobs reasoned together by the LLM). ADR-0022 is superseded for the narrow case of user-initiated exports: the dashboard never auto-parses, scores, or rewrites résumés; the export pipeline only copies user-selected résumé files into a bundle the user explicitly downloads.
+
+**Decision.**
+
+1. **Vendor a `src/llm_export/` package.** Port the small useful pieces of FileSlicer's `bundler.py` and `manifest.py` (token-budget bundling, `DOC_xxxx` identity headers, three-format manifest) into GovJobs. Attribute the origin in module docstrings. Do not depend on FileSlicer at runtime. The two products evolve independently.
+2. **Two-target scope only — Claude Project and ChatGPT Project.** No NotebookLM target (per user). A `generic` target for one-off chats is shipped for free since it's near-zero extra work.
+3. **Tier presets are user-editable, dated, and labeled as guidance.** A `data/llm_tiers.json` (or small SQLite table) ships with current Claude Pro / Claude Max / ChatGPT Plus / ChatGPT Pro / ChatGPT Team caps as of the export's release date. Every knob (file count, MB total, max tokens per bundle) is editable by the user via Settings. Built-in label includes a "Verified: YYYY-MM-DD" stamp so the user knows when to revisit.
+4. **Preflight ingestion is in scope.** When the export needs HistoricJoa slices for closing-window stats or OPM workforce data for hiring-climate trends, the pipeline performs targeted USAJOBS API calls before assembling the bundle, persists results to SQLite per the existing `import_manifests` / `data/raw/` pattern, and caches each slice with a 7-day freshness window. A user-visible time ceiling (default 5 min, configurable) stops the export from stalling on a wide filter; jobs whose history could not be fetched in time render with an honest "insufficient history" note.
+5. **Filter-export volume gate.** A current-filter export that exceeds the chosen tier's file count is trimmed to the top-N by score, with the ranking explained in the manifest. The user is shown the trim before running.
+6. **Privacy notice is first-class.** The export modal, the `00_PRIVACY.md` file in the bundle, and the `00_START_HERE.md` instructions all state plainly: "uploading this bundle puts your résumé and saved jobs in the LLM vendor's hands; their privacy policy applies." A "résumé removed" mode is offered alongside the default for users who don't want to share their résumé.
+7. **ADR-0022 narrowing.** The "metadata only" rule for résumés in V2 still applies *inside the dashboard* (the app does not auto-parse, score, or rewrite résumé contents in any UI flow). It does **not** apply to the LLM Project Export, which copies user-selected résumé files verbatim into a bundle the user explicitly downloads. The ADR-0022 record is preserved as historical context.
+
+**Consequences.** GovJobs gains a domain-specialized export that does not exist in FileSlicer, without taking on a cross-repo dependency. The résumé content boundary moves from an absolute prohibition to a "no auto-processing in app, yes user-initiated export" posture. The hiring-climate and closing-window signals shipped here lay the data foundation for the future knowledge assistant (V3+) without committing to any of its design. The single new external risk is preflight-ingestion rate-limit budget; the time ceiling, freshness window, and `import_manifests` reuse keep it bounded.
+
+The full design — staging-folder layout, instruction templates, tier-preset semantics, preflight-ingestion contract, and Phase 1–3 implementation queue — lives in `docs/LLM_EXPORT_SPEC.md` and the corresponding ROADMAP entry (Phase 12).
 
