@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse — mobile dock mock</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+	body { padding-top: 2.4rem; min-height: 100vh; background: #020812; }
+
+	.stage {
+		max-width: 420px;
+		margin: 1.5rem auto 2rem;
+		background: var(--c-bg);
+		border: 1px solid var(--c-border);
+		border-radius: 28px;
+		box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+		overflow: hidden;
+		display: flex; flex-direction: column;
+		height: 760px;
+		position: relative;
+	}
+
+	.notch {
+		height: 32px; flex-shrink: 0;
+		display: flex; justify-content: center; align-items: center;
+		background: var(--c-bg);
+		font-size: 10px; color: var(--c-faint);
+		border-bottom: 1px solid var(--c-border-subtle);
+	}
+
+	.masthead {
+		flex-shrink: 0;
+		background: var(--c-panel);
+		border-bottom: 1px solid var(--c-border);
+		padding: 0.5rem 0.75rem;
+		display: flex; align-items: center; gap: 0.5rem;
+	}
+	.masthead .brand { font-weight: 700; font-size: 13px; }
+	.masthead .right { margin-left: auto; display: flex; gap: 0.3rem; }
+
+	.scope-bar {
+		flex-shrink: 0;
+		padding: 0.45rem 0.75rem;
+		border-bottom: 1px solid var(--c-border-subtle);
+		display: flex; gap: 0.3rem; overflow-x: auto;
+		background: var(--c-panel-blur);
+	}
+
+	.content { flex: 1; overflow-y: auto; }
+
+	/* Tab content panels — only one visible at a time. */
+	.tab { display: none; padding: 0.75rem; }
+	.tab.active { display: block; }
+
+	/* Dock — bottom nav. */
+	.dock {
+		flex-shrink: 0;
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		background: var(--c-panel);
+		border-top: 1px solid var(--c-border);
+		padding: 0.35rem 0.4rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+		gap: 0.15rem;
+	}
+	.dock button {
+		appearance: none;
+		background: transparent;
+		border: none;
+		color: var(--c-muted);
+		font-size: 10px;
+		font-weight: 600;
+		padding: 0.4rem 0.2rem 0.3rem;
+		border-radius: 10px;
+		display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+		cursor: pointer;
+		transition: background 100ms ease;
+	}
+	.dock button .icon { font-size: 18px; line-height: 1; }
+	.dock button.active { color: var(--c-accent); background: var(--c-accent-bg); }
+	.dock button .badge-pip { position: absolute; }
+
+	/* Map tab. */
+	.tab-map .map-placeholder { height: 100%; min-height: 540px; border-radius: 8px; position: relative; }
+	.tab-map .marker { position: absolute; }
+	.tab-map .floating-pills { position: relative; margin-top: -3rem; padding: 0 0.4rem; display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+	/* List tab — reuses pieces from desktop mock but slimmed. */
+	.tab-list .toolbar {
+		position: sticky; top: 0;
+		background: var(--c-bg);
+		padding: 0.25rem 0 0.5rem;
+		border-bottom: 1px solid var(--c-border-subtle);
+		margin: -0.75rem -0.75rem 0.4rem;
+		padding: 0.5rem 0.75rem;
+		z-index: 2;
+	}
+	.tab-list .toolbar-row { display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+	.tab-list .search-input {
+		flex: 1; min-width: 0;
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text);
+		border-radius: 6px;
+		padding: 0.4rem 0.55rem;
+		font-size: 13px;
+		outline: none;
+	}
+	.tab-list .sort-select {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text-2);
+		padding: 0.4rem 0.4rem;
+		border-radius: 6px;
+		font-size: 12px;
+	}
+	.tab-list .facets { display: flex; gap: 0.25rem; overflow-x: auto; padding: 0.4rem 0 0; margin-bottom: -0.2rem; }
+	.tab-list .facets .facet-chip { flex-shrink: 0; font-size: 10px; }
+	.tab-list .annotation { font-size: 11px; color: var(--c-success); margin-top: 0.4rem; }
+	.tab-list .row {
+		padding: 0.7rem 0.65rem;
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 8px;
+		margin-bottom: 0.45rem;
+	}
+	.tab-list .row h4 { margin: 0 0 0.25rem; font-size: 13px; color: var(--c-text); }
+	.tab-list .row .meta { font-size: 11px; color: var(--c-muted); margin-bottom: 0.35rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+	.tab-list .row .summary { font-size: 11px; color: var(--c-text-2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.tab-list .row .pay-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; font-size: 12px; }
+	.tab-list .row .pay { font-weight: 700; color: var(--c-text); }
+	.tab-list .row .actions { display: flex; gap: 0.25rem; }
+
+	/* Area tab. */
+	.tab-area h2 { margin: 0 0 0.3rem; font-size: 18px; }
+	.tab-area .subtitle { color: var(--c-muted); font-size: 12px; margin-bottom: 0.85rem; }
+	.tab-area .pulse-band {
+		display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;
+		margin-bottom: 0.85rem;
+	}
+	.tab-area .pulse-metric {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 8px;
+		padding: 0.55rem;
+		position: relative;
+	}
+	.tab-area .pulse-metric .label { font-size: 10px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+	.tab-area .pulse-metric .value { font-size: 18px; font-weight: 700; margin: 0.15rem 0; }
+	.tab-area .pulse-metric .delta { font-size: 10px; color: var(--c-success); }
+	.tab-area .pulse-metric.placeholder::before {
+		content: 'PLACEHOLDER'; position: absolute; top: 4px; right: 6px;
+		font-size: 8px; color: var(--c-muted);
+		font-weight: 500;
+	}
+	.tab-area dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; font-size: 12px; margin: 0; }
+	.tab-area dt { color: var(--c-muted); }
+	.tab-area dd { margin: 0; color: var(--c-text-2); font-weight: 600; }
+	.tab-area .actions { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.9rem; }
+
+	/* Metrics tab. */
+	.tab-metrics .metric-card {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 8px;
+		padding: 0.7rem;
+		margin-bottom: 0.5rem;
+		position: relative;
+	}
+	.tab-metrics .metric-card .placeholder-tag {
+		position: absolute; top: 0.4rem; right: 0.45rem;
+		font-size: 9px; padding: 0.05rem 0.35rem; border-radius: 3px;
+		background: var(--c-bg); color: var(--c-muted);
+		border: 1px dashed var(--c-border);
+	}
+	.tab-metrics .metric-card h4 { margin: 0 0 0.45rem; font-size: 13px; }
+	.tab-metrics .metric-card .lede { color: var(--c-muted); font-size: 11px; margin: 0 0 0.5rem; }
+	.tab-metrics .bars { display: flex; align-items: end; gap: 2px; height: 36px; }
+	.tab-metrics .bars span { display: block; flex: 1; background: var(--c-accent); border-radius: 1px; opacity: 0.85; }
+
+	/* Saved tab. */
+	.tab-saved .sub-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.6rem; }
+	.tab-saved .saved-row { background: var(--c-row-bg); border: 1px solid var(--c-border-subtle); border-radius: 6px; padding: 0.5rem 0.6rem; margin-bottom: 0.3rem; }
+	.tab-saved .saved-row .title { font-size: 12px; font-weight: 600; }
+	.tab-saved .saved-row .meta { font-size: 10px; color: var(--c-muted); }
+</style>
+</head>
+<body>
+<div class="mock-banner">
+	<span>Mock: <strong>Mobile / web-app dock</strong> — single-pane, 5 tabs. Tap any tab below the phone frame.</span>
+	<span>
+		<a href="index.html">← all mocks</a>
+		<a href="desktop-mosaic.html">desktop mosaic →</a>
+	</span>
+</div>
+
+<div class="stage">
+	<div class="notch">9:41 — TGP fed-jobs</div>
+
+	<header class="masthead">
+		<span class="brand">TGP</span>
+		<nav class="masthead-pills" style="font-size: 11px;">
+			<a class="active">Browse</a>
+			<a>Map</a>
+			<a>Loc</a>
+		</nav>
+		<div class="right">
+			<button class="pill-btn" style="font-size: 10px; padding: 0.2rem 0.5rem;">★</button>
+			<button class="pill-btn" style="font-size: 10px; padding: 0.2rem 0.5rem;">⇗</button>
+		</div>
+	</header>
+
+	<div class="scope-bar">
+		<span class="chip">Chicago, IL · 50 mi <span class="x">×</span></span>
+		<span class="chip">HSCB <span class="x">×</span></span>
+		<button class="pill-btn" style="font-size: 11px;">+ Add</button>
+	</div>
+
+	<div class="content">
+
+		<!-- Map tab -->
+		<section class="tab tab-map" data-tab="map">
+			<div class="map-placeholder">
+				<div class="marker cluster" style="left: 30%; top: 28%;">47</div>
+				<div class="marker" style="left: 50%; top: 40%;"></div>
+				<div class="marker" style="left: 65%; top: 50%;"></div>
+				<div class="marker cluster" style="left: 38%; top: 60%;">12</div>
+				<div class="marker" style="left: 70%; top: 70%;"></div>
+			</div>
+			<div class="floating-pills">
+				<button class="pill-btn accent" style="font-size: 11px;">Postings</button>
+				<button class="pill-btn" style="font-size: 11px;">Pay/COL</button>
+				<button class="pill-btn" style="font-size: 11px;">Remote</button>
+				<button class="pill-btn" style="font-size: 11px;">FRPP</button>
+			</div>
+		</section>
+
+		<!-- List tab (default visible) -->
+		<section class="tab tab-list active" data-tab="list">
+			<div class="toolbar">
+				<div class="toolbar-row">
+					<input class="search-input" type="text" placeholder="Search in 47 jobs…">
+					<select class="sort-select">
+						<option>Closing</option>
+						<option>Newest</option>
+						<option>Pay ↓</option>
+						<option>Pay ↑</option>
+						<option>Title</option>
+					</select>
+				</div>
+				<div class="facets">
+					<button class="facet-chip on">GS <span class="count">38</span></button>
+					<button class="facet-chip">WG <span class="count">5</span></button>
+					<button class="facet-chip on">Remote <span class="count">9</span></button>
+					<button class="facet-chip">≤ 7d <span class="count">14</span></button>
+					<button class="facet-chip">Reposts <span class="count">6</span></button>
+					<button class="facet-chip">Hide viewed</button>
+				</div>
+				<div class="annotation">↑ 23% above 90d avg for IL postings <span class="muted" style="margin-left: 0.4rem;">(placeholder)</span></div>
+			</div>
+
+			<article class="row">
+				<h4>Supervisory Emergency Management Specialist (Operations)</h4>
+				<div class="meta">
+					<strong style="color: var(--c-text-2);">FEMA</strong>
+					<span>Chicago, IL · 8 mi</span>
+					<span>GS-14 · 0089</span>
+					<span class="badge badge-critical">Today</span>
+					<span class="hist-badge" style="display:inline-flex; align-items:center; padding: 0.05rem 0.35rem; font-size: 9px; border-radius: 999px; border: 1px dashed var(--c-accent-dim); color: var(--c-accent);">5th repost · 18 mo</span>
+				</div>
+				<p class="summary">Supervisory emergency management specialist within the Operations Section, leading deployment-ready teams and coordinating with state, local, and tribal partners during declared disasters.</p>
+				<div class="pay-row">
+					<span class="pay">$122,198 – $158,860</span>
+					<div class="actions">
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+					</div>
+				</div>
+			</article>
+
+			<article class="row">
+				<h4>Contract Specialist</h4>
+				<div class="meta">
+					<strong style="color: var(--c-text-2);">GSA</strong>
+					<span>Chicago, IL · 0 mi</span>
+					<span>GS-12/13 · 1102</span>
+					<span class="badge badge-soon">3d</span>
+					<span class="badge badge-info">Remote</span>
+				</div>
+				<p class="summary">Primary acquisition lead for a portfolio of complex IT services contracts supporting nationwide federal customer agencies, with full pre-award and post-award authority.</p>
+				<div class="pay-row">
+					<span class="pay">$94,199 – $145,617</span>
+					<div class="actions">
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+					</div>
+				</div>
+			</article>
+
+			<article class="row">
+				<h4>Electrician Supervisor (WG)</h4>
+				<div class="meta">
+					<strong style="color: var(--c-text-2);">VA</strong>
+					<span>Hines, IL · 12 mi</span>
+					<span>WS-10 · 2805</span>
+				</div>
+				<p class="summary">Supervises a section of journey-level electricians providing 24/7 facility-power coverage at a level 1A VA medical center.</p>
+				<div class="pay-row">
+					<span class="pay">$45.62 – $53.21 /hr</span>
+					<div class="actions">
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
+						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+					</div>
+				</div>
+			</article>
+		</section>
+
+		<!-- Area tab -->
+		<section class="tab tab-area" data-tab="area">
+			<div class="eyebrow">Locality · smallest enclosing area</div>
+			<h2>Chicago–Naperville, IL–IN–WI</h2>
+			<p class="subtitle">CHI · 47 open · 15 fed properties</p>
+
+			<div class="pulse-band">
+				<div class="pulse-metric placeholder">
+					<div class="label">Open</div>
+					<div class="value">47</div>
+					<div class="delta">↑ 23% vs 90d</div>
+				</div>
+				<div class="pulse-metric placeholder">
+					<div class="label">New 7d</div>
+					<div class="value">12</div>
+					<div class="delta">↑ 4 vs typ</div>
+				</div>
+				<div class="pulse-metric placeholder">
+					<div class="label">Med close</div>
+					<div class="value">14d</div>
+					<div class="delta">↓ 3d</div>
+				</div>
+				<div class="pulse-metric placeholder">
+					<div class="label">≤ 3d</div>
+					<div class="value">5</div>
+					<div class="delta">3 GS, 2 WG</div>
+				</div>
+			</div>
+
+			<dl>
+				<dt>Locality pay</dt><dd>30.41%</dd>
+				<dt>GS-13 step 1</dt><dd>$107,540</dd>
+				<dt>RPP (overall)</dt><dd>105.3</dd>
+				<dt>Pay / COL</dt><dd>108.4</dd>
+				<dt>Top series</dt><dd>0301 · 1102</dd>
+				<dt>Top agencies</dt><dd>HSCB · DOJ · GSA</dd>
+			</dl>
+
+			<div class="actions">
+				<button class="pill-btn accent">View 47 postings</button>
+				<button class="pill-btn">+ Add to search</button>
+				<button class="pill-btn">📊 Open metrics</button>
+			</div>
+		</section>
+
+		<!-- Metrics tab -->
+		<section class="tab tab-metrics" data-tab="metrics">
+			<div class="eyebrow">Metrics · current scope (IL · 50 mi of Chicago · HSCB)</div>
+			<h2 style="margin: 0.2rem 0 0.8rem; font-size: 18px;">Posting climate</h2>
+
+			<div class="metric-card">
+				<span class="placeholder-tag">PLACEHOLDER · slice via on-demand call</span>
+				<h4>Postings volume — trailing 12 months</h4>
+				<p class="lede">Monthly USAJOBS posting count for the current filter.</p>
+				<div class="bars">
+					<span style="height: 28%;"></span>
+					<span style="height: 42%;"></span>
+					<span style="height: 38%;"></span>
+					<span style="height: 56%;"></span>
+					<span style="height: 71%;"></span>
+					<span style="height: 64%;"></span>
+					<span style="height: 49%;"></span>
+					<span style="height: 60%;"></span>
+					<span style="height: 78%;"></span>
+					<span style="height: 88%;"></span>
+					<span style="height: 95%;"></span>
+					<span style="height: 100%;"></span>
+				</div>
+				<p class="lede" style="margin-top: 0.5rem; color: var(--c-success);">↑ 23% above 90d average for this filter</p>
+			</div>
+
+			<div class="metric-card">
+				<span class="placeholder-tag">PLACEHOLDER</span>
+				<h4>Top 5 hiring agencies</h4>
+				<p class="lede">Posting count for the current filter.</p>
+				<div style="font-size: 11px;">
+					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>HSCB (FEMA)</span><strong>12</strong></div>
+					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>DOJ</span><strong>9</strong></div>
+					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>GSA</span><strong>8</strong></div>
+					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>VA</span><strong>7</strong></div>
+					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>HHS</span><strong>5</strong></div>
+				</div>
+			</div>
+
+			<div class="metric-card">
+				<span class="placeholder-tag">PLACEHOLDER</span>
+				<h4>Fill signal</h4>
+				<p class="lede">Median posting window vs. trailing 90 days.</p>
+				<div style="font-size: 12px; line-height: 1.6;">
+					<div>Median window <strong>14 days</strong> <span class="muted">(typical 17)</span></div>
+					<div><span style="color: var(--c-warn);">5</span> closing in ≤ 3 days</div>
+					<div><span style="color: var(--c-success);">12</span> opened in the last 7 days</div>
+				</div>
+			</div>
+
+			<div class="metric-card" style="border-style: dashed; opacity: 0.85;">
+				<span class="placeholder-tag">SLICE · investigate</span>
+				<h4>Concentration</h4>
+				<p class="lede">Posting density vs. workforce population — depends on OPM accessions slice we don't have yet.</p>
+				<div style="font-size: 11px; color: var(--c-muted);">Awaiting slice from <code>opm_accessions</code> + <code>jobs</code> aggregation.</div>
+			</div>
+		</section>
+
+		<!-- Saved tab -->
+		<section class="tab tab-saved" data-tab="saved">
+			<div class="eyebrow">My jobs</div>
+			<h2 style="margin: 0.2rem 0 0.8rem; font-size: 18px;">Saved · hidden · viewed</h2>
+
+			<div class="sub-tabs">
+				<button class="pill-btn accent" style="font-size: 11px;">Saved (3)</button>
+				<button class="pill-btn" style="font-size: 11px;">Hidden (1)</button>
+				<button class="pill-btn" style="font-size: 11px;">Viewed-closed (2)</button>
+			</div>
+
+			<article class="saved-row">
+				<div class="title">Supervisory Emergency Management Specialist</div>
+				<div class="meta">FEMA · Chicago, IL · GS-14 · saved 2 days ago</div>
+			</article>
+			<article class="saved-row">
+				<div class="title">Contract Specialist</div>
+				<div class="meta">GSA · Chicago, IL · GS-12/13 · saved 4 days ago</div>
+			</article>
+			<article class="saved-row">
+				<div class="title">Program Analyst</div>
+				<div class="meta">HHS · Remote · GS-13 · saved 5 days ago</div>
+			</article>
+
+			<div style="margin-top: 1rem;">
+				<div class="eyebrow">Saved searches</div>
+				<article class="saved-row" style="margin-top: 0.4rem;">
+					<div class="title">Chicago + HSCB + GS-12+</div>
+					<div class="meta">Open 47 · last run today · re-run nightly</div>
+				</article>
+				<article class="saved-row">
+					<div class="title">Anywhere remote · 0343 · GS-13</div>
+					<div class="meta">Open 28 · last run yesterday</div>
+				</article>
+			</div>
+		</section>
+
+	</div>
+
+	<!-- Dock -->
+	<nav class="dock">
+		<button data-target="map"><span class="icon">🗺</span><span>Map</span></button>
+		<button data-target="list" class="active"><span class="icon">≡</span><span>List</span></button>
+		<button data-target="area"><span class="icon">◉</span><span>Area</span></button>
+		<button data-target="metrics"><span class="icon">📊</span><span>Metrics</span></button>
+		<button data-target="saved"><span class="icon">★</span><span>Saved</span></button>
+	</nav>
+</div>
+
+<p style="text-align: center; color: var(--c-muted); font-size: 12px; max-width: 420px; margin: 0 auto 3rem; padding: 0 1rem;">
+	The same content as the desktop mosaic, single-pane. The scope bar (geo chips) and the masthead pills stay
+	above the tab content so users always see what they're filtered to and can switch view modes without losing
+	state. Tap a dock tab to switch panes.
+</p>
+
+<script>
+	document.querySelectorAll('.dock button').forEach((btn) => {
+		btn.addEventListener('click', () => {
+			const target = btn.dataset.target;
+			document.querySelectorAll('.dock button').forEach((b) => b.classList.toggle('active', b === btn));
+			document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === target));
+			document.querySelector('.content').scrollTop = 0;
+		});
+	});
+</script>
+</body>
+</html>
