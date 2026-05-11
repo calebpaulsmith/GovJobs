@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse — JobList sticky toolbar (zoom in)</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+	body { padding: 3.5rem 1rem 4rem; max-width: 1100px; margin: 0 auto; }
+	h1 { margin: 0 0 0.3rem; font-size: 22px; }
+	.lede { color: var(--c-muted); font-size: 14px; max-width: 60ch; margin: 0 0 1.5rem; }
+
+	.demo {
+		background: var(--c-panel);
+		border: 1px solid var(--c-border);
+		border-radius: 10px;
+		overflow: hidden;
+		margin-bottom: 1.4rem;
+	}
+
+	.toolbar {
+		padding: 0.7rem 1rem;
+		display: flex; flex-direction: column; gap: 0.55rem;
+		border-bottom: 1px solid var(--c-border);
+		position: sticky; top: 0;
+		background: var(--c-panel);
+	}
+	.toolbar-row { display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap; }
+	.search-input {
+		flex: 1; min-width: 280px;
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text);
+		border-radius: 6px;
+		padding: 0.5rem 0.75rem;
+		font-size: 13px;
+	}
+	.sort-select {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text);
+		padding: 0.5rem 0.75rem;
+		border-radius: 6px;
+		font-size: 13px;
+	}
+	.facet-chip {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		padding: 0.25rem 0.65rem;
+		font-size: 11px;
+		border-radius: 999px;
+		border: 1px solid var(--c-border-input);
+		background: var(--c-row-bg);
+		color: var(--c-text-2);
+		cursor: pointer;
+		font-weight: 600;
+	}
+	.facet-chip.on { background: var(--c-accent-bg-strong); border-color: var(--c-accent); color: var(--c-accent); }
+	.facet-chip .count { color: var(--c-muted); font-weight: 500; margin-left: 0.15rem; }
+
+	.list-summary {
+		display: flex; gap: 0.6rem; align-items: center;
+		font-size: 12px; color: var(--c-muted);
+		padding: 0 0.1rem;
+		flex-wrap: wrap;
+	}
+	.list-summary .annotation {
+		display: inline-flex; align-items: center; gap: 0.35rem;
+		padding: 0.1rem 0.55rem;
+		font-size: 11px;
+		border-radius: 4px;
+		background: rgba(80, 180, 120, 0.10);
+		border: 1px solid var(--c-success-border);
+		color: var(--c-success);
+		font-weight: 600;
+		position: relative;
+	}
+	.list-summary .annotation::after {
+		content: 'PLACEHOLDER';
+		position: absolute; top: -0.55rem; right: -0.3rem;
+		font-size: 8px; padding: 0.05rem 0.3rem; border-radius: 2px;
+		background: var(--c-bg); color: var(--c-muted);
+		border: 1px dashed var(--c-border);
+	}
+
+	.callouts { padding: 0.4rem 1rem 1.2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 12px; color: var(--c-text-2); }
+	.callouts h4 { margin: 0.2rem 0 0.35rem; font-size: 13px; color: var(--c-accent); }
+	.callouts li { margin-bottom: 0.25rem; }
+
+	.spec-panel {
+		margin-top: 2rem;
+		padding: 1rem 1.2rem;
+		border-left: 3px solid var(--c-accent);
+		background: var(--c-accent-bg);
+		border-radius: 4px;
+	}
+	.spec-panel h3 { margin: 0 0 0.4rem; font-size: 14px; color: var(--c-accent); text-transform: uppercase; letter-spacing: 0.05em; }
+	.spec-panel pre { font-size: 11px; color: var(--c-text-2); overflow: auto; background: rgba(0,0,0,0.25); padding: 0.6rem; border-radius: 4px; line-height: 1.45; }
+
+	.option { margin-bottom: 1.5rem; }
+	.option .lbl { display: inline-block; margin-bottom: 0.5rem; padding: 0.2rem 0.5rem; background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 4px; font-size: 11px; color: var(--c-muted); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="mock-banner">
+	<span>Mock: <strong>JobList sticky toolbar (zoom in)</strong> — every UX detail we'd lock in for D.5.28</span>
+	<span>
+		<a href="index.html">← all mocks</a>
+		<a href="desktop-mosaic.html">desktop mosaic</a>
+	</span>
+</div>
+
+<h1>JobList sticky toolbar — variants</h1>
+<p class="lede">You picked "sticky toolbar with search box + sort dropdown + multi-select facets". Three small variants below — same building blocks, different density. Pick one and I'll wire it to the live data.</p>
+
+<!-- Variant A — comfortable -->
+<div class="option">
+	<span class="lbl">Variant A · comfortable (default in the desktop mock)</span>
+	<div class="demo">
+		<div class="toolbar">
+			<div class="toolbar-row">
+				<input class="search-input" type="text" placeholder="Filter in list — title, agency, summary, qualifications…">
+				<select class="sort-select">
+					<option>Closing soonest</option>
+					<option>Newest first</option>
+					<option>Highest pay</option>
+					<option>Lowest pay</option>
+					<option>Title (A → Z)</option>
+					<option>Agency (A → Z)</option>
+					<option>Distance from Chicago</option>
+				</select>
+				<button class="pill-btn">Save this view</button>
+			</div>
+			<div class="toolbar-row">
+				<button class="facet-chip on">GS only <span class="count">38</span></button>
+				<button class="facet-chip">WG <span class="count">5</span></button>
+				<button class="facet-chip">ES/SES <span class="count">2</span></button>
+				<button class="facet-chip on">Remote-eligible <span class="count">9</span></button>
+				<button class="facet-chip">Closing ≤ 7d <span class="count">14</span></button>
+				<button class="facet-chip">Reposts only <span class="count">6</span></button>
+				<button class="facet-chip">Hide viewed <span class="count">12</span></button>
+				<button class="facet-chip danger" style="border-style: dashed;">Clear facets</button>
+			</div>
+			<div class="list-summary">
+				<span><strong style="color: var(--c-text);">47 of 312</strong> matching current filters</span>
+				<span class="annotation">↑ 23% above the trailing-90-day average for IL postings</span>
+			</div>
+		</div>
+		<div class="callouts">
+			<div>
+				<h4>What lives here</h4>
+				<ul>
+					<li><b>Search</b> — in-list filter only; never adds chips to the global filter state.</li>
+					<li><b>Sort</b> — pure ordering; saved with the view.</li>
+					<li><b>Facets</b> — toggle-only narrowing of the visible list. Counts always reflect the global filter chips above.</li>
+					<li><b>Inline annotation</b> — historical context (placeholder until the slice lands).</li>
+				</ul>
+			</div>
+			<div>
+				<h4>What does NOT live here</h4>
+				<ul>
+					<li>Agency / series / grade picks — those are global filter chips in the FilterPanel.</li>
+					<li>Geography — that's chips from polygon click + AddressSearch.</li>
+					<li>Saved-search management — that's the masthead pill.</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Variant B — compact -->
+<div class="option">
+	<span class="lbl">Variant B · compact (facets behind a popover)</span>
+	<div class="demo">
+		<div class="toolbar">
+			<div class="toolbar-row">
+				<input class="search-input" type="text" placeholder="Filter in list…">
+				<select class="sort-select">
+					<option>Closing soonest</option>
+					<option>Newest</option>
+					<option>Pay ↓</option>
+					<option>Pay ↑</option>
+					<option>Title</option>
+				</select>
+				<button class="pill-btn">▾ Facets (2)</button>
+				<button class="pill-btn">Save view</button>
+			</div>
+			<div class="list-summary">
+				<span><strong style="color: var(--c-text);">47 of 312</strong> · GS, Remote</span>
+				<span class="annotation">↑ 23% above 90d avg</span>
+			</div>
+		</div>
+		<div class="callouts">
+			<div>
+				<h4>Tradeoffs</h4>
+				<ul>
+					<li>Two lines instead of three — more room for rows.</li>
+					<li>One extra click to set facets, but power users with saved views are already past the picker.</li>
+					<li>Active facets show as a count badge on the button + comma-list in the summary.</li>
+				</ul>
+			</div>
+			<div>
+				<h4>Best for</h4>
+				<ul>
+					<li>Small screens (tablet) without going full mobile-dock.</li>
+					<li>Users who already know their facets and want to maximize row visibility.</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Variant C — single row with command bar -->
+<div class="option">
+	<span class="lbl">Variant C · single row (search inside a slash-command-style bar)</span>
+	<div class="demo">
+		<div class="toolbar">
+			<div class="toolbar-row">
+				<div style="flex: 1; display: flex; gap: 0.4rem; align-items: center; background: var(--c-row-bg); border: 1px solid var(--c-border-input); border-radius: 6px; padding: 0.4rem 0.6rem;">
+					<span class="muted" style="font-size: 12px;">/</span>
+					<input type="text" placeholder="filter:GS sort:closing-soon search:'emergency'" style="flex: 1; background: transparent; border: none; color: var(--c-text); outline: none; font-size: 13px; font-family: ui-monospace, SFMono-Regular, monospace;">
+					<span class="badge badge-muted">⌘ K</span>
+				</div>
+				<button class="pill-btn">Save view</button>
+			</div>
+			<div class="list-summary">
+				<span><strong style="color: var(--c-text);">47 of 312</strong> · GS, Remote, closing soonest</span>
+				<span class="annotation">↑ 23% above 90d avg</span>
+			</div>
+		</div>
+		<div class="callouts">
+			<div>
+				<h4>Tradeoffs</h4>
+				<ul>
+					<li>Single source of truth for filter-in-list state — easy to encode in a URL.</li>
+					<li>Discoverability is the worry. The placeholder shows the syntax but new users won't read it.</li>
+					<li>Could degrade to Variant A if the user types plain prose without operators.</li>
+				</ul>
+			</div>
+			<div>
+				<h4>Best for</h4>
+				<ul>
+					<li>Power users + share-link consumers who land in a fully-configured view.</li>
+					<li>Keyboard-first navigation.</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="spec-panel">
+	<h3>What gets saved in the share link / saved search (v2)</h3>
+	<p style="margin: 0 0 0.5rem; font-size: 12px; color: var(--c-text-2);">Toolbar state round-trips through the URL exactly like the global filters. Schema diff vs. v1:</p>
+	<pre>
+{
+  // v1 keys (unchanged)
+  "filters":   { ... global chips ... },
+  "metric":    "postings",
+  "viewport":  { "center": [-87.65, 41.85], "zoom": 8 },
+  "addressTarget": null,
+
+  // v2 additions (D.5.28 / D.5.29)
+  "viewMode":  "browse",
+  "list": {
+    "search":      "emergency",        // in-list search box value
+    "sort":        "closing_soon",     // sort key
+    "facets":      ["gs", "remote"],   // multi-select facet ids
+    "selectedJobId": "FEMA-12345",     // currently-open row (D.5.29)
+    "scrollOffset": 0.42               // fraction of list scrolled
+  },
+  "geographies": [
+    { "type": "radius", "center": [-87.65, 41.85], "miles": 50, "label": "Chicago, IL" }
+  ],
+  "theme":     "dark"
+}
+	</pre>
+	<p style="margin: 0.6rem 0 0; font-size: 11px; color: var(--c-muted);">
+		The dock <code>activeTab</code> on mobile is intentionally NOT shared — it's a viewport-local preference, not part of the view itself. Opening a shared mosaic link on a phone resolves to mobile dock with the List tab active.
+	</p>
+</div>
+
+</body>
+</html>

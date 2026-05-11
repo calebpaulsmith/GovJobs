@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse — metrics pane mock</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+	body { padding: 3.5rem 2rem 4rem; max-width: 1100px; margin: 0 auto; }
+	h1 { margin: 0 0 0.3rem; font-size: 24px; }
+	.lede { margin: 0 0 1.5rem; color: var(--c-muted); max-width: 60ch; font-size: 14px; }
+	.scope-bar { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+	.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+	@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+	.metric-card { padding: 1rem; position: relative; }
+	.metric-card h3 { margin: 0 0 0.3rem; font-size: 14px; }
+	.metric-card .lede2 { font-size: 12px; color: var(--c-muted); margin: 0 0 0.8rem; }
+	.placeholder-tag {
+		position: absolute; top: 0.55rem; right: 0.6rem;
+		font-size: 9px; padding: 0.1rem 0.45rem; border-radius: 3px;
+		background: var(--c-bg); color: var(--c-muted);
+		border: 1px dashed var(--c-border);
+		text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+	}
+
+	.placeholder-tag.investigate { color: var(--c-warn); border-color: var(--c-warn-border); }
+
+	.bars { display: flex; align-items: end; gap: 3px; height: 70px; padding-bottom: 0.3rem; border-bottom: 1px solid var(--c-border-subtle); }
+	.bars span { flex: 1; background: var(--c-accent); border-radius: 1px 1px 0 0; opacity: 0.85; position: relative; }
+	.bars span.hi { background: var(--c-warn); opacity: 1; }
+	.bars-labels { display: flex; gap: 3px; font-size: 9px; color: var(--c-faint); padding-top: 0.25rem; }
+	.bars-labels span { flex: 1; text-align: center; }
+
+	.agency-rows .agency-row { display: grid; grid-template-columns: 7rem 1fr 2rem; align-items: center; gap: 0.6rem; padding: 0.3rem 0; font-size: 12px; }
+	.agency-rows .bar-track { background: var(--c-border-subtle); height: 6px; border-radius: 3px; overflow: hidden; }
+	.agency-rows .bar-fill { background: var(--c-accent); height: 100%; }
+	.agency-rows .count { text-align: right; font-weight: 700; }
+
+	.kv { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.8rem; font-size: 13px; line-height: 1.6; }
+	.kv .key { color: var(--c-muted); }
+	.kv .v.up { color: var(--c-success); font-weight: 700; }
+	.kv .v.down { color: var(--c-danger); font-weight: 700; }
+	.kv .v.flat { color: var(--c-text-2); font-weight: 700; }
+
+	.investigate-banner {
+		margin-top: 2rem;
+		padding: 0.9rem 1rem;
+		background: rgba(240, 200, 120, 0.10);
+		border-left: 3px solid var(--c-warn-border);
+		border-radius: 4px;
+		font-size: 13px;
+		color: var(--c-text-2);
+	}
+	.investigate-banner h4 { margin: 0 0 0.3rem; color: var(--c-warn); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+	.investigate-banner ul { margin: 0.4rem 0 0 1.1rem; padding: 0; }
+	.investigate-banner li { margin-bottom: 0.25rem; }
+
+	.ai-callout {
+		margin: 1.5rem 0 0;
+		padding: 1rem;
+		background: var(--c-accent-bg);
+		border: 1px solid var(--c-accent-dim);
+		border-radius: 8px;
+		font-size: 13px;
+		color: var(--c-text-2);
+	}
+	.ai-callout h4 { margin: 0 0 0.4rem; color: var(--c-accent); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+
+<div class="mock-banner">
+	<span>Mock: <strong>Metrics pane</strong> — content of the dock's Metrics tab (and the desktop "📊 Open metrics" drawer)</span>
+	<span>
+		<a href="index.html">← all mocks</a>
+		<a href="desktop-mosaic.html">desktop mosaic</a>
+		<a href="mobile-dock.html">mobile dock</a>
+	</span>
+</div>
+
+<h1>Posting climate — current scope</h1>
+<p class="lede">Everything here updates as the user changes filters. The four placeholder cards each represent a separate data slice we still need to wire; the goal of this mock is to lock down how the cards look and read, so the slices can land one at a time without UI churn.</p>
+
+<div class="scope-bar">
+	<span class="chip">Chicago, IL · 50 mi <span class="x">×</span></span>
+	<span class="chip">HSCB (FEMA) <span class="x">×</span></span>
+	<span class="chip">GS-12+ <span class="x">×</span></span>
+	<span class="pill-btn">+ Add chip</span>
+	<span style="margin-left: auto; color: var(--c-muted); font-size: 12px;">47 of 312 jobs · 12 agencies · trailing 12 mo</span>
+</div>
+
+<div class="grid">
+
+	<!-- Card 1 — postings volume -->
+	<article class="metric-card panel">
+		<span class="placeholder-tag">PLACEHOLDER · historic slice</span>
+		<h3>Posting volume — trailing 12 months</h3>
+		<p class="lede2">Monthly USAJOBS posting count for this filter. The latest month is partial; faded last bar reflects that.</p>
+		<div class="bars">
+			<span style="height: 28%;" title="Jun"></span>
+			<span style="height: 42%;" title="Jul"></span>
+			<span style="height: 38%;" title="Aug"></span>
+			<span style="height: 56%;" title="Sep"></span>
+			<span style="height: 71%;" title="Oct"></span>
+			<span style="height: 64%;" title="Nov"></span>
+			<span style="height: 49%;" title="Dec"></span>
+			<span style="height: 60%;" title="Jan"></span>
+			<span style="height: 78%;" title="Feb"></span>
+			<span style="height: 88%;" title="Mar"></span>
+			<span style="height: 95%; opacity: 1;" class="hi" title="Apr"></span>
+			<span style="height: 45%; opacity: 0.45;" title="May (partial)"></span>
+		</div>
+		<div class="bars-labels">
+			<span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span>
+			<span>D</span><span>J</span><span>F</span><span>M</span><span>A</span><span>M</span>
+		</div>
+		<p style="margin: 0.6rem 0 0; font-size: 12px; color: var(--c-success); font-weight: 600;">
+			↑ 23% above the trailing-90-day average for this filter
+		</p>
+		<p style="margin: 0.4rem 0 0; font-size: 11px; color: var(--c-muted);">
+			Source: USAJOBS HistoricJoa, filtered by agency + geography + grade.
+		</p>
+	</article>
+
+	<!-- Card 2 — agency mix -->
+	<article class="metric-card panel">
+		<span class="placeholder-tag">PLACEHOLDER</span>
+		<h3>Top hiring agencies</h3>
+		<p class="lede2">Posting count for the current filter. Sortable by count, share, or pay range.</p>
+		<div class="agency-rows">
+			<div class="agency-row">
+				<span>HSCB (FEMA)</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 100%;"></span></span>
+				<span class="count">12</span>
+			</div>
+			<div class="agency-row">
+				<span>DOJ</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 75%;"></span></span>
+				<span class="count">9</span>
+			</div>
+			<div class="agency-row">
+				<span>GSA</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 66%;"></span></span>
+				<span class="count">8</span>
+			</div>
+			<div class="agency-row">
+				<span>VA</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 58%;"></span></span>
+				<span class="count">7</span>
+			</div>
+			<div class="agency-row">
+				<span>HHS</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 42%;"></span></span>
+				<span class="count">5</span>
+			</div>
+			<div class="agency-row">
+				<span>DHS (other)</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 33%;"></span></span>
+				<span class="count">4</span>
+			</div>
+			<div class="agency-row" style="opacity: 0.6;">
+				<span>Other (6)</span>
+				<span class="bar-track"><span class="bar-fill" style="width: 16%;"></span></span>
+				<span class="count">2</span>
+			</div>
+		</div>
+		<p style="margin: 0.7rem 0 0; font-size: 11px; color: var(--c-muted);">
+			Source: jobs aggregation. Click a row to add that agency to the filter chips.
+		</p>
+	</article>
+
+	<!-- Card 3 — fill signal -->
+	<article class="metric-card panel">
+		<span class="placeholder-tag">PLACEHOLDER</span>
+		<h3>Fill signal</h3>
+		<p class="lede2">Posting-window distribution + closing-soon pressure. Lower median means jobs close faster than usual.</p>
+		<div class="kv">
+			<span class="key">Median posting window</span>
+			<span class="v flat">14 days <span class="muted" style="font-weight: 500;">(typ 17)</span></span>
+			<span class="key">Window 25th – 75th</span>
+			<span class="v flat">9d – 21d</span>
+			<span class="key">Reposts in last 12mo</span>
+			<span class="v down">↑ 18% vs avg</span>
+			<span class="key">Closing ≤ 3 days</span>
+			<span class="v" style="color: var(--c-warn); font-weight: 700;">5</span>
+			<span class="key">Opened in last 7 days</span>
+			<span class="v up">↑ 12</span>
+		</div>
+		<p style="margin: 0.7rem 0 0; font-size: 11px; color: var(--c-muted);">
+			Source: HistoricJoa close-date distributions + current open jobs.
+		</p>
+	</article>
+
+	<!-- Card 4 — concentration (investigate) -->
+	<article class="metric-card panel" style="border-style: dashed;">
+		<span class="placeholder-tag investigate">SLICE · investigate</span>
+		<h3>Concentration vs. workforce</h3>
+		<p class="lede2">How over- or under-represented is this filter's posting density relative to the underlying federal workforce in the same area?</p>
+		<div class="kv">
+			<span class="key">Postings per 1k feds (CHI)</span>
+			<span class="v flat">2.3 <span class="muted">(US avg 1.8)</span></span>
+			<span class="key">Concentration index</span>
+			<span class="v up">+28% vs US</span>
+			<span class="key">Workforce snapshot date</span>
+			<span class="v flat" style="font-size: 11px;">FedScope Q4 2025</span>
+		</div>
+		<p style="margin: 0.7rem 0 0; font-size: 11px; color: var(--c-warn);">
+			⚠ Needs OPM <code>accessions</code> + workforce roll-up by locality. Slice does not exist yet.
+		</p>
+	</article>
+</div>
+
+<div class="ai-callout">
+	<h4>📡 On-demand area enrichment slot</h4>
+	The Metrics tab can call out to an external model with the current scope as context (filters + roll-up + recent close dates) and return a 1-2 paragraph summary plus a "what to watch next week" note. Sized to fit within token limits — we'd send the JSON roll-up, not raw jobs. Investigate whether this slice lives in <code>public_map/functions/api/area-summary.ts</code> (edge-cached for 6 hours per scope hash) or whether it stays a dashboard-only feature initially.
+</div>
+
+<div class="investigate-banner">
+	<h4>⚠ Implementation slices to investigate (not blocking the Browse UI)</h4>
+	<ul>
+		<li><strong>Pulse band counts</strong> in the desktop SmallestAreaCard and in the mobile Area tab — derive from existing <code>jobs_detail.json</code> aggregations grouped by locality? Or do they need a precomputed <code>area_pulse.json</code> emitted by <code>src/public_map_export.py</code>?</li>
+		<li><strong>Trailing-12-month posting volume</strong> — local DB has it; the bundle currently emits closed-jobs (90 day) only. Needs a new export blob keyed by (agency, locality, series).</li>
+		<li><strong>Per-job repost / rarity badge</strong> — the Repost Detector phase already builds this for the dashboard. Need to decide whether to denormalize into <code>jobs_detail.json</code> or compute lazily in the JobCard.</li>
+		<li><strong>Inline annotation in the JobList header</strong> ("above-average week for IL postings") — same source as the trailing-12-month card; can probably be derived client-side from the same data.</li>
+		<li><strong>On-demand area summary</strong> — schema for the JSON payload, where the secret lives, and the edge-cache key. Out of scope for D.5.28 itself but the placeholder spot is reserved here.</li>
+	</ul>
+</div>
+
+</body>
+</html>
