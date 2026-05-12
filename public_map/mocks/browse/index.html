@@ -42,7 +42,7 @@
 </head>
 <body>
 <h1>Browse UI mocks</h1>
-<p class="lede">Static, click-through mocks for the Browse view (ADR-0033 / D.5.28) plus the iOS-style mobile dock that's been added on top. None of these are wired to real data — they're for picking a direction so we can lock in <code>layout.ts</code>, the JobList rich-mode shape, and where Pulse metrics live.</p>
+<p class="lede">Static, click-through mocks for the Browse view (ADR-0033 / D.5.28). The <strong>desktop mosaic is at rev 2</strong> — pinned top band, single filter bar, metrics folded into SmallestAreaCard, Job Lists / My Postings save verbs, provenance toast. The other three mocks are still on rev 1 and will be re-cut after rev 2 is approved.</p>
 
 <div class="grid">
 	<a class="card panel" href="desktop-mosaic.html">
@@ -51,8 +51,8 @@
 			<div class="area"></div>
 			<div class="list"></div>
 		</div>
-		<h3>1. Desktop mosaic <span class="badge badge-info" style="margin-left:0.4rem;">Default</span></h3>
-		<p>Three panes per ADR-0033: small map top-left, SmallestAreaCard with a Pulse band top-right, JobList rich-mode with sticky toolbar bottom. Per-job historical badges live on individual rows.</p>
+		<h3>1. Desktop mosaic <span class="badge badge-success" style="margin-left:0.4rem;">Rev 2 — current</span></h3>
+		<p>Pinned-by-default top band (small map + SmallestAreaCard, 30 vh) over a tall JobList (70 vh). One filter bar drives map markers + list rows + metric blocks. Metrics live inline in the area card. "Save as Job List" persists a filtered set; "Save to My Postings" persists a single job.</p>
 	</a>
 
 	<a class="card panel" href="mobile-dock.html">
@@ -66,8 +66,8 @@
 				<span>Saved</span>
 			</div>
 		</div>
-		<h3>2. Mobile / web-app dock</h3>
-		<p>Same content, single-pane. Five tabs in a bottom dock — Map / List / Area / Metrics / Saved. Tap a tab to swap the content area. Click between tabs in the mock to feel the transitions.</p>
+		<h3>2. Mobile / web-app dock <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — pending update</span></h3>
+		<p>Single-pane, dock-driven. Five tabs — Map / List / Here / Metrics / Saved. (Rev 2 will rename "Area" → "Here", drop the separate Metrics tab in favor of inline metric blocks inside the Here card, and surface Job Lists / My Postings.)</p>
 	</a>
 
 	<a class="card panel" href="metrics-pane.html">
@@ -77,8 +77,8 @@
 			<div></div>
 			<div></div>
 		</div>
-		<h3>3. Metrics pane</h3>
-		<p>What the "Metrics" tab (mobile dock) or the desktop Metrics drawer contains: trailing-12-month posting volume, agency mix, fill-rate, geographic concentration. Includes placeholders for the on-demand "AI call for this area" enrichment slot.</p>
+		<h3>3. Metrics pane <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — to be folded in</span></h3>
+		<p>Pre-revision standalone Metrics pane. In rev 2 this is no longer a separate surface — the four blocks (Postings / Workforce / Pay vs COL / Urgency) become expandable sections inside SmallestAreaCard. Kept here as a content reference for what each expanded block should show.</p>
 	</a>
 
 	<a class="card panel" href="joblist-toolbar.html">
@@ -89,17 +89,25 @@
 			<div></div>
 			<div></div>
 		</div>
-		<h3>4. JobList sticky toolbar (zoom-in)</h3>
-		<p>The toolbar above the rich rows: in-list search, sort dropdown, multi-select facet chips, inline historical annotation. This is the most-iterated component, so it gets its own dedicated mock.</p>
+		<h3>4. JobList sticky toolbar (zoom-in) <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — pending update</span></h3>
+		<p>Detail view of the JobList toolbar. Rev 2 collapses this down to free text + sort + 4 most-used facets + a single "+ More filters" disclosure (instead of multiple facet rows + saved-search controls). Rev 2 toolbar already lives in mock #1.</p>
 	</a>
 </div>
 
 <div class="note">
-	<strong>How I'm reading your direction:</strong>
+	<strong>Rev 2 design principles (locked in chat 2026-05-12):</strong>
 	<br><br>
-	Mosaic-on-desktop / dock-on-mobile (your pick) means <code>layout.ts</code> needs a <code>mode</code> param (already in the ADR) <em>and</em> a third 'mobile-dock' breakpoint variant. Every mock here uses the existing CSS tokens from <code>+layout.svelte</code> so nothing changes visually for users who jump between Map-only and Browse. The sticky toolbar pattern (search + sort + facets) repeats inside the dock too, so the JobList feels identical across viewports.
+	<strong>1. Pin / unpin top band (default pinned).</strong> Pinned = sticky top band, JobList scrolls underneath. Unpinned = whole page scrolls as one. State persists per user.
 	<br><br>
-	Placeholder metric panels are clearly tagged with <span class="badge badge-muted">PLACEHOLDER</span> badges so the data slice work can land separately without blocking the layout.
+	<strong>2. Single filter bar.</strong> The JobList toolbar drives map markers, SmallestAreaCard metrics, and JobList rows — one source of truth. Hover a row → matching marker pulses. Filter input debounced at ~150ms.
+	<br><br>
+	<strong>3. Two save verbs.</strong> "Save as Job List" persists a filter set; "Save to My Postings" persists a single posting. A provenance toast confirms either in plain language ("Saved Chicago–Naperville locality, FEMA, GS-13–14 as a new Job List").
+	<br><br>
+	<strong>4. Metrics inside SmallestAreaCard.</strong> No standalone Metrics surface. Four top-line blocks (Postings / Workforce / Pay vs COL / Urgency), each click-to-expand inline.
+	<br><br>
+	<strong>5. Page purposes.</strong> Browse = "find jobs to apply to, right now" (decisional). Map-only = "see where federal hiring is happening" (exploratory). Localities = "compare places against each other" (comparative).
+	<br><br>
+	<strong>6. Area summary stays deterministic.</strong> Templated prose from local fields. No Claude API per request, ever. If we want richer narration, it's a nightly batch over all localities — never on-demand.
 </div>
 
 <div class="legend">
