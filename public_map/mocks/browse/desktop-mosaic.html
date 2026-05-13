@@ -2,15 +2,65 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Browse — desktop mosaic mock</title>
+<title>Browse — desktop mosaic (rev 2)</title>
 <link rel="stylesheet" href="_shared.css">
+<!--
+	Rev 2 design decisions (rolled in from chat 2026-05-12):
+
+	1.  Pin / unpin top band.
+		Default: PINNED. Top band (small map + SmallestAreaCard) stays sticky;
+		the JobList scrolls independently underneath. Toggling unpinned lets the
+		whole page scroll as one document, so the top band scrolls off-screen
+		as the user reads down the list. Pin state lives in localStorage for
+		V1, will migrate to the user profile when accounts ship.
+
+	2.  Single filter bar, no separate metric switcher.
+		The JobList toolbar is THE filter. It drives the visible markers on
+		the map, the contents of SmallestAreaCard's pulse metrics, and the
+		JobList rows — one source of truth. List ↔ map crossfilter; hover a
+		row to pulse the matching marker, hover a marker to highlight the row.
+		Performance is fine at ≤ 5k postings; filter input is debounced at
+		~150ms before re-rendering markers.
+
+	3.  Two save verbs, not one.
+			•	"Save as Job List"   — persists the current filter set
+				                       (an entire scoped search) to Job Lists.
+			•	"Save to My Postings" — persists an individual posting.
+		Provenance toast confirms either, in plain language, with the source
+		of the action ("Saved Denver-Aurora locality, FEMA, GS-13–14 as a
+		new Job List").
+
+	4.  Metrics fold into SmallestAreaCard.
+		No standalone Metrics pane. Each of the four buckets (Postings,
+		Workforce, Pay vs COL, Urgency) shows its TOP-LINE number in the
+		card, with an "Expand" chevron that reveals the deeper Metrics-pane
+		contents inline. Cost-of-living becomes a "Pay vs COL" expandable
+		section — not a separate panel.
+
+	5.  Advanced filters behind a single disclosure.
+		The visible toolbar holds: free text, sort, agency typeahead,
+		geography chips, and 4–5 most-used facet chips. Everything else
+		(series-pattern, GS range, hiring-path, security-clearance,
+		closing-window, etc.) lives behind a single "More filters"
+		disclosure. Halves the visible decision surface.
+
+	6.  Pane proportions: top band 30 %, JobList 70 %.
+		Down from 50/50; small map + small SmallestAreaCard are CONTEXT,
+		the JobList is the work.
+
+	7.  Area summary stays deterministic.
+		Templated prose composed from existing local fields. No Claude API
+		call per request, ever. If we later want richer narration, it's a
+		nightly batch job over all localities/small-areas — never on-demand.
+-->
 <style>
 	body { padding-top: 2.4rem; height: 100vh; overflow: hidden; }
 
 	.app {
 		display: grid;
-		grid-template-rows: 3.2rem 1fr 1fr;
-		grid-template-columns: 50% 50%;
+		/* Masthead + 30 % top band + 70 % JobList */
+		grid-template-rows: 3.2rem 30vh 1fr;
+		grid-template-columns: 38% 62%;
 		height: calc(100vh - 2.4rem);
 		gap: 1px;
 		background: var(--c-border-subtle);
@@ -28,65 +78,91 @@
 	.masthead .right { margin-left: auto; display: flex; gap: 0.4rem; align-items: center; }
 
 	.pane-map { grid-row: 2; grid-column: 1; background: var(--c-bg); position: relative; }
-	.pane-area { grid-row: 2; grid-column: 2; background: var(--c-bg); padding: 1rem; overflow: auto; }
+	.pane-area { grid-row: 2; grid-column: 2; background: var(--c-bg); padding: 0.75rem 1rem; overflow: auto; }
 	.pane-list { grid-row: 3; grid-column: 1 / 3; background: var(--c-bg); overflow: hidden; display: flex; flex-direction: column; }
 
 	/* Map pane content. */
 	.pane-map .map-placeholder { position: absolute; inset: 0; }
-	.pane-map .map-overlay {
-		position: absolute; left: 0.6rem; bottom: 0.6rem;
+	.pane-map .geo-chips {
+		position: absolute; top: 0.6rem; left: 0.6rem; right: 0.6rem;
 		display: flex; gap: 0.35rem; flex-wrap: wrap;
-		max-width: calc(100% - 1.2rem);
 	}
-	.pane-map .filter-panel-toggle {
-		position: absolute; top: 0.6rem; left: 0.6rem;
+	.pane-map .pin-control {
+		position: absolute; bottom: 0.6rem; right: 0.6rem;
 		display: flex; gap: 0.35rem;
 	}
-	.pane-map .geo-chips {
-		position: absolute; top: 0.6rem; right: 0.6rem;
-		display: flex; gap: 0.35rem; flex-wrap: wrap;
-		max-width: 60%; justify-content: flex-end;
+
+	/* Hover-link callout — shows the list ↔ map crossfilter relationship. */
+	.crossfilter-callout {
+		position: absolute; bottom: 0.6rem; left: 0.6rem;
+		font-size: 10px; color: var(--c-muted);
+		background: var(--c-panel-blur);
+		padding: 0.25rem 0.55rem; border-radius: 4px;
+		border: 1px dashed var(--c-faint);
+		max-width: 60%;
 	}
 
-	/* SmallestAreaCard. */
-	.area-card .eyebrow { margin-bottom: 0.2rem; }
-	.area-card h2 { margin: 0 0 0.4rem; font-size: 22px; line-height: 1.15; }
-	.area-card .subtitle { color: var(--c-muted); font-size: 13px; margin: 0 0 0.9rem; }
-	.area-card .pulse-band {
+	/* SmallestAreaCard — denser now that metrics live here. */
+	.area-card .eyebrow { margin-bottom: 0.15rem; }
+	.area-card h2 { margin: 0 0 0.2rem; font-size: 18px; line-height: 1.2; }
+	.area-card .subtitle { color: var(--c-muted); font-size: 12px; margin: 0 0 0.65rem; }
+	.area-card .pin-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+
+	.metric-blocks {
 		display: grid; grid-template-columns: repeat(4, 1fr);
-		gap: 0.6rem; margin: 0 0 1rem;
-		padding: 0.75rem;
+		gap: 0.4rem; margin: 0 0 0.5rem;
+	}
+	.mblock {
 		background: var(--c-row-bg);
 		border: 1px solid var(--c-border-subtle);
-		border-radius: 8px;
-		position: relative;
+		border-radius: 6px;
+		padding: 0.45rem 0.55rem;
+		font-size: 11px;
+		cursor: pointer;
+		transition: border-color 100ms ease;
 	}
-	.area-card .pulse-band::after {
-		content: 'PLACEHOLDER — needs AI/historical slice';
-		position: absolute; top: -0.55rem; right: 0.5rem;
-		font-size: 9px; padding: 0.05rem 0.4rem; border-radius: 3px;
-		background: var(--c-bg);
-		color: var(--c-muted);
-		border: 1px dashed var(--c-border);
+	.mblock:hover { border-color: var(--c-accent-dim); }
+	.mblock .label { color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; }
+	.mblock .value { font-size: 16px; font-weight: 700; color: var(--c-text); margin: 0.1rem 0; }
+	.mblock .delta { font-size: 10px; }
+	.mblock .delta.up { color: var(--c-success); }
+	.mblock .delta.down { color: var(--c-danger); }
+	.mblock .expand-hint { font-size: 9px; color: var(--c-faint); margin-top: 0.15rem; }
+
+	/* Inline expansion (one of the four blocks shown open as a demo). */
+	.mblock.open {
+		grid-column: 1 / -1;
+		display: grid; grid-template-columns: auto 1fr;
+		gap: 0.5rem 1rem;
+		border-color: var(--c-accent-dim);
 	}
-	.pulse-metric .label { font-size: 10px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-	.pulse-metric .value { font-size: 18px; font-weight: 700; color: var(--c-text); margin: 0.1rem 0 0.15rem; }
-	.pulse-metric .delta { font-size: 11px; }
-	.pulse-metric .delta.up { color: var(--c-success); }
-	.pulse-metric .delta.down { color: var(--c-danger); }
+	.mblock.open .label { font-size: 10px; }
+	.mblock.open .value { font-size: 14px; }
+	.mblock.open .detail-grid { font-size: 11px; }
+	.mblock.open .detail-grid dt { color: var(--c-muted); }
+	.mblock.open .detail-grid dd { margin: 0 0 0.2rem; font-weight: 600; }
+	.mblock.open .collapse-hint { font-size: 9px; color: var(--c-faint); text-align: right; }
 
-	.area-card .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1.2rem; font-size: 13px; margin: 0.4rem 0; }
-	.area-card .stat-grid dt { color: var(--c-muted); }
-	.area-card .stat-grid dd { margin: 0; font-weight: 600; color: var(--c-text-2); }
+	.area-summary {
+		font-size: 11px; color: var(--c-text-2);
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-left: 3px solid var(--c-accent-dim);
+		padding: 0.5rem 0.65rem;
+		border-radius: 6px;
+		margin: 0 0 0.5rem;
+		line-height: 1.45;
+	}
+	.area-summary .label { color: var(--c-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.15rem; }
 
-	.area-card .actions { display: flex; gap: 0.4rem; margin-top: 0.8rem; flex-wrap: wrap; }
+	.area-card .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
 	/* JobList pane. */
 	.list-toolbar {
 		background: var(--c-panel);
 		border-bottom: 1px solid var(--c-border);
-		padding: 0.6rem 1rem;
-		display: flex; flex-direction: column; gap: 0.55rem;
+		padding: 0.55rem 1rem;
+		display: flex; flex-direction: column; gap: 0.45rem;
 		flex-shrink: 0;
 	}
 	.toolbar-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
@@ -96,7 +172,7 @@
 		border: 1px solid var(--c-border-input);
 		color: var(--c-text);
 		border-radius: 6px;
-		padding: 0.45rem 0.7rem;
+		padding: 0.4rem 0.7rem;
 		font-size: 13px;
 		outline: none;
 	}
@@ -105,14 +181,14 @@
 		background: var(--c-row-bg);
 		border: 1px solid var(--c-border-input);
 		color: var(--c-text);
-		padding: 0.45rem 0.7rem;
+		padding: 0.4rem 0.7rem;
 		border-radius: 6px;
 		font-size: 13px;
 		cursor: pointer;
 	}
 	.facet-chip {
 		display: inline-flex; align-items: center; gap: 0.3rem;
-		padding: 0.22rem 0.6rem;
+		padding: 0.2rem 0.55rem;
 		font-size: 11px;
 		border-radius: 999px;
 		border: 1px solid var(--c-border-input);
@@ -124,86 +200,116 @@
 	.facet-chip.on { background: var(--c-accent-bg-strong); border-color: var(--c-accent); color: var(--c-accent); }
 	.facet-chip .count { color: var(--c-muted); font-weight: 500; margin-left: 0.15rem; }
 
+	.more-filters {
+		font-size: 11px; color: var(--c-muted);
+		padding: 0.2rem 0.55rem;
+		border-radius: 4px;
+		border: 1px dashed var(--c-faint);
+		background: transparent;
+		cursor: pointer;
+	}
+	.more-filters:hover { border-color: var(--c-accent); color: var(--c-accent); }
+
 	.list-summary {
 		display: flex; gap: 0.6rem; align-items: center;
-		font-size: 12px; color: var(--c-muted);
+		font-size: 11px; color: var(--c-muted);
 		padding: 0 0.1rem;
-	}
-	.list-summary .annotation {
-		display: inline-flex; align-items: center; gap: 0.35rem;
-		padding: 0.1rem 0.55rem;
-		font-size: 11px;
-		border-radius: 4px;
-		background: rgba(80, 180, 120, 0.10);
-		border: 1px solid var(--c-success-border);
-		color: var(--c-success);
-		font-weight: 600;
-		position: relative;
-	}
-	.list-summary .annotation::after {
-		content: 'PLACEHOLDER';
-		position: absolute; top: -0.55rem; right: -0.3rem;
-		font-size: 8px; padding: 0.05rem 0.3rem; border-radius: 2px;
-		background: var(--c-bg); color: var(--c-muted);
-		border: 1px dashed var(--c-border);
 	}
 
 	.list-rows { flex: 1; overflow-y: auto; padding: 0.4rem 1rem 1rem; }
 	.row {
 		display: grid;
 		grid-template-columns: 1fr auto;
-		gap: 0.6rem 1rem;
-		padding: 0.85rem 1rem;
+		gap: 0.4rem 1rem;
+		padding: 0.7rem 0.9rem;
 		background: var(--c-row-bg);
 		border: 1px solid var(--c-border-subtle);
 		border-radius: 8px;
-		margin-bottom: 0.55rem;
+		margin-bottom: 0.5rem;
 		transition: border-color 100ms ease;
 		cursor: pointer;
 	}
 	.row:hover { border-color: var(--c-accent-dim); }
 	.row.selected { border-color: var(--c-accent); background: var(--c-accent-bg); }
+	.row.hover-linked { border-color: var(--c-accent); }
 	.row .title-line { display: flex; gap: 0.45rem; align-items: baseline; flex-wrap: wrap; }
-	.row .title-line h4 { margin: 0; font-size: 15px; font-weight: 600; color: var(--c-text); }
-	.row .meta { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 0.2rem 0; font-size: 12px; color: var(--c-muted); }
+	.row .title-line h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--c-text); }
+	.row .meta { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 0.15rem 0; font-size: 11px; color: var(--c-muted); }
 	.row .meta strong { color: var(--c-text-2); font-weight: 600; }
-	.row .excerpts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; margin-top: 0.45rem; font-size: 12px; color: var(--c-text-2); }
-	.row .excerpts .label { color: var(--c-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.15rem; }
-	.row .excerpts p { margin: 0; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-	.row .right-col { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
-	.row .pay { font-size: 14px; font-weight: 700; color: var(--c-text); text-align: right; }
-	.row .pay .pay-note { font-size: 10px; color: var(--c-muted); font-weight: 500; display: block; margin-top: 0.1rem; }
-	.row .actions { display: flex; gap: 0.25rem; margin-top: 0.4rem; }
+	.row .excerpts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; margin-top: 0.35rem; font-size: 11px; color: var(--c-text-2); }
+	.row .excerpts .label { color: var(--c-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.1rem; }
+	.row .excerpts p { margin: 0; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.row .right-col { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+	.row .pay { font-size: 13px; font-weight: 700; color: var(--c-text); text-align: right; }
+	.row .pay .pay-note { font-size: 9px; color: var(--c-muted); font-weight: 500; display: block; margin-top: 0.05rem; }
+	.row .actions { display: flex; gap: 0.25rem; margin-top: 0.3rem; }
 	.row .icon-btn {
 		appearance: none; border: 1px solid var(--c-border-input);
 		background: var(--c-bg); color: var(--c-text-2);
-		font-size: 11px; padding: 0.2rem 0.5rem; border-radius: 4px;
+		font-size: 10px; padding: 0.18rem 0.45rem; border-radius: 4px;
 		cursor: pointer;
 	}
 	.row .icon-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
 
-	.row .quickadd { opacity: 0; transition: opacity 100ms ease; display: flex; gap: 0.2rem; flex-wrap: wrap; margin-top: 0.35rem; }
-	.row:hover .quickadd { opacity: 1; }
-	.quickadd .qa { font-size: 10px; padding: 0.1rem 0.5rem; border: 1px dashed var(--c-faint); border-radius: 999px; color: var(--c-muted); cursor: pointer; }
-	.quickadd .qa:hover { border-color: var(--c-accent); color: var(--c-accent); }
-
 	.hist-badge {
 		display: inline-flex; align-items: center; gap: 0.3rem;
-		padding: 0.05rem 0.45rem; border-radius: 999px;
+		padding: 0.05rem 0.4rem; border-radius: 999px;
 		font-size: 10px; font-weight: 600;
 		background: rgba(123, 208, 242, 0.10);
 		border: 1px dashed var(--c-accent-dim);
 		color: var(--c-accent);
-		position: relative;
 	}
-	.hist-badge::after {
-		content: '';
+
+	/* Provenance toast — slides from bottom-right. */
+	.toast {
+		position: fixed;
+		right: 1.2rem; bottom: 1.2rem;
+		max-width: 320px;
+		background: var(--c-panel);
+		border: 1px solid var(--c-accent-dim);
+		border-radius: 8px;
+		padding: 0.7rem 0.9rem;
+		font-size: 12px;
+		color: var(--c-text);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+		display: flex; flex-direction: column; gap: 0.45rem;
+		z-index: 50;
 	}
+	.toast .toast-label { color: var(--c-accent); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+	.toast .toast-body { line-height: 1.45; color: var(--c-text-2); }
+	.toast .toast-body strong { color: var(--c-text); }
+	.toast .toast-actions { display: flex; gap: 0.4rem; }
+	.toast .toast-actions button {
+		appearance: none;
+		background: transparent;
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text-2);
+		font-size: 11px;
+		padding: 0.18rem 0.55rem;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.toast .toast-actions button.primary { border-color: var(--c-accent); color: var(--c-accent); }
+
+	/* Pin button visual treatment. */
+	.pin-btn {
+		appearance: none;
+		border: 1px solid var(--c-border-input);
+		background: var(--c-bg);
+		color: var(--c-muted);
+		font-size: 10px;
+		padding: 0.18rem 0.5rem;
+		border-radius: 4px;
+		cursor: pointer;
+		display: inline-flex; align-items: center; gap: 0.25rem;
+	}
+	.pin-btn.on { color: var(--c-accent); border-color: var(--c-accent); }
+	.pin-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
 </style>
 </head>
 <body>
 <div class="mock-banner">
-	<span>Mock: <strong>Desktop mosaic (≥ 1024 px)</strong> — ADR-0033 §2 + sticky toolbar + Pulse band</span>
+	<span>Mock (rev 2): <strong>Desktop mosaic — pinned top band + single filter bar + Job Lists / My Postings</strong></span>
 	<span>
 		<a href="index.html">← all mocks</a>
 		<a href="mobile-dock.html">mobile dock →</a>
@@ -214,7 +320,7 @@
 	<!-- Masthead -->
 	<header class="masthead">
 		<span class="brand">The Grand Pipeline</span>
-		<span class="muted" style="font-size: 12px;">map • fed-jobs</span>
+		<span class="muted" style="font-size: 12px;">map · fed-jobs</span>
 
 		<nav class="masthead-pills" style="margin-left: 1rem;">
 			<a class="active">Browse</a>
@@ -224,15 +330,15 @@
 
 		<div class="right">
 			<button class="pill-btn">⚲ Address</button>
-			<button class="pill-btn">★ Saved searches</button>
-			<button class="pill-btn">⇗ Copy share link</button>
+			<button class="pill-btn">📋 Job Lists <span class="muted">(4)</span></button>
+			<button class="pill-btn">★ My Postings <span class="muted">(3)</span></button>
+			<button class="pill-btn">⇗ Share view</button>
 			<button class="pill-btn">$ Pay compare</button>
-			<button class="pill-btn">☾ My jobs <span class="muted">(3)</span></button>
 			<button class="pill-btn">☀</button>
 		</div>
 	</header>
 
-	<!-- Map pane (top-left) -->
+	<!-- Map pane (top-left, ~38 % width × 30 vh height) -->
 	<section class="pane-map">
 		<div class="map-placeholder">
 			<div class="marker cluster" style="left: 28%; top: 38%;">47</div>
@@ -241,11 +347,6 @@
 			<div class="marker cluster" style="left: 68%; top: 56%;">12</div>
 			<div class="marker" style="left: 75%; top: 42%;"></div>
 			<div class="marker" style="left: 22%; top: 60%;"></div>
-			<div class="label" style="left: 4%; bottom: 8%;">Posting heat (placeholder)</div>
-		</div>
-
-		<div class="filter-panel-toggle">
-			<button class="pill-btn">▾ Filters (3)</button>
 		</div>
 
 		<div class="geo-chips">
@@ -253,107 +354,117 @@
 			<span class="chip">VA · HSCB <span class="x">×</span></span>
 		</div>
 
-		<div class="map-overlay">
-			<button class="pill-btn accent">Postings</button>
-			<button class="pill-btn">Workforce</button>
-			<button class="pill-btn">Pay-vs-COL</button>
-			<button class="pill-btn">Remote share</button>
-			<button class="pill-btn muted">Fed props</button>
+		<div class="crossfilter-callout">
+			Markers reflect the JobList filter exactly. Hover a row → matching dot pulses.
+		</div>
+
+		<div class="pin-control">
+			<button class="pin-btn on" title="Pinned — top band stays sticky while the list scrolls">📌 Pinned</button>
 		</div>
 	</section>
 
-	<!-- SmallestAreaCard pane (top-right) -->
+	<!-- SmallestAreaCard pane (top-right, ~62 % width × 30 vh height) -->
 	<section class="pane-area">
 		<div class="area-card">
-			<div class="eyebrow">Locality · smallest area containing viewport</div>
-			<h2>Chicago–Naperville, IL–IN–WI</h2>
-			<p class="subtitle">CHI · 47 open postings · 15 federal properties · 13 counties</p>
+			<div class="pin-row">
+				<div>
+					<div class="eyebrow">Locality · smallest area containing viewport</div>
+					<h2>Chicago–Naperville, IL–IN–WI</h2>
+					<p class="subtitle">CHI · 47 open postings · 15 federal properties · 13 counties</p>
+				</div>
+			</div>
 
-			<!-- Pulse band -->
-			<div class="pulse-band">
-				<div class="pulse-metric">
+			<!-- Deterministic, top-level area summary (no LLM). -->
+			<div class="area-summary">
+				<div class="label">Area summary · auto-generated</div>
+				47 open postings in this locality. 12 posted in the last 7 days
+				(↑ 4 vs. a typical week). Median close window is 14 days; 5 close
+				within 3 days. GS-13 step 1 here pays <strong>$107,540</strong>,
+				which is <strong>108.4</strong> on the pay-vs-COL index
+				(state average = 100). Top hiring agencies: HSCB, DOJ, GSA.
+			</div>
+
+			<!-- Four metric blocks — each is a top-line + expand. Block 3 is shown open. -->
+			<div class="metric-blocks">
+				<div class="mblock">
 					<div class="label">Postings (open)</div>
 					<div class="value">47</div>
 					<div class="delta up">↑ 23% vs 90d avg</div>
+					<div class="expand-hint">▾ expand</div>
 				</div>
-				<div class="pulse-metric">
-					<div class="label">New (last 7d)</div>
-					<div class="value">12</div>
-					<div class="delta up">↑ 4 vs typical week</div>
+				<div class="mblock">
+					<div class="label">Workforce</div>
+					<div class="value">~89k</div>
+					<div class="delta">civilian, FY24 OPM</div>
+					<div class="expand-hint">▾ expand</div>
 				</div>
-				<div class="pulse-metric">
-					<div class="label">Median close</div>
-					<div class="value">14d</div>
-					<div class="delta down">↓ 3d vs 90d avg</div>
+				<div class="mblock open">
+					<div>
+						<div class="label">Pay vs COL</div>
+						<div class="value">108.4</div>
+						<div class="delta up">↑ 4.2 above national</div>
+					</div>
+					<div>
+						<dl class="detail-grid">
+							<dt>Locality pay adjustment</dt>
+							<dd>30.41%</dd>
+							<dt>GS-13 step 1 (2026)</dt>
+							<dd>$107,540</dd>
+							<dt>BEA RPP (overall, IL)</dt>
+							<dd>105.3</dd>
+							<dt>ACS median rent (Cook Co.)</dt>
+							<dd>$1,387 / mo</dd>
+							<dt>Index formula</dt>
+							<dd class="muted">(locality pay ÷ national base) ÷ (RPP ÷ 100) × 100</dd>
+						</dl>
+						<div class="collapse-hint">▴ collapse</div>
+					</div>
 				</div>
-				<div class="pulse-metric">
-					<div class="label">Closing ≤ 3d</div>
+				<div class="mblock">
+					<div class="label">Urgency</div>
 					<div class="value">5</div>
-					<div class="delta">3 GS, 2 WG</div>
+					<div class="delta down">closing ≤ 3d</div>
+					<div class="expand-hint">▾ expand</div>
 				</div>
 			</div>
 
-			<dl class="stat-grid">
-				<dt>Locality pay adjustment <span class="muted">ⓘ</span></dt>
-				<dd>30.41%</dd>
-				<dt>GS-13 step 1 (2026)</dt>
-				<dd>$107,540</dd>
-				<dt>BEA RPP (overall)</dt>
-				<dd>105.3 <span class="faint">(IL)</span></dd>
-				<dt>Pay / COL index</dt>
-				<dd>108.4</dd>
-				<dt>Most-posted series</dt>
-				<dd>0301 (12) · 1102 (8)</dd>
-				<dt>Top hiring agencies</dt>
-				<dd>HSCB · DOJ · GSA</dd>
-			</dl>
-
 			<div class="actions">
-				<button class="pill-btn accent">View all 47 postings →</button>
-				<button class="pill-btn">+ Add to search</button>
-				<button class="pill-btn">Compare pay here</button>
-				<button class="pill-btn">📊 Open metrics pane</button>
+				<button class="pill-btn accent">+ Save as Job List</button>
+				<button class="pill-btn">View all 47 postings ↓</button>
 			</div>
 		</div>
 	</section>
 
-	<!-- JobList pane (bottom, full-width) -->
+	<!-- JobList pane (bottom, ~70 vh, full-width — the work surface) -->
 	<section class="pane-list">
 
 		<div class="list-toolbar">
 			<div class="toolbar-row">
-				<input class="search-input" type="text" placeholder="Filter in list — title, agency, summary, qualifications…" value="">
+				<input class="search-input" type="text" placeholder="Filter — title, agency, summary, qualifications, series…" value="">
 				<select class="sort-select">
 					<option>Closing soonest</option>
 					<option>Newest first</option>
 					<option>Highest pay</option>
-					<option>Lowest pay</option>
-					<option>Title (A → Z)</option>
-					<option>Agency (A → Z)</option>
+					<option>Pay vs COL (best first)</option>
 					<option>Distance from Chicago</option>
 				</select>
-				<button class="pill-btn">Save this view</button>
+				<button class="pill-btn accent">+ Save as Job List</button>
 			</div>
 			<div class="toolbar-row">
 				<button class="facet-chip on">GS only <span class="count">38</span></button>
-				<button class="facet-chip">WG <span class="count">5</span></button>
-				<button class="facet-chip">ES/SES <span class="count">2</span></button>
 				<button class="facet-chip on">Remote-eligible <span class="count">9</span></button>
 				<button class="facet-chip">Closing ≤ 7d <span class="count">14</span></button>
-				<button class="facet-chip">Reposts only <span class="count">6</span></button>
 				<button class="facet-chip">Hide viewed <span class="count">12</span></button>
-				<button class="facet-chip danger" style="border-style: dashed;">Clear facets</button>
-			</div>
-			<div class="list-summary">
-				<span><strong style="color: var(--c-text);">47 of 312</strong> matching current filters</span>
-				<span class="annotation">↑ 23% above the trailing-90-day average for IL postings</span>
-				<span style="margin-left: auto;">Selecting a row zooms the map and opens the job card.</span>
+				<button class="more-filters">+ More filters (8)</button>
+				<span class="list-summary" style="margin-left: auto;">
+					<strong style="color: var(--c-text);">47 of 312</strong> postings match
+				</span>
 			</div>
 		</div>
 
 		<div class="list-rows">
 
-			<!-- Row 1 — selected to show the click-to-zoom state -->
+			<!-- Row 1 — selected -->
 			<article class="row selected">
 				<div>
 					<div class="title-line">
@@ -362,25 +473,17 @@
 						<span class="hist-badge">5th repost · 18 mo</span>
 					</div>
 					<div class="meta">
-						<strong>FEMA</strong> · Department of Homeland Security ·
-						<span>Chicago, IL · 8 mi from chip</span> ·
-						GS-14 · 0089
+						<strong>FEMA</strong> · DHS · Chicago, IL · GS-14 · 0089
 					</div>
 					<div class="excerpts">
 						<div>
-							<div class="label">Summary excerpt (≤ 200 ch)</div>
-							<p>This position serves as a supervisory emergency management specialist within the Operations Section, leading deployment-ready teams and coordinating with state, local, and tribal partners during declared disasters.</p>
+							<div class="label">Summary excerpt</div>
+							<p>Supervisory emergency management specialist in the Operations Section, leading deployment-ready teams and coordinating with state, local, and tribal partners during declared disasters.</p>
 						</div>
 						<div>
-							<div class="label">Qualifications excerpt (≤ 200 ch)</div>
-							<p>One year of specialized experience equivalent to the GS-13 level in the federal service, including coordinating multi-agency disaster response, drafting after-action reports, and supervising 3+ direct reports.</p>
+							<div class="label">Qualifications excerpt</div>
+							<p>One year specialized experience equivalent to GS-13, including coordinating multi-agency disaster response, drafting after-action reports, supervising 3+ direct reports.</p>
 						</div>
-					</div>
-					<div class="quickadd">
-						<span class="qa">+ series 0089</span>
-						<span class="qa">+ grade GS-14</span>
-						<span class="qa">+ agency FEMA</span>
-						<span class="qa">+ pay plan GS</span>
 					</div>
 				</div>
 				<div class="right-col">
@@ -389,41 +492,32 @@
 						<span class="pay-note">GS · exact pay table</span>
 					</div>
 					<div class="actions">
-						<button class="icon-btn">★ Save</button>
+						<button class="icon-btn">★ Save to My Postings</button>
 						<button class="icon-btn">⊘ Hide</button>
 					</div>
 				</div>
 			</article>
 
-			<!-- Row 2 -->
-			<article class="row">
+			<!-- Row 2 — currently being "hovered" in the demo, hover-linked to its marker -->
+			<article class="row hover-linked">
 				<div>
 					<div class="title-line">
 						<h4>Contract Specialist</h4>
 						<span class="badge badge-soon">Closes in 3d</span>
-						<span class="hist-badge">Series rarely posted in CHI</span>
 					</div>
 					<div class="meta">
-						<strong>GSA</strong> · General Services Administration ·
-						<span>Chicago, IL · 0 mi</span> ·
-						GS-12 / 13 · 1102 ·
+						<strong>GSA</strong> · Chicago, IL · GS-12 / 13 · 1102 ·
 						<span class="badge badge-info">Remote-eligible</span>
 					</div>
 					<div class="excerpts">
 						<div>
 							<div class="label">Summary excerpt</div>
-							<p>The Contract Specialist serves as the primary acquisition lead for a portfolio of complex IT services contracts supporting nationwide federal customer agencies, with full pre-award and post-award authority.</p>
+							<p>Primary acquisition lead for a portfolio of complex IT services contracts supporting nationwide federal customer agencies, with full pre-award and post-award authority.</p>
 						</div>
 						<div>
 							<div class="label">Qualifications excerpt</div>
-							<p>FAC-C Level III or DAWIA equivalent required. One year of specialized experience at the next-lower grade negotiating, awarding, and administering services contracts above the SAT.</p>
+							<p>FAC-C Level III or DAWIA equivalent required. One year specialized experience at the next-lower grade negotiating, awarding, and administering services contracts above the SAT.</p>
 						</div>
-					</div>
-					<div class="quickadd">
-						<span class="qa">+ series 1102</span>
-						<span class="qa">+ grade GS-12</span>
-						<span class="qa">+ grade GS-13</span>
-						<span class="qa">+ agency GSA</span>
 					</div>
 				</div>
 				<div class="right-col">
@@ -432,7 +526,7 @@
 						<span class="pay-note">GS · ladder 12 → 13</span>
 					</div>
 					<div class="actions">
-						<button class="icon-btn">★ Save</button>
+						<button class="icon-btn">★ Save to My Postings</button>
 						<button class="icon-btn">⊘ Hide</button>
 					</div>
 				</div>
@@ -446,24 +540,17 @@
 						<span class="hist-badge">2nd repost · 11 mo</span>
 					</div>
 					<div class="meta">
-						<strong>VA</strong> · Department of Veterans Affairs ·
-						<span>Hines, IL · 12 mi</span> ·
-						WS-10 · 2805
+						<strong>VA</strong> · Hines, IL · WS-10 · 2805
 					</div>
 					<div class="excerpts">
 						<div>
 							<div class="label">Summary excerpt</div>
-							<p>Supervises a section of journey-level electricians providing 24/7 facility-power coverage at a level 1A VA medical center. Responsible for crew assignments, work quality, and apprentice development.</p>
+							<p>Supervises journey-level electricians providing 24/7 facility-power coverage at a level 1A VA medical center. Responsible for crew assignments, work quality, apprentice development.</p>
 						</div>
 						<div>
 							<div class="label">Qualifications excerpt</div>
-							<p>Must demonstrate experience equivalent to the next-lower WG grade, including operating and maintaining high-voltage switchgear ≥ 4.16 kV and reading single-line and ladder diagrams.</p>
+							<p>Experience equivalent to the next-lower WG grade, including operating and maintaining high-voltage switchgear ≥ 4.16 kV and reading single-line and ladder diagrams.</p>
 						</div>
-					</div>
-					<div class="quickadd">
-						<span class="qa">+ pay plan WS</span>
-						<span class="qa">+ series 2805</span>
-						<span class="qa">+ agency VA</span>
 					</div>
 				</div>
 				<div class="right-col">
@@ -472,7 +559,7 @@
 						<span class="pay-note">WS · hourly · snapshot</span>
 					</div>
 					<div class="actions">
-						<button class="icon-btn">★ Save</button>
+						<button class="icon-btn">★ Save to My Postings</button>
 						<button class="icon-btn">⊘ Hide</button>
 					</div>
 				</div>
@@ -486,19 +573,17 @@
 						<span class="badge badge-soon">Closes in 6d</span>
 					</div>
 					<div class="meta">
-						<strong>HHS</strong> · Department of Health and Human Services ·
-						<span>Multiple locations · anywhere remote</span> ·
-						GS-13 · 0343
+						<strong>HHS</strong> · Anywhere remote · GS-13 · 0343
 						<span class="muted" style="font-size: 10px;">ⓘ Locality follows eventual duty station</span>
 					</div>
 					<div class="excerpts">
 						<div>
 							<div class="label">Summary excerpt</div>
-							<p>Serves as the program-analytics lead for a national health-services initiative, building dashboards, briefing senior leadership weekly, and translating policy guidance into measurable performance indicators.</p>
+							<p>Program-analytics lead for a national health-services initiative, building dashboards, briefing senior leadership weekly, translating policy guidance into measurable performance indicators.</p>
 						</div>
 						<div>
 							<div class="label">Qualifications excerpt</div>
-							<p>One year of specialized experience at the GS-12 level, including independent program evaluation, briefing SES audiences, and building analytic products in SQL, R, or Python.</p>
+							<p>One year specialized experience at GS-12, including independent program evaluation, briefing SES audiences, building analytic products in SQL, R, or Python.</p>
 						</div>
 					</div>
 				</div>
@@ -508,13 +593,13 @@
 						<span class="pay-note">GS · locality TBD</span>
 					</div>
 					<div class="actions">
-						<button class="icon-btn">★ Save</button>
+						<button class="icon-btn">★ Save to My Postings</button>
 						<button class="icon-btn">⊘ Hide</button>
 					</div>
 				</div>
 			</article>
 
-			<!-- Row 5 — viewed -->
+			<!-- Row 5 -->
 			<article class="row" style="opacity: 0.75;">
 				<div>
 					<div class="title-line">
@@ -522,18 +607,16 @@
 						<span class="badge badge-muted">Viewed</span>
 					</div>
 					<div class="meta">
-						<strong>DOJ</strong> · Department of Justice ·
-						<span>Chicago, IL · 0 mi</span> ·
-						GS-11 · 2210
+						<strong>DOJ</strong> · Chicago, IL · GS-11 · 2210
 					</div>
 					<div class="excerpts">
 						<div>
 							<div class="label">Summary excerpt</div>
-							<p>Provides Tier-2 and Tier-3 desktop and infrastructure support to a 1,200-person Chicago field office, including hardware lifecycle, deployment imaging, and SIPR/NIPR network ticket resolution.</p>
+							<p>Tier-2 and Tier-3 desktop and infrastructure support to a 1,200-person Chicago field office, including hardware lifecycle, deployment imaging, SIPR/NIPR network ticket resolution.</p>
 						</div>
 						<div>
 							<div class="label">Qualifications excerpt</div>
-							<p>IT-related experience demonstrating four competencies: attention to detail, customer service, oral communication, and problem solving. Active Top Secret clearance preferred.</p>
+							<p>IT-related experience demonstrating four competencies: attention to detail, customer service, oral communication, problem solving. Active Top Secret clearance preferred.</p>
 						</div>
 					</div>
 				</div>
@@ -543,7 +626,7 @@
 						<span class="pay-note">GS · exact</span>
 					</div>
 					<div class="actions">
-						<button class="icon-btn">★ Save</button>
+						<button class="icon-btn">★ Save to My Postings</button>
 						<button class="icon-btn">⊘ Hide</button>
 					</div>
 				</div>
@@ -555,5 +638,20 @@
 		</div>
 	</section>
 </div>
+
+<!-- Provenance toast — slides in from bottom-right after a save action. -->
+<aside class="toast">
+	<div class="toast-label">Saved as Job List</div>
+	<div class="toast-body">
+		From <strong>Locality: Chicago–Naperville, IL–IN–WI</strong> · filtered to
+		<strong>FEMA, GS-13–14</strong> · 47 postings.
+		Saved as a new Job List: <strong>"Chicago FEMA mid-grade"</strong>.
+	</div>
+	<div class="toast-actions">
+		<button class="primary">Open Job Lists</button>
+		<button>Undo</button>
+	</div>
+</aside>
+
 </body>
 </html>
