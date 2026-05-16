@@ -106,7 +106,7 @@ A separate, public-facing, static web tool that helps anyone find federal jobs o
 
 ### Name and guiding principles
 
-The public map is branded **The Grand Pipeline** (**TGP** for short — the masthead wordmark, the `thegrandpipeline.com` domain). It is a public, read-only web map of live federal job postings with one job: help someone decide *where to apply for federal work*, by placing USAJOBS postings on a map alongside pay, cost-of-living, and hiring-climate context. No accounts, no applications, no scraping — TGP only reflects USAJOBS and OPM/BEA reference data.
+The public map is branded **FedFinder** — the masthead wordmark and the product's public name. It is a public, read-only web map of live federal job postings with one job: help someone decide *where to apply for federal work*, by placing USAJOBS postings on a map alongside pay, cost-of-living, and hiring-climate context. No accounts, no applications, no scraping — FedFinder only reflects USAJOBS and OPM/BEA reference data.
 
 Three principles govern every screen and every UI element:
 
