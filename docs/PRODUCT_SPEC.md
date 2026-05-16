@@ -104,6 +104,16 @@ The Public Map Tool below is a **separate sibling product** (ADR-0016) that is h
 
 A separate, public-facing, static web tool that helps anyone find federal jobs on a map. Fed one-way by nightly snapshots from the local dashboard's SQLite. The dashboard remains local-first; the public map is the only piece that ever lives on the internet.
 
+### Name and guiding principles
+
+The public map is branded **The Grand Pipeline** (**TGP** for short — the masthead wordmark, the `thegrandpipeline.com` domain). It is a public, read-only web map of live federal job postings with one job: help someone decide *where to apply for federal work*, by placing USAJOBS postings on a map alongside pay, cost-of-living, and hiring-climate context. No accounts, no applications, no scraping — TGP only reflects USAJOBS and OPM/BEA reference data.
+
+Three principles govern every screen and every UI element:
+
+1. **Every screen has one verb.** Browse = *decide* what to apply to now. Map-only = *explore* where federal hiring is happening. Localities = *compare* places against each other. If a screen needs two verbs to describe it, it is two screens.
+2. **Every element earns its place by naming the activity it serves.** Before adding a control, state which verb it enables; if you cannot, cut it. This is why the Browse rev-2 design folded the standalone metric switcher into the area card — it was an *option*, not an *activity*.
+3. **Default to fewer choices; reflect, don't editorialize.** Rare or advanced options hide behind a single disclosure ("More filters"). Numbers are source-labeled, area prose is deterministic templated text — never an LLM call — and subjective composite scores are forbidden.
+
 ### Vision
 
 A federal job-search map that is honest about precision and surfaces the question every applicant actually asks: **"Where will my paycheck go furthest?"** The map answers that question by combining USAJOBS posting data, OPM federal workforce data, OPM locality pay tables, and BEA Regional Price Parities into a single zoomable surface.
