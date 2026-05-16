@@ -244,8 +244,10 @@ function gradeRangeOverlaps(
 	minValue: string,
 	maxValue: string
 ): boolean {
-	const filterMin = Number(minValue);
-	const filterMax = Number(maxValue);
+	// Number('') is 0, not NaN — treat a blank grade box as "no constraint",
+	// otherwise an unrelated filter (e.g. agency) would reject every job.
+	const filterMin = blankToNaN(minValue);
+	const filterMax = blankToNaN(maxValue);
 	if (!Number.isFinite(filterMin) && !Number.isFinite(filterMax)) return true;
 
 	const low = Number(lowValue);
@@ -261,4 +263,71 @@ function gradeRangeOverlaps(
 
 function clean(value: unknown): string {
 	return String(value ?? '').trim();
+}
+
+function blankToNaN(value: string): number {
+	const trimmed = value.trim();
+	return trimmed === '' ? Number.NaN : Number(trimmed);
+}
+
+// --- Job-level filtering (Browse list) ---------------------------------
+//
+// The Browse list works from the deduplicated jobs_detail.json (one entry
+// per posting) rather than the per-location GeoJSON features the map uses.
+// That avoids counting the same posting once per duty station, and it has
+// the agency display name + the real remote_status, which the per-location
+// feature properties do not. Both paths honor the same JobFilters state.
+
+export function matchesJobDetail(job: JobDetails, filters: JobFilters): boolean {
+	if (filters.keyword && !jobDetailContainsText(job, filters.keyword)) return false;
+	if (filters.agencies.length > 0) {
+		const code = String(job.agency_code ?? '').toUpperCase().trim();
+		if (!filters.agencies.includes(code)) return false;
+	}
+	if (filters.geographies.length > 0 && !jobDetailGeographyMatches(job, filters.geographies)) return false;
+	if (filters.series && !equalsNormalized(job.series, filters.series)) return false;
+	if (filters.payPlan && !equalsNormalized(job.pay_plan, filters.payPlan)) return false;
+	if (filters.remote !== 'any' && !remoteMatches(job.remote_status, filters.remote)) return false;
+	if (filters.hiringPath && !containsText(job.hiring_paths, filters.hiringPath)) return false;
+	if (filters.salaryMin && !meetsSalaryMinimum(job.salary_min, filters.salaryMin)) return false;
+	if (!gradeRangeOverlaps(job.grade_low, job.grade_high, filters.gradeMin, filters.gradeMax)) return false;
+	return true;
+}
+
+export function filterJobDetails(jobs: JobDetails[], filters: JobFilters): JobDetails[] {
+	if (!hasActiveFilters(filters)) return jobs;
+	return jobs.filter((job) => matchesJobDetail(job, filters));
+}
+
+function jobDetailContainsText(job: JobDetails, needle: string): boolean {
+	const loc = job.locations?.[0];
+	const haystack = [
+		job.title,
+		job.agency,
+		job.department,
+		job.agency_code,
+		job.series,
+		job.pay_plan,
+		job.remote_status,
+		job.hiring_paths,
+		loc?.city,
+		loc?.state
+	]
+		.map((v) => String(v ?? '').toLowerCase())
+		.join(' ');
+	return haystack.includes(needle.toLowerCase().trim());
+}
+
+function jobDetailGeographyMatches(job: JobDetails, geographies: string[]): boolean {
+	const states = new Set((job.locations ?? []).map((l) => String(l.state ?? '').toUpperCase()));
+	const locality = String(job.locality_code ?? '').toUpperCase();
+	for (const geo of geographies) {
+		const sep = geo.indexOf(':');
+		if (sep === -1) continue;
+		const type = geo.slice(0, sep);
+		const code = geo.slice(sep + 1).toUpperCase();
+		if (type === 'state' && states.has(code)) return true;
+		if (type === 'locality' && locality && locality === code) return true;
+	}
+	return false;
 }
