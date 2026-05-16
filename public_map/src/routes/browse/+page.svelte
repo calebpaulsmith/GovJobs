@@ -1,28 +1,30 @@
 <!--
 	FedFinder — Browse view (mobile-first).
 
-	Increment 1 of the mobile Browse build: the dock shell + a fully wired
-	List tab. The single filter (mapState.filters) drives the list; the Map,
-	Here, and Saved tabs are scaffolded and filled in later increments.
+	The List tab works from the deduplicated jobs_detail.json (one row per
+	posting). Agency is a code-backed picker (AgencyPicker.svelte); pay plan,
+	remote, grade, series, salary, and keyword live behind "More filters".
+	All inputs drive the one shared filter, mapState.filters.
 
 	Spec: public_map/mocks/browse/mobile-dock.html (rev 2), ADR-0033.
+	Map / Here / Saved tabs are filled in by later increments.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { mapState } from '$lib/store.svelte';
-	import { loadJobs, loadJobDetailsIndex, type Feature, type JobDetails } from '$lib/data';
-	import { filterJobs, activeFilterCount } from '$lib/filters';
-	import { gradeRange, propString, salaryRange, urgencyBadge } from '$lib/format';
+	import { loadJobDetailsIndex, type JobDetails } from '$lib/data';
+	import { DEFAULT_FILTERS, filterJobDetails, type JobFilters } from '$lib/filters';
+	import { gradeRange, salaryRange, urgencyBadge } from '$lib/format';
 	import { jobProfile } from '$lib/jobProfile.svelte';
+	import AgencyPicker from '$lib/AgencyPicker.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 
-	let allJobs = $state<{ type: 'FeatureCollection'; features: Feature[] } | null>(null);
-	let details = $state<Record<string, JobDetails>>({});
+	let jobs = $state<JobDetails[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -31,9 +33,9 @@
 
 	const PAGE = 25;
 	let visibleCount = $state(PAGE);
+	let moreOpen = $state(false);
 
-	// Theme: read once on mount, persist on change. Mirrors map/+page.svelte so
-	// /browse themes correctly when opened directly.
+	// Theme — read once, persist on change (so /browse themes when opened direct).
 	onMount(() => {
 		if (!browser) return;
 		const stored = localStorage.getItem(THEME_KEY);
@@ -48,14 +50,11 @@
 		mapState.theme = mapState.theme === 'dark' ? 'light' : 'dark';
 	}
 
-	// Load the job bundle once.
+	// Load the deduplicated posting index once (one entry per posting).
 	$effect(() => {
 		loading = true;
-		Promise.all([loadJobs(), loadJobDetailsIndex()])
-			.then(([jobs, idx]) => {
-				allJobs = jobs;
-				details = idx;
-			})
+		loadJobDetailsIndex()
+			.then((idx) => (jobs = Object.values(idx)))
 			.catch((err) => (error = (err as Error).message))
 			.finally(() => (loading = false));
 	});
@@ -67,34 +66,61 @@
 		visibleCount = PAGE;
 	});
 
-	function detailFor(props: Record<string, unknown>): JobDetails | undefined {
-		return details[String(props.id ?? '')];
-	}
-	function idOf(feature: Feature): string {
-		return String(feature.properties?.id ?? '');
+	// --- the single shared filter ---
+	function setFilter<K extends keyof JobFilters>(key: K, value: JobFilters[K]) {
+		mapState.filters = {
+			...mapState.filters,
+			[key]: value,
+			agencies: [...mapState.filters.agencies],
+			geographies: [...mapState.filters.geographies]
+		};
 	}
 
-	// The single filter pipeline. Hidden jobs are removed everywhere by default.
-	const filtered = $derived.by(() => {
-		if (!allJobs) return [] as Feature[];
-		const fc = filterJobs(allJobs, mapState.filters, details);
-		return fc.features.filter((f) => !jobProfile.isHidden(idOf(f)));
+	// Keyword is debounced — it is the only free-text field that filters.
+	let keywordDraft = $state('');
+	let kwTimer: ReturnType<typeof setTimeout> | null = null;
+	function onKeyword(v: string) {
+		keywordDraft = v;
+		if (kwTimer) clearTimeout(kwTimer);
+		kwTimer = setTimeout(() => setFilter('keyword', keywordDraft.trim()), 200);
+	}
+
+	function clearAll() {
+		mapState.filters = { ...DEFAULT_FILTERS, agencies: [], geographies: [] };
+		keywordDraft = '';
+	}
+
+	const moreCount = $derived.by(() => {
+		const f = mapState.filters;
+		let n = 0;
+		if (f.keyword) n += 1;
+		if (f.payPlan) n += 1;
+		if (f.remote !== 'any') n += 1;
+		if (f.gradeMin) n += 1;
+		if (f.gradeMax) n += 1;
+		if (f.series) n += 1;
+		if (f.salaryMin) n += 1;
+		return n;
 	});
+	const anyFilter = $derived(mapState.filters.agencies.length > 0 || moreCount > 0 || mapState.filters.geographies.length > 0);
 
-	function titleOf(f: Feature): string {
-		const p = f.properties ?? {};
-		return String(detailFor(p)?.title ?? p.title ?? '').trim().toLowerCase();
+	// --- the filtered, sorted, paginated list ---
+	function idOf(job: JobDetails): string {
+		return String(job.id ?? '');
 	}
-	function salaryOf(f: Feature): number {
-		const p = f.properties ?? {};
-		const v = Number(detailFor(p)?.salary_min ?? p.salary_min ?? 0);
-		return Number.isFinite(v) ? v : 0;
-	}
-	function closeOf(f: Feature): number {
-		const p = f.properties ?? {};
-		const t = Date.parse(String(detailFor(p)?.close_date ?? p.close_date ?? ''));
+	function closeOf(job: JobDetails): number {
+		const t = Date.parse(String(job.close_date ?? ''));
 		return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
 	}
+	function salaryOf(job: JobDetails): number {
+		const v = Number(job.salary_min ?? 0);
+		return Number.isFinite(v) ? v : 0;
+	}
+
+	const filtered = $derived.by(() => {
+		const list = filterJobDetails(jobs, mapState.filters);
+		return list.filter((j) => !jobProfile.isHidden(idOf(j)));
+	});
 
 	const sorted = $derived.by(() => {
 		const list = filtered.slice();
@@ -108,60 +134,47 @@
 			case 'salary_low':
 				return list.sort((a, b) => salaryOf(a) - salaryOf(b));
 			case 'title':
-				return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
+				return list.sort((a, b) =>
+					String(a.title ?? '').localeCompare(String(b.title ?? ''))
+				);
 			default:
 				return list;
 		}
 	});
 
-	const totalJobs = $derived(allJobs?.features.length ?? 0);
+	const totalJobs = $derived(jobs.length);
 	const filteredCount = $derived(filtered.length);
 	const visible = $derived(sorted.slice(0, visibleCount));
-	const filterCount = $derived(activeFilterCount(mapState.filters));
 
-	// Facet chips — wired straight to the shared filter.
-	const gsOnly = $derived(mapState.filters.payPlan.toUpperCase() === 'GS');
-	const remoteOnly = $derived(mapState.filters.remote === 'remote');
-	function toggleGsOnly() {
-		mapState.filters.payPlan = gsOnly ? '' : 'GS';
-	}
-	function toggleRemote() {
-		mapState.filters.remote = remoteOnly ? 'any' : 'remote';
+	function locationLabel(job: JobDetails): string {
+		if (String(job.remote_status ?? '').toLowerCase() === 'remote') return 'Anywhere remote';
+		const locs = job.locations ?? [];
+		if (locs.length === 0) return 'Location not listed';
+		const first = String(locs[0]?.city ?? locs[0]?.location_text ?? '').trim() || 'Location not listed';
+		return locs.length > 1 ? `${first} +${locs.length - 1} more` : first;
 	}
 
-	function removeGeo(geo: string) {
-		mapState.filters.geographies = mapState.filters.geographies.filter((g) => g !== geo);
-	}
-	function removeAgency(code: string) {
-		mapState.filters.agencies = mapState.filters.agencies.filter((a) => a !== code);
-	}
-	function geoLabel(geo: string): string {
-		const [type, code] = geo.split(':');
-		return `${type === 'state' ? 'State' : type === 'locality' ? 'Locality' : type} ${code}`;
-	}
-
-	function saveMeta(f: Feature) {
-		const p = f.properties ?? {};
-		const d = detailFor(p);
-		return {
-			title: String(d?.title ?? p.title ?? 'Untitled posting'),
-			agency: String(d?.agency ?? p.agency ?? p.agency_code ?? ''),
-			close_date: (d?.close_date ?? (p.close_date as string) ?? null) || null,
-			url: (d?.url ?? (p.url as string) ?? null) || null
-		};
-	}
-	function toggleSave(f: Feature) {
-		const id = idOf(f);
+	// --- save / hide (local profile) ---
+	function toggleSave(job: JobDetails) {
+		const id = idOf(job);
 		if (!id) return;
-		if (jobProfile.isSaved(id)) jobProfile.unsaveJob(id);
-		else jobProfile.saveJob(id, saveMeta(f));
+		if (jobProfile.isSaved(id)) {
+			jobProfile.unsaveJob(id);
+		} else {
+			jobProfile.saveJob(id, {
+				title: String(job.title ?? 'Untitled posting'),
+				agency: String(job.agency ?? job.agency_code ?? ''),
+				close_date: job.close_date ?? null,
+				url: job.url ?? null
+			});
+		}
 	}
-	function hide(f: Feature) {
-		const id = idOf(f);
+	function hide(job: JobDetails) {
+		const id = idOf(job);
 		if (id) jobProfile.hideJob(id);
 	}
-	function markViewed(f: Feature) {
-		const id = idOf(f);
+	function markViewed(job: JobDetails) {
+		const id = idOf(job);
 		if (id) jobProfile.markViewed(id);
 	}
 
@@ -181,46 +194,29 @@
 			<a class="mode" href="/map">Map only</a>
 			<span class="mode disabled" aria-disabled="true" title="Coming soon">Localities</span>
 		</nav>
-		<button
-			type="button"
-			class="theme-btn"
-			onclick={toggleTheme}
-			aria-label="Toggle light or dark mode"
-		>
+		<button type="button" class="theme-btn" onclick={toggleTheme} aria-label="Toggle light or dark mode">
 			{mapState.theme === 'dark' ? '☀' : '☾'}
 		</button>
 	</header>
-
-	<!-- Scope bar — the single filter's geography / agency chips. -->
-	<div class="scope-bar">
-		{#if mapState.filters.geographies.length === 0 && mapState.filters.agencies.length === 0}
-			<span class="scope-empty">Nationwide · no geography or agency filter</span>
-		{:else}
-			{#each mapState.filters.geographies as geo (geo)}
-				<button type="button" class="chip" onclick={() => removeGeo(geo)}>
-					{geoLabel(geo)} <span class="x" aria-hidden="true">×</span>
-				</button>
-			{/each}
-			{#each mapState.filters.agencies as code (code)}
-				<button type="button" class="chip" onclick={() => removeAgency(code)}>
-					{code} <span class="x" aria-hidden="true">×</span>
-				</button>
-			{/each}
-		{/if}
-	</div>
 
 	<main class="content">
 		<!-- ===================== List tab ===================== -->
 		{#if tab === 'list'}
 			<section class="tab-list">
 				<div class="toolbar">
-					<div class="toolbar-row">
-						<input
-							class="search"
-							type="text"
-							placeholder="Filter — title, agency, series, location…"
-							bind:value={mapState.filters.keyword}
-						/>
+					<!-- Primary filter: code-backed agency picker. -->
+					<AgencyPicker />
+
+					<div class="tools">
+						<button
+							type="button"
+							class="more-btn"
+							class:on={moreOpen || moreCount > 0}
+							onclick={() => (moreOpen = !moreOpen)}
+						>
+							More filters{#if moreCount > 0}<span class="badge">{moreCount}</span>{/if}
+							<span class="caret">{moreOpen ? '▴' : '▾'}</span>
+						</button>
 						<select class="sort" bind:value={sortKey} aria-label="Sort postings">
 							<option value="closing_soon">Closing soonest</option>
 							<option value="closing_late">Closing latest</option>
@@ -229,58 +225,136 @@
 							<option value="title">Title A–Z</option>
 						</select>
 					</div>
-					<div class="facets">
-						<button type="button" class="facet" class:on={gsOnly} onclick={toggleGsOnly}>
-							GS only
-						</button>
-						<button type="button" class="facet" class:on={remoteOnly} onclick={toggleRemote}>
-							Remote-eligible
-						</button>
-					</div>
+
+					{#if moreOpen}
+						<div class="more-panel">
+							<label class="fld">
+								<span>Keyword</span>
+								<input
+									type="search"
+									placeholder="title, series, city…"
+									value={keywordDraft}
+									oninput={(e) => onKeyword(e.currentTarget.value)}
+								/>
+							</label>
+							<div class="fld-row">
+								<label class="fld">
+									<span>Pay plan</span>
+									<select
+										value={mapState.filters.payPlan}
+										onchange={(e) => setFilter('payPlan', e.currentTarget.value)}
+									>
+										<option value="">Any</option>
+										<option value="GS">GS — General Schedule</option>
+										<option value="WG">WG — Wage Grade</option>
+										<option value="WS">WS — Wage Supervisor</option>
+										<option value="FV">FV — FAA</option>
+										<option value="FG">FG — FAA</option>
+										<option value="GL">GL — Law Enforcement</option>
+										<option value="FP">FP — Foreign Service</option>
+										<option value="AT">AT — Air Traffic</option>
+										<option value="ES">ES — Senior Executive</option>
+										<option value="AD">AD — Administratively Determined</option>
+									</select>
+								</label>
+								<label class="fld">
+									<span>Remote</span>
+									<select
+										value={mapState.filters.remote}
+										onchange={(e) => setFilter('remote', e.currentTarget.value as JobFilters['remote'])}
+									>
+										<option value="any">Any</option>
+										<option value="remote">Remote</option>
+										<option value="hybrid">Hybrid</option>
+										<option value="onsite">Onsite</option>
+									</select>
+								</label>
+							</div>
+							<div class="fld-row">
+								<label class="fld">
+									<span>Grade min</span>
+									<input
+										type="number"
+										min="1"
+										max="15"
+										value={mapState.filters.gradeMin}
+										oninput={(e) => setFilter('gradeMin', e.currentTarget.value)}
+									/>
+								</label>
+								<label class="fld">
+									<span>Grade max</span>
+									<input
+										type="number"
+										min="1"
+										max="15"
+										value={mapState.filters.gradeMax}
+										oninput={(e) => setFilter('gradeMax', e.currentTarget.value)}
+									/>
+								</label>
+							</div>
+							<div class="fld-row">
+								<label class="fld">
+									<span>Series</span>
+									<input
+										type="text"
+										inputmode="numeric"
+										placeholder="0301"
+										value={mapState.filters.series}
+										oninput={(e) => setFilter('series', e.currentTarget.value)}
+									/>
+								</label>
+								<label class="fld">
+									<span>Salary min</span>
+									<input
+										type="number"
+										min="0"
+										placeholder="90000"
+										value={mapState.filters.salaryMin}
+										oninput={(e) => setFilter('salaryMin', e.currentTarget.value)}
+									/>
+								</label>
+							</div>
+						</div>
+					{/if}
+
 					<div class="summary">
 						{#if loading}
 							<span>Loading postings…</span>
 						{:else if error}
 							<span class="err">Couldn't load postings: {error}</span>
 						{:else}
-							<span>
-								<strong>{filteredCount.toLocaleString()}</strong>
-								of {totalJobs.toLocaleString()} postings
-								{#if filterCount > 0}· {filterCount} filter{filterCount === 1 ? '' : 's'}{/if}
-							</span>
+							<span><strong>{filteredCount.toLocaleString()}</strong> of {totalJobs.toLocaleString()} postings</span>
+							{#if anyFilter}
+								<button type="button" class="clear" onclick={clearAll}>Clear filters</button>
+							{/if}
 						{/if}
 					</div>
 				</div>
 
 				{#if !loading && !error}
 					{#if filteredCount === 0}
-						<p class="empty">No postings match the current filter. Remove a chip or clear the search.</p>
+						<p class="empty">No postings match the current filter. Remove an agency or open More filters to widen it.</p>
 					{:else}
 						<ul class="rows">
-							{#each visible as feature, i (feature.properties?.id ?? i)}
-								{@const props = feature.properties ?? {}}
-								{@const d = detailFor(props)}
-								{@const urg = urgencyBadge(String(d?.close_date ?? props.close_date ?? ''))}
-								{@const id = idOf(feature)}
+							{#each visible as job (job.id)}
+								{@const urg = urgencyBadge(job.close_date)}
+								{@const id = idOf(job)}
 								{@const saved = jobProfile.isSaved(id)}
 								{@const viewed = jobProfile.isViewed(id)}
-								{@const url = d?.url ?? (props.url as string | undefined)}
 								<li class="row" class:viewed>
 									<div class="row-head">
-										{#if url}
+										{#if job.url}
 											<a
 												class="row-title"
-												href={url}
+												href={job.url}
 												target="_blank"
 												rel="noopener noreferrer"
-												onclick={() => markViewed(feature)}
+												onclick={() => markViewed(job)}
 											>
-												{d?.title ?? propString(props, 'title', 'Untitled posting')}
+												{job.title ?? 'Untitled posting'}
 											</a>
 										{:else}
-											<span class="row-title">
-												{d?.title ?? propString(props, 'title', 'Untitled posting')}
-											</span>
+											<span class="row-title">{job.title ?? 'Untitled posting'}</span>
 										{/if}
 										{#if urg.level}
 											<span class="urgency {urg.level}">{urg.text}</span>
@@ -289,18 +363,18 @@
 										{/if}
 									</div>
 									<div class="row-meta">
-										<strong>{String(d?.agency ?? props.agency ?? props.agency_code ?? 'Agency unknown')}</strong>
-										<span>{propString(props, 'city')}, {propString(props, 'state', '')}</span>
-										<span>{gradeRange(d?.pay_plan ?? props.pay_plan, d?.grade_low ?? props.grade_low, d?.grade_high ?? props.grade_high)}</span>
-										{#if (d?.series ?? props.series)}<span>Series {String(d?.series ?? props.series)}</span>{/if}
+										<strong>{job.agency ?? job.agency_code ?? 'Agency unknown'}</strong>
+										<span>{locationLabel(job)}</span>
+										<span>{gradeRange(job.pay_plan, job.grade_low, job.grade_high)}</span>
+										{#if job.series}<span>Series {job.series}</span>{/if}
 									</div>
 									<div class="row-foot">
-										<span class="pay">{salaryRange(d?.salary_min ?? props.salary_min, d?.salary_max ?? props.salary_max, d?.salary_type)}</span>
+										<span class="pay">{salaryRange(job.salary_min, job.salary_max, job.salary_type)}</span>
 										<div class="row-actions">
-											<button type="button" class="act save" class:on={saved} onclick={() => toggleSave(feature)}>
+											<button type="button" class="act save" class:on={saved} onclick={() => toggleSave(job)}>
 												{saved ? '★ Saved' : '★ Save to My Postings'}
 											</button>
-											<button type="button" class="act hide" onclick={() => hide(feature)}>⊘ Hide</button>
+											<button type="button" class="act hide" onclick={() => hide(job)}>⊘ Hide</button>
 										</div>
 									</div>
 								</li>
@@ -325,11 +399,9 @@
 				<div class="eyebrow">Map</div>
 				<h2>Map view — next increment</h2>
 				<p>
-					The live map drops in here, crossfiltered to the same filter that drives
-					this List. Markers, clusters, and the geography chips you see in the scope
-					bar will all reflect one filter.
+					The live map drops in here, crossfiltered to the same agency and
+					filters that drive this List.
 				</p>
-				<p class="muted">Until then, the full map is available in Map-only mode.</p>
 				<a class="stub-link" href="/map">Open the current map →</a>
 			</section>
 
@@ -340,10 +412,8 @@
 				<h2>Area card — next increment</h2>
 				<p>
 					The smallest area containing the map viewport, with a deterministic
-					summary and four tap-to-expand metric blocks: Postings, Workforce,
-					Pay vs COL, and Urgency.
+					summary and four tap-to-expand metric blocks.
 				</p>
-				<p class="muted">Spec: public_map/mocks/browse/mobile-dock.html (rev 2).</p>
 			</section>
 
 		<!-- ===================== Saved tab ===================== -->
@@ -351,13 +421,10 @@
 			<section class="tab-stub">
 				<div class="eyebrow">Saved</div>
 				<h2>Saved &amp; tracked — next increment</h2>
-				<p>
-					Job Lists (saved filter sets) and My Postings (individual saved jobs),
-					plus Hidden and Viewed-closed.
-				</p>
+				<p>Job Lists, My Postings, Hidden, and Viewed-closed.</p>
 				<p class="muted">
-					You currently have {savedCount} posting{savedCount === 1 ? '' : 's'} saved.
-					Save and Hide from the List tab already work and persist locally.
+					You have {savedCount} posting{savedCount === 1 ? '' : 's'} saved. Save and Hide
+					from the List tab already work and persist locally.
 				</p>
 			</section>
 		{/if}
@@ -404,7 +471,6 @@
 	}
 	.brand {
 		font-weight: 700;
-		letter-spacing: 0.01em;
 		font-size: 14px;
 	}
 	.modes {
@@ -448,106 +514,120 @@
 		color: var(--c-accent, #7bd0f2);
 	}
 
-	/* Scope bar */
-	.scope-bar {
-		flex-shrink: 0;
-		display: flex;
-		gap: 0.3rem;
-		overflow-x: auto;
-		padding: 0.45rem 0.75rem;
-		background: var(--c-panel-blur, rgba(14, 23, 38, 0.85));
-		border-bottom: 1px solid var(--c-border-subtle, #22344c);
-	}
-	.scope-empty {
-		font-size: 11px;
-		color: var(--c-muted, #94a3b8);
-	}
-	.chip {
-		flex-shrink: 0;
-		appearance: none;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		background: var(--c-accent-bg, rgba(123, 208, 242, 0.08));
-		border: 1px solid var(--c-accent-dim, #4979b3);
-		color: var(--c-accent, #7bd0f2);
-		padding: 0.18rem 0.55rem;
-		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-	.chip .x {
-		color: var(--c-muted, #94a3b8);
-	}
-
-	/* Content */
 	.content {
 		flex: 1;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
 	}
 
-	/* Toolbar */
+	/* Toolbar — the single filter area. */
 	.toolbar {
 		position: sticky;
 		top: 0;
 		z-index: 2;
 		background: var(--c-bg, #06111f);
-		padding: 0.6rem 0.75rem;
+		padding: 0.65rem 0.75rem;
 		border-bottom: 1px solid var(--c-border-subtle, #22344c);
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
 	}
-	.toolbar-row {
+	.tools {
 		display: flex;
 		gap: 0.35rem;
 	}
-	.search {
-		flex: 1;
-		min-width: 0;
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		border: 1px solid var(--c-border-input, #2c4870);
-		color: var(--c-text, #e5edf5);
-		border-radius: 6px;
-		padding: 0.45rem 0.6rem;
-		font-size: 13px;
-		outline: none;
-	}
-	.search:focus {
-		border-color: var(--c-accent, #7bd0f2);
-	}
-	.sort {
+	.more-btn {
 		appearance: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
 		border: 1px solid var(--c-border-input, #2c4870);
 		color: var(--c-text-2, #cfd9e6);
-		border-radius: 6px;
-		padding: 0.45rem 0.4rem;
 		font-size: 12px;
-		cursor: pointer;
-	}
-	.facets {
-		display: flex;
-		gap: 0.3rem;
-		margin-top: 0.45rem;
-	}
-	.facet {
-		appearance: none;
-		font-size: 11px;
 		font-weight: 600;
-		padding: 0.22rem 0.6rem;
-		border-radius: 999px;
-		border: 1px solid var(--c-border-input, #2c4870);
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		color: var(--c-text-2, #cfd9e6);
+		padding: 0.4rem 0.6rem;
+		border-radius: 6px;
 		cursor: pointer;
 	}
-	.facet.on {
-		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
+	.more-btn.on {
 		border-color: var(--c-accent, #7bd0f2);
 		color: var(--c-accent, #7bd0f2);
 	}
+	.more-btn .badge {
+		display: grid;
+		place-items: center;
+		min-width: 15px;
+		height: 15px;
+		padding: 0 0.2rem;
+		border-radius: 999px;
+		background: var(--c-accent-dim, #4979b3);
+		color: #fff;
+		font-size: 9px;
+	}
+	.more-btn .caret {
+		font-size: 9px;
+	}
+	.sort {
+		flex: 1;
+		appearance: none;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-text-2, #cfd9e6);
+		border-radius: 6px;
+		padding: 0.4rem 0.45rem;
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	/* More filters */
+	.more-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.6rem;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		border: 1px solid var(--c-border-subtle, #22344c);
+		border-radius: 8px;
+	}
+	.fld-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.5rem;
+	}
+	.fld {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+	.fld span {
+		font-size: 9px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--c-muted, #94a3b8);
+	}
+	.fld input,
+	.fld select {
+		width: 100%;
+		box-sizing: border-box;
+		background: var(--c-bg, #06111f);
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-text, #e5edf5);
+		border-radius: 6px;
+		padding: 0.4rem 0.5rem;
+		font-size: 13px;
+		outline: none;
+	}
+	.fld input:focus,
+	.fld select:focus {
+		border-color: var(--c-accent, #7bd0f2);
+	}
+
 	.summary {
-		margin-top: 0.45rem;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
 		font-size: 11px;
 		color: var(--c-muted, #94a3b8);
 	}
@@ -556,6 +636,22 @@
 	}
 	.summary .err {
 		color: var(--c-danger, #f7a0a0);
+	}
+	.clear {
+		margin-left: auto;
+		appearance: none;
+		background: transparent;
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-text-2, #cfd9e6);
+		font-size: 10px;
+		font-weight: 600;
+		padding: 0.22rem 0.55rem;
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.clear:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
 	}
 
 	/* Rows */
@@ -781,8 +877,6 @@
 		place-items: center;
 	}
 
-	/* On wide screens, present the mobile shell as a centered phone-width
-	   column. The full desktop mosaic is a later increment. */
 	@media (min-width: 720px) {
 		.browse {
 			max-width: 30rem;
