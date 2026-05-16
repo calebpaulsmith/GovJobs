@@ -2,7 +2,7 @@ import { DEFAULT_METRIC, type MetricKey } from './metrics';
 import { DEFAULT_FILTERS, normalizeFilters, type JobFilters } from './filters';
 import type { AddressTarget, MapViewport } from './store.svelte';
 
-export const SAVED_SEARCHES_KEY = 'tgp.public_map.saved_searches.v1';
+export const SAVED_SEARCHES_KEY = 'fedfinder.public_map.saved_searches.v1';
 export const SAVED_SEARCHES_SCHEMA_VERSION = 1;
 
 export interface SavedSearch {
