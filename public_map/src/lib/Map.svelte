@@ -108,7 +108,7 @@
 			closeButton: false,
 			closeOnClick: false,
 			offset: 14,
-			className: 'tgp-hover-popup',
+			className: 'ff-hover-popup',
 			maxWidth: '260px'
 		});
 
@@ -462,14 +462,14 @@
 		if (layerId === LAYER_IDS.closedMarkers) {
 			const title = String(props.title ?? '').trim() || 'Closed posting';
 			const closeDate = String(props.close_date ?? '').trim();
-			return `<div class="tgp-tip-title">${escapeHtml(title)}</div>` +
-				(closeDate ? `<div class="tgp-tip-meta">closed ${escapeHtml(closeDate)}</div>` : '');
+			return `<div class="ff-tip-title">${escapeHtml(title)}</div>` +
+				(closeDate ? `<div class="ff-tip-meta">closed ${escapeHtml(closeDate)}</div>` : '');
 		}
 		if (layerId === LAYER_IDS.federalProperties) {
 			const name = String(props.name ?? '').trim() || 'Federal property';
 			const agency = String(props.agency ?? '').trim();
-			return `<div class="tgp-tip-title">${escapeHtml(name)}</div>` +
-				(agency ? `<div class="tgp-tip-meta">${escapeHtml(agency)}</div>` : '');
+			return `<div class="ff-tip-title">${escapeHtml(name)}</div>` +
+				(agency ? `<div class="ff-tip-meta">${escapeHtml(agency)}</div>` : '');
 		}
 		// markers / markersStack: build label from same-coord siblings so
 		// "12 jobs at Chicago, IL" reflects the dominant location text.
@@ -477,12 +477,12 @@
 		const stackCount = siblings.length;
 		const label = dominantLocationLabel(siblings.length > 0 ? siblings : [{ properties: props }]);
 		if (stackCount > 1) {
-			return `<div class="tgp-tip-title">${stackCount.toLocaleString()} jobs at ${escapeHtml(label || 'this location')}</div>` +
-				`<div class="tgp-tip-meta">click to list all postings</div>`;
+			return `<div class="ff-tip-title">${stackCount.toLocaleString()} jobs at ${escapeHtml(label || 'this location')}</div>` +
+				`<div class="ff-tip-meta">click to list all postings</div>`;
 		}
 		const title = String(props.title ?? '').trim() || 'Posting';
-		return `<div class="tgp-tip-title">${escapeHtml(title)}</div>` +
-			(label ? `<div class="tgp-tip-meta">${escapeHtml(label)}</div>` : '');
+		return `<div class="ff-tip-title">${escapeHtml(title)}</div>` +
+			(label ? `<div class="ff-tip-meta">${escapeHtml(label)}</div>` : '');
 	}
 
 	function dominantLocationLabel(items: { properties: Record<string, unknown> | null }[]): string {
@@ -830,7 +830,7 @@
 	   the popup container outside our component tree, so the rules must be
 	   :global to land. Match the dark / light surface tokens used elsewhere
 	   so the tooltip reads in either theme. */
-	:global(.tgp-hover-popup .mapboxgl-popup-content) {
+	:global(.ff-hover-popup .mapboxgl-popup-content) {
 		background: var(--c-panel, rgba(14, 23, 38, 0.96));
 		color: var(--c-text-2, #cfd9e6);
 		border: 1px solid var(--c-border, #2a3a52);
@@ -841,14 +841,14 @@
 		line-height: 1.35;
 		pointer-events: none;
 	}
-	:global(.tgp-hover-popup .mapboxgl-popup-tip) {
+	:global(.ff-hover-popup .mapboxgl-popup-tip) {
 		display: none;
 	}
-	:global(.tgp-hover-popup .tgp-tip-title) {
+	:global(.ff-hover-popup .ff-tip-title) {
 		color: var(--c-text, #e5edf5);
 		font-weight: 600;
 	}
-	:global(.tgp-hover-popup .tgp-tip-meta) {
+	:global(.ff-hover-popup .ff-tip-meta) {
 		color: var(--c-muted, #94a3b8);
 		margin-top: 0.15rem;
 		font-size: 11px;

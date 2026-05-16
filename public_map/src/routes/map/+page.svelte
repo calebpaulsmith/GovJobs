@@ -14,7 +14,7 @@
 	import { mapState } from '$lib/store.svelte';
 	import { jobProfile } from '$lib/jobProfile.svelte';
 
-	const THEME_KEY = 'tgp.public_map.theme.v1';
+	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 
 	const savedCount = $derived(jobProfile.savedJobs.length);
 
@@ -46,7 +46,7 @@
 </script>
 
 <svelte:head>
-	<title>The Grand Pipeline — Federal Job Map</title>
+	<title>FedFinder — Federal Job Map</title>
 </svelte:head>
 
 <div class="root" data-theme={mapState.theme}>
@@ -54,7 +54,7 @@
 		<div class="brand">
 			<span class="logo" aria-hidden="true"></span>
 			<div>
-				<h1>The Grand Pipeline</h1>
+				<h1>FedFinder</h1>
 				<p class="tagline">Federal jobs, by paycheck and place</p>
 			</div>
 		</div>
