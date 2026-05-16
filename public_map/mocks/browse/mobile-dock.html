@@ -2,8 +2,49 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Browse — mobile dock mock</title>
+<title>Browse — mobile dock (rev 2)</title>
 <link rel="stylesheet" href="_shared.css">
+<!--
+	Rev 2 design decisions — mobile dock re-cut from rev 1 (chat 2026-05-12,
+	mobile specifics resolved 2026-05-16). Source of truth: desktop-mosaic.html.
+
+	1.  Single filter bar, no separate metric switcher.
+		The List tab toolbar IS the filter. It drives the map markers, the
+		Here card's metric blocks, and the JobList rows — one source of truth.
+		The rev-1 Map-tab "Postings / Pay/COL / Remote / FRPP" pill row was a
+		metric switcher; it is gone.
+
+	2.  Four tabs, not five — Map / List / Here / Saved.
+		The rev-1 "Metrics" tab is REMOVED; its content folds into the Here
+		card as four click-to-expand blocks. The rev-1 "Area" tab is renamed
+		"Here". "Saved" keeps internal sub-tabs (Job Lists / My Postings /
+		Hidden / Viewed-closed), mirroring the desktop ProfileDrawer.
+
+	3.  Two save verbs, not one.
+			•	"Save as Job List"   — persists the current filter set, to a
+				                       place called Job Lists.
+			•	"Save to My Postings" — persists one posting, to My Postings.
+		Both are distinct from the dashboard's Application Tracker.
+
+	4.  Provenance toast confirms either save in plain language, leading with
+		the source of the action. On mobile it slides up from bottom-center.
+
+	5.  Metrics fold into the Here card.
+		Four top-line blocks (Postings / Workforce / Pay vs COL / Urgency) in
+		a 2x2 grid; tapping one expands a full-width detail panel inline.
+		There is NO standalone Metrics surface.
+
+	6.  Pin / unpin, adapted for a single-pane dock.
+		Desktop pins a sticky top band over a scrolling list. Mobile has no
+		two-pane band, so pin is adapted to a collapsible "Here" context
+		strip at the top of the List tab: pinned = sticky while rows scroll,
+		unpinned = scrolls away with the list. A chevron collapses it to one
+		line. Tapping the strip jumps to the Here tab.
+
+	7.  Advanced filters hide behind a single "More filters" disclosure.
+
+	8.  The area summary is deterministic templated prose — never an LLM call.
+-->
 <style>
 	body { padding-top: 2.4rem; min-height: 100vh; background: #020812; }
 
@@ -16,7 +57,7 @@
 		box-shadow: 0 30px 80px rgba(0,0,0,0.6);
 		overflow: hidden;
 		display: flex; flex-direction: column;
-		height: 760px;
+		height: 780px;
 		position: relative;
 	}
 
@@ -37,26 +78,29 @@
 	}
 	.masthead .brand { font-weight: 700; font-size: 13px; }
 	.masthead .right { margin-left: auto; display: flex; gap: 0.3rem; }
+	.masthead .right .pill-btn { font-size: 11px; padding: 0.22rem 0.5rem; }
 
+	/* Scope bar — the single filter's geography chips, always visible. */
 	.scope-bar {
 		flex-shrink: 0;
 		padding: 0.45rem 0.75rem;
 		border-bottom: 1px solid var(--c-border-subtle);
 		display: flex; gap: 0.3rem; overflow-x: auto;
 		background: var(--c-panel-blur);
+		align-items: center;
 	}
 
-	.content { flex: 1; overflow-y: auto; }
+	.content { flex: 1; overflow-y: auto; position: relative; }
 
 	/* Tab content panels — only one visible at a time. */
 	.tab { display: none; padding: 0.75rem; }
 	.tab.active { display: block; }
 
-	/* Dock — bottom nav. */
+	/* Dock — bottom nav, now 4 tabs. */
 	.dock {
 		flex-shrink: 0;
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
+		grid-template-columns: repeat(4, 1fr);
 		background: var(--c-panel);
 		border-top: 1px solid var(--c-border);
 		padding: 0.35rem 0.4rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
@@ -73,28 +117,84 @@
 		border-radius: 10px;
 		display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
 		cursor: pointer;
+		position: relative;
 		transition: background 100ms ease;
 	}
 	.dock button .icon { font-size: 18px; line-height: 1; }
 	.dock button.active { color: var(--c-accent); background: var(--c-accent-bg); }
-	.dock button .badge-pip { position: absolute; }
-
-	/* Map tab. */
-	.tab-map .map-placeholder { height: 100%; min-height: 540px; border-radius: 8px; position: relative; }
-	.tab-map .marker { position: absolute; }
-	.tab-map .floating-pills { position: relative; margin-top: -3rem; padding: 0 0.4rem; display: flex; gap: 0.3rem; flex-wrap: wrap; }
-
-	/* List tab — reuses pieces from desktop mock but slimmed. */
-	.tab-list .toolbar {
-		position: sticky; top: 0;
-		background: var(--c-bg);
-		padding: 0.25rem 0 0.5rem;
-		border-bottom: 1px solid var(--c-border-subtle);
-		margin: -0.75rem -0.75rem 0.4rem;
-		padding: 0.5rem 0.75rem;
-		z-index: 2;
+	.dock button .pip {
+		position: absolute; top: 0.3rem; right: 50%; margin-right: -1.4rem;
+		min-width: 14px; height: 14px; padding: 0 0.2rem;
+		background: var(--c-accent-bg-strong);
+		border: 1px solid var(--c-accent-dim);
+		color: var(--c-accent);
+		border-radius: 999px;
+		font-size: 8px; font-weight: 700;
+		display: grid; place-items: center;
 	}
-	.tab-list .toolbar-row { display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+
+	/* ---- Map tab. ---- */
+	.tab-map { padding: 0; }
+	.tab-map .map-placeholder { height: 100%; min-height: 560px; position: relative; }
+	.tab-map .marker { position: absolute; }
+	.tab-map .map-geo-chips {
+		position: absolute; top: 0.6rem; left: 0.6rem; right: 0.6rem;
+		display: flex; gap: 0.3rem; flex-wrap: wrap;
+	}
+	.tab-map .crossfilter-callout {
+		position: absolute; bottom: 0.7rem; left: 0.6rem; right: 0.6rem;
+		font-size: 10px; color: var(--c-muted);
+		background: var(--c-panel-blur);
+		padding: 0.4rem 0.6rem; border-radius: 6px;
+		border: 1px dashed var(--c-faint);
+		line-height: 1.4;
+	}
+	.tab-map .crossfilter-callout a { font-weight: 600; }
+
+	/* ---- "Here" context strip — the mobile adaptation of desktop pin. ---- */
+	.here-strip {
+		position: sticky; top: 0; z-index: 4;
+		display: flex; align-items: center; gap: 0.4rem;
+		background: var(--c-accent-bg);
+		border: 1px solid var(--c-accent-dim);
+		border-radius: 8px;
+		padding: 0.4rem 0.5rem;
+		margin: 0 0 0.5rem;
+	}
+	.tab-list.unpinned .here-strip { position: static; }
+	.here-strip .hs-body {
+		appearance: none; background: transparent; border: none;
+		color: var(--c-text-2); text-align: left;
+		flex: 1; min-width: 0; cursor: pointer;
+		display: flex; align-items: center; gap: 0.4rem;
+		font-size: 11px;
+	}
+	.here-strip .hs-icon { color: var(--c-accent); font-size: 13px; flex-shrink: 0; }
+	.here-strip .hs-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.here-strip .hs-text strong { color: var(--c-text); }
+	.here-strip.collapsed .hs-detail { display: none; }
+	.here-strip .hs-btn {
+		appearance: none;
+		border: 1px solid var(--c-border-input);
+		background: var(--c-bg);
+		color: var(--c-muted);
+		font-size: 11px; line-height: 1;
+		padding: 0.25rem 0.4rem;
+		border-radius: 5px; cursor: pointer;
+		flex-shrink: 0;
+	}
+	.here-strip .hs-btn.on { color: var(--c-accent); border-color: var(--c-accent); }
+
+	/* ---- List tab. ---- */
+	.tab-list .toolbar {
+		position: sticky; top: 2.35rem; z-index: 3;
+		background: var(--c-bg);
+		padding: 0.5rem 0.75rem;
+		border-bottom: 1px solid var(--c-border-subtle);
+		margin: 0 -0.75rem 0.5rem;
+	}
+	.tab-list.unpinned .toolbar { top: 0; }
+	.tab-list .toolbar-row { display: flex; gap: 0.3rem; align-items: center; }
 	.tab-list .search-input {
 		flex: 1; min-width: 0;
 		background: var(--c-row-bg);
@@ -105,6 +205,7 @@
 		font-size: 13px;
 		outline: none;
 	}
+	.tab-list .search-input:focus { border-color: var(--c-accent); }
 	.tab-list .sort-select {
 		background: var(--c-row-bg);
 		border: 1px solid var(--c-border-input);
@@ -113,80 +214,217 @@
 		border-radius: 6px;
 		font-size: 12px;
 	}
-	.tab-list .facets { display: flex; gap: 0.25rem; overflow-x: auto; padding: 0.4rem 0 0; margin-bottom: -0.2rem; }
+	.tab-list .facets { display: flex; gap: 0.25rem; overflow-x: auto; padding: 0.45rem 0 0.1rem; }
 	.tab-list .facets .facet-chip { flex-shrink: 0; font-size: 10px; }
-	.tab-list .annotation { font-size: 11px; color: var(--c-success); margin-top: 0.4rem; }
+	.tab-list .more-filters {
+		flex-shrink: 0;
+		font-size: 10px; color: var(--c-muted);
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		border: 1px dashed var(--c-faint);
+		background: transparent;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.tab-list .more-filters:hover,
+	.tab-list .more-filters.on { border-color: var(--c-accent); color: var(--c-accent); }
+
+	/* Advanced filters disclosure. */
+	.adv-filters {
+		display: none;
+		margin-top: 0.5rem;
+		padding: 0.5rem 0.55rem;
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 6px;
+	}
+	.adv-filters.open { display: block; }
+	.adv-filters .adv-label { font-size: 9px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+	.adv-filters .adv-chips { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+
+	.tab-list .list-summary {
+		display: flex; gap: 0.5rem; align-items: center;
+		margin-top: 0.5rem;
+		font-size: 11px; color: var(--c-muted);
+	}
+	.tab-list .list-summary strong { color: var(--c-text); }
+	.tab-list .list-summary .pill-btn { margin-left: auto; font-size: 10px; padding: 0.22rem 0.55rem; }
+
 	.tab-list .row {
-		padding: 0.7rem 0.65rem;
+		padding: 0.7rem 0.7rem;
 		background: var(--c-row-bg);
 		border: 1px solid var(--c-border-subtle);
 		border-radius: 8px;
-		margin-bottom: 0.45rem;
-	}
-	.tab-list .row h4 { margin: 0 0 0.25rem; font-size: 13px; color: var(--c-text); }
-	.tab-list .row .meta { font-size: 11px; color: var(--c-muted); margin-bottom: 0.35rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
-	.tab-list .row .summary { font-size: 11px; color: var(--c-text-2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-	.tab-list .row .pay-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; font-size: 12px; }
-	.tab-list .row .pay { font-weight: 700; color: var(--c-text); }
-	.tab-list .row .actions { display: flex; gap: 0.25rem; }
-
-	/* Area tab. */
-	.tab-area h2 { margin: 0 0 0.3rem; font-size: 18px; }
-	.tab-area .subtitle { color: var(--c-muted); font-size: 12px; margin-bottom: 0.85rem; }
-	.tab-area .pulse-band {
-		display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;
-		margin-bottom: 0.85rem;
-	}
-	.tab-area .pulse-metric {
-		background: var(--c-row-bg);
-		border: 1px solid var(--c-border-subtle);
-		border-radius: 8px;
-		padding: 0.55rem;
-		position: relative;
-	}
-	.tab-area .pulse-metric .label { font-size: 10px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-	.tab-area .pulse-metric .value { font-size: 18px; font-weight: 700; margin: 0.15rem 0; }
-	.tab-area .pulse-metric .delta { font-size: 10px; color: var(--c-success); }
-	.tab-area .pulse-metric.placeholder::before {
-		content: 'PLACEHOLDER'; position: absolute; top: 4px; right: 6px;
-		font-size: 8px; color: var(--c-muted);
-		font-weight: 500;
-	}
-	.tab-area dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; font-size: 12px; margin: 0; }
-	.tab-area dt { color: var(--c-muted); }
-	.tab-area dd { margin: 0; color: var(--c-text-2); font-weight: 600; }
-	.tab-area .actions { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.9rem; }
-
-	/* Metrics tab. */
-	.tab-metrics .metric-card {
-		background: var(--c-row-bg);
-		border: 1px solid var(--c-border-subtle);
-		border-radius: 8px;
-		padding: 0.7rem;
 		margin-bottom: 0.5rem;
-		position: relative;
 	}
-	.tab-metrics .metric-card .placeholder-tag {
-		position: absolute; top: 0.4rem; right: 0.45rem;
-		font-size: 9px; padding: 0.05rem 0.35rem; border-radius: 3px;
-		background: var(--c-bg); color: var(--c-muted);
-		border: 1px dashed var(--c-border);
+	.tab-list .row.viewed { opacity: 0.72; }
+	.tab-list .row .title-line { display: flex; gap: 0.35rem; align-items: baseline; flex-wrap: wrap; }
+	.tab-list .row h4 { margin: 0; font-size: 13px; color: var(--c-text); font-weight: 600; }
+	.tab-list .row .meta { font-size: 11px; color: var(--c-muted); margin: 0.3rem 0; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: baseline; }
+	.tab-list .row .meta strong { color: var(--c-text-2); font-weight: 600; }
+	.tab-list .row .excerpts { display: grid; gap: 0.4rem; margin-top: 0.3rem; }
+	.tab-list .row .excerpts .label { color: var(--c-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.1rem; }
+	.tab-list .row .excerpts p { margin: 0; font-size: 11px; color: var(--c-text-2); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.tab-list .row .pay-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.5rem; }
+	.tab-list .row .pay { font-size: 13px; font-weight: 700; color: var(--c-text); }
+	.tab-list .row .pay .pay-note { font-size: 9px; color: var(--c-muted); font-weight: 500; display: block; }
+	.tab-list .row .row-actions { display: flex; gap: 0.3rem; margin-top: 0.5rem; }
+	.tab-list .row .row-actions button {
+		flex: 1;
+		appearance: none;
+		border: 1px solid var(--c-border-input);
+		background: var(--c-bg);
+		color: var(--c-text-2);
+		font-size: 10px; font-weight: 600;
+		padding: 0.32rem 0.4rem;
+		border-radius: 5px;
+		cursor: pointer;
 	}
-	.tab-metrics .metric-card h4 { margin: 0 0 0.45rem; font-size: 13px; }
-	.tab-metrics .metric-card .lede { color: var(--c-muted); font-size: 11px; margin: 0 0 0.5rem; }
-	.tab-metrics .bars { display: flex; align-items: end; gap: 2px; height: 36px; }
-	.tab-metrics .bars span { display: block; flex: 1; background: var(--c-accent); border-radius: 1px; opacity: 0.85; }
+	.tab-list .row .row-actions button.save:hover { border-color: var(--c-accent); color: var(--c-accent); }
+	.tab-list .row .row-actions button.hide:hover { border-color: var(--c-danger-border); color: var(--c-danger); }
 
-	/* Saved tab. */
-	.tab-saved .sub-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.6rem; }
-	.tab-saved .saved-row { background: var(--c-row-bg); border: 1px solid var(--c-border-subtle); border-radius: 6px; padding: 0.5rem 0.6rem; margin-bottom: 0.3rem; }
-	.tab-saved .saved-row .title { font-size: 12px; font-weight: 600; }
-	.tab-saved .saved-row .meta { font-size: 10px; color: var(--c-muted); }
+	.hist-badge {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		padding: 0.05rem 0.4rem; border-radius: 999px;
+		font-size: 9px; font-weight: 600;
+		background: rgba(123, 208, 242, 0.10);
+		border: 1px dashed var(--c-accent-dim);
+		color: var(--c-accent);
+	}
+
+	.list-end { text-align: center; padding: 0.6rem; color: var(--c-muted); font-size: 11px; }
+
+	/* ---- Here tab (was "Area"). ---- */
+	.tab-here .eyebrow { margin-bottom: 0.15rem; }
+	.tab-here h2 { margin: 0 0 0.25rem; font-size: 18px; line-height: 1.2; }
+	.tab-here .subtitle { color: var(--c-muted); font-size: 12px; margin: 0 0 0.7rem; }
+
+	.area-summary {
+		font-size: 11px; color: var(--c-text-2);
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-left: 3px solid var(--c-accent-dim);
+		padding: 0.5rem 0.65rem;
+		border-radius: 6px;
+		margin: 0 0 0.7rem;
+		line-height: 1.5;
+	}
+	.area-summary .label { color: var(--c-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+	.area-summary strong { color: var(--c-text); }
+
+	/* Four metric blocks — 2x2 grid, tap to expand inline. */
+	.metric-blocks {
+		display: grid; grid-template-columns: 1fr 1fr;
+		gap: 0.45rem; margin: 0 0 0.7rem;
+	}
+	.mblock {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 8px;
+		padding: 0.55rem 0.6rem;
+		cursor: pointer;
+		transition: border-color 100ms ease;
+	}
+	.mblock:active { border-color: var(--c-accent-dim); }
+	.mblock .label { color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; }
+	.mblock .value { font-size: 18px; font-weight: 700; color: var(--c-text); margin: 0.12rem 0; }
+	.mblock .delta { font-size: 10px; color: var(--c-muted); }
+	.mblock .delta.up { color: var(--c-success); }
+	.mblock .delta.down { color: var(--c-danger); }
+	.mblock .expand-hint { font-size: 9px; color: var(--c-faint); margin-top: 0.25rem; }
+
+	/* Expanded block — spans the full grid width. */
+	.mblock.open {
+		grid-column: 1 / -1;
+		border-color: var(--c-accent-dim);
+	}
+	.mblock.open .head { display: flex; align-items: baseline; gap: 0.5rem; }
+	.mblock.open .head .value { font-size: 16px; margin: 0; }
+	.mblock.open .detail-grid {
+		display: grid; grid-template-columns: 1fr auto;
+		gap: 0.18rem 0.8rem;
+		font-size: 11px;
+		margin: 0.5rem 0 0;
+	}
+	.mblock.open .detail-grid dt { color: var(--c-muted); }
+	.mblock.open .detail-grid dd { margin: 0; font-weight: 600; text-align: right; color: var(--c-text-2); }
+	.mblock.open .detail-grid dd.formula { font-weight: 500; color: var(--c-muted); font-size: 10px; }
+	.mblock.open .detail-src { font-size: 9px; color: var(--c-faint); margin-top: 0.4rem; }
+	.mblock.open .collapse-hint { font-size: 9px; color: var(--c-faint); text-align: right; margin-top: 0.3rem; }
+	.mblock .detail-grid, .mblock .detail-src, .mblock .collapse-hint, .mblock .head { display: none; }
+	.mblock.open .detail-grid, .mblock.open .detail-src, .mblock.open .collapse-hint, .mblock.open .head { display: grid; }
+	.mblock.open .detail-src, .mblock.open .collapse-hint, .mblock.open .head { display: block; }
+	.mblock.open .head { display: flex; }
+	.mblock.open .label, .mblock.open .value, .mblock.open .delta, .mblock.open .expand-hint { display: none; }
+
+	.tab-here .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+	.tab-here .actions .pill-btn { font-size: 11px; }
+
+	/* ---- Saved tab. ---- */
+	.tab-saved .sub-tabs { display: flex; gap: 0.25rem; margin: 0.3rem 0 0.7rem; overflow-x: auto; }
+	.tab-saved .sub-tabs .pill-btn { font-size: 10px; flex-shrink: 0; }
+	.tab-saved .saved-panel { display: none; }
+	.tab-saved .saved-panel.active { display: block; }
+	.tab-saved .saved-row {
+		background: var(--c-row-bg);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: 6px;
+		padding: 0.55rem 0.6rem;
+		margin-bottom: 0.4rem;
+	}
+	.tab-saved .saved-row .title { font-size: 12px; font-weight: 600; color: var(--c-text); display: flex; align-items: center; gap: 0.35rem; }
+	.tab-saved .saved-row .meta { font-size: 10px; color: var(--c-muted); margin-top: 0.2rem; }
+	.tab-saved .saved-row .joblist-tag {
+		font-size: 8px; font-weight: 700; letter-spacing: 0.04em;
+		padding: 0.05rem 0.35rem; border-radius: 3px;
+		background: var(--c-accent-bg-strong); color: var(--c-accent);
+		border: 1px solid var(--c-accent-dim);
+	}
+	.tab-saved .saved-row .row-mini-actions { margin-top: 0.4rem; display: flex; gap: 0.3rem; }
+	.tab-saved .saved-row .row-mini-actions button {
+		appearance: none; border: 1px solid var(--c-border-input);
+		background: var(--c-bg); color: var(--c-text-2);
+		font-size: 9px; font-weight: 600;
+		padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;
+	}
+	.tab-saved .empty-note { font-size: 11px; color: var(--c-muted); padding: 0.5rem 0.1rem; }
+
+	/* ---- Provenance toast — slides up from bottom-center. ---- */
+	.toast {
+		position: absolute;
+		left: 0.7rem; right: 0.7rem;
+		bottom: 4.1rem;
+		background: var(--c-panel);
+		border: 1px solid var(--c-accent-dim);
+		border-radius: 10px;
+		padding: 0.7rem 0.8rem;
+		color: var(--c-text);
+		box-shadow: 0 -6px 28px rgba(0,0,0,0.6);
+		display: flex; flex-direction: column; gap: 0.5rem;
+		z-index: 20;
+		animation: toast-rise 260ms ease;
+	}
+	@keyframes toast-rise {
+		from { transform: translateY(140%); opacity: 0; }
+		to   { transform: translateY(0);    opacity: 1; }
+	}
+	.toast .toast-label { color: var(--c-accent); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+	.toast .toast-body { font-size: 11px; line-height: 1.5; color: var(--c-text-2); }
+	.toast .toast-body strong { color: var(--c-text); }
+	.toast .toast-actions { display: flex; gap: 0.4rem; }
+	.toast .toast-actions button {
+		appearance: none; background: transparent;
+		border: 1px solid var(--c-border-input);
+		color: var(--c-text-2);
+		font-size: 11px; padding: 0.25rem 0.6rem;
+		border-radius: 5px; cursor: pointer; flex: 1;
+	}
+	.toast .toast-actions button.primary { border-color: var(--c-accent); color: var(--c-accent); }
 </style>
 </head>
 <body>
 <div class="mock-banner">
-	<span>Mock: <strong>Mobile / web-app dock</strong> — single-pane, 5 tabs. Tap any tab below the phone frame.</span>
+	<span>Mock (rev 2): <strong>Mobile dock — 4 tabs, single filter bar, Here card with inline metrics, Job Lists / My Postings</strong></span>
 	<span>
 		<a href="index.html">← all mocks</a>
 		<a href="desktop-mosaic.html">desktop mosaic →</a>
@@ -204,11 +442,12 @@
 			<a>Loc</a>
 		</nav>
 		<div class="right">
-			<button class="pill-btn" style="font-size: 10px; padding: 0.2rem 0.5rem;">★</button>
-			<button class="pill-btn" style="font-size: 10px; padding: 0.2rem 0.5rem;">⇗</button>
+			<button class="pill-btn" title="Address / ZIP zoom">⚲</button>
+			<button class="pill-btn" title="Share this view">⇗</button>
 		</div>
 	</header>
 
+	<!-- One filter — its geography chips ride here, above every tab. -->
 	<div class="scope-bar">
 		<span class="chip">Chicago, IL · 50 mi <span class="x">×</span></span>
 		<span class="chip">HSCB <span class="x">×</span></span>
@@ -217,268 +456,528 @@
 
 	<div class="content">
 
-		<!-- Map tab -->
+		<!-- ============ Map tab ============ -->
 		<section class="tab tab-map" data-tab="map">
 			<div class="map-placeholder">
-				<div class="marker cluster" style="left: 30%; top: 28%;">47</div>
-				<div class="marker" style="left: 50%; top: 40%;"></div>
-				<div class="marker" style="left: 65%; top: 50%;"></div>
+				<div class="marker cluster" style="left: 30%; top: 26%;">47</div>
+				<div class="marker" style="left: 50%; top: 38%;"></div>
+				<div class="marker" style="left: 65%; top: 48%;"></div>
 				<div class="marker cluster" style="left: 38%; top: 60%;">12</div>
 				<div class="marker" style="left: 70%; top: 70%;"></div>
-			</div>
-			<div class="floating-pills">
-				<button class="pill-btn accent" style="font-size: 11px;">Postings</button>
-				<button class="pill-btn" style="font-size: 11px;">Pay/COL</button>
-				<button class="pill-btn" style="font-size: 11px;">Remote</button>
-				<button class="pill-btn" style="font-size: 11px;">FRPP</button>
+				<div class="marker" style="left: 24%; top: 72%;"></div>
+
+				<div class="map-geo-chips">
+					<span class="chip">Chicago, IL · 50 mi <span class="x">×</span></span>
+					<span class="chip">HSCB <span class="x">×</span></span>
+				</div>
+
+				<div class="crossfilter-callout">
+					Markers reflect your filter exactly — there is no separate metric
+					switcher. Adjust the filter on the <a data-jump="list">List tab</a>
+					and the map, the Here card, and the list all update together.
+				</div>
 			</div>
 		</section>
 
-		<!-- List tab (default visible) -->
+		<!-- ============ List tab (default visible) ============ -->
 		<section class="tab tab-list active" data-tab="list">
+
+			<!-- "Here" context strip — the mobile adaptation of desktop pin/unpin. -->
+			<div class="here-strip" id="hereStrip">
+				<button class="hs-body" data-jump="here">
+					<span class="hs-icon">◉</span>
+					<span class="hs-text">
+						<strong>Chicago–Naperville</strong><span class="hs-detail"> · 47 open · Pay/COL 108.4</span>
+					</span>
+				</button>
+				<button class="hs-btn" id="hsCollapse" title="Collapse / expand the strip">▾</button>
+				<button class="hs-btn on" id="hsPin" title="Pinned — strip stays put while the list scrolls">📌</button>
+			</div>
+
 			<div class="toolbar">
 				<div class="toolbar-row">
-					<input class="search-input" type="text" placeholder="Search in 47 jobs…">
+					<input class="search-input" type="text" placeholder="Filter — title, agency, summary, qualifications…">
 					<select class="sort-select">
-						<option>Closing</option>
-						<option>Newest</option>
-						<option>Pay ↓</option>
-						<option>Pay ↑</option>
-						<option>Title</option>
+						<option>Closing soonest</option>
+						<option>Newest first</option>
+						<option>Highest pay</option>
+						<option>Pay vs COL</option>
+						<option>Distance from Chicago</option>
 					</select>
 				</div>
 				<div class="facets">
-					<button class="facet-chip on">GS <span class="count">38</span></button>
-					<button class="facet-chip">WG <span class="count">5</span></button>
-					<button class="facet-chip on">Remote <span class="count">9</span></button>
-					<button class="facet-chip">≤ 7d <span class="count">14</span></button>
-					<button class="facet-chip">Reposts <span class="count">6</span></button>
-					<button class="facet-chip">Hide viewed</button>
+					<button class="facet-chip on">GS only <span class="count">38</span></button>
+					<button class="facet-chip on">Remote-eligible <span class="count">9</span></button>
+					<button class="facet-chip">Closing ≤ 7d <span class="count">14</span></button>
+					<button class="facet-chip">Hide viewed <span class="count">12</span></button>
+					<button class="more-filters" id="moreFilters">+ More filters (8)</button>
 				</div>
-				<div class="annotation">↑ 23% above 90d avg for IL postings <span class="muted" style="margin-left: 0.4rem;">(placeholder)</span></div>
+
+				<div class="adv-filters" id="advFilters">
+					<div class="adv-label">More filters — series, grade, hiring path, clearance, closing window</div>
+					<div class="adv-chips">
+						<button class="facet-chip">Series pattern</button>
+						<button class="facet-chip">GS grade range</button>
+						<button class="facet-chip">Hiring path</button>
+						<button class="facet-chip">Security clearance</button>
+						<button class="facet-chip">Closing window</button>
+						<button class="facet-chip">Pay plan</button>
+						<button class="facet-chip">Telework</button>
+						<button class="facet-chip">Travel</button>
+					</div>
+				</div>
+
+				<div class="list-summary">
+					<span><strong>47 of 312</strong> postings match</span>
+					<button class="pill-btn accent" id="saveJobListBtn">+ Save as Job List</button>
+				</div>
 			</div>
 
+			<!-- Row 1 -->
 			<article class="row">
-				<h4>Supervisory Emergency Management Specialist (Operations)</h4>
-				<div class="meta">
-					<strong style="color: var(--c-text-2);">FEMA</strong>
-					<span>Chicago, IL · 8 mi</span>
-					<span>GS-14 · 0089</span>
-					<span class="badge badge-critical">Today</span>
-					<span class="hist-badge" style="display:inline-flex; align-items:center; padding: 0.05rem 0.35rem; font-size: 9px; border-radius: 999px; border: 1px dashed var(--c-accent-dim); color: var(--c-accent);">5th repost · 18 mo</span>
+				<div class="title-line">
+					<h4>Supervisory Emergency Management Specialist (Operations)</h4>
+					<span class="badge badge-critical">Closes today</span>
+					<span class="hist-badge">5th repost · 18 mo</span>
 				</div>
-				<p class="summary">Supervisory emergency management specialist within the Operations Section, leading deployment-ready teams and coordinating with state, local, and tribal partners during declared disasters.</p>
-				<div class="pay-row">
-					<span class="pay">$122,198 – $158,860</span>
-					<div class="actions">
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+				<div class="meta">
+					<strong>FEMA</strong> · DHS · Chicago, IL · 8 mi · GS-14 · 0089
+				</div>
+				<div class="excerpts">
+					<div>
+						<div class="label">Summary excerpt</div>
+						<p>Supervisory emergency management specialist in the Operations Section, leading deployment-ready teams and coordinating with state, local, and tribal partners during declared disasters.</p>
 					</div>
+					<div>
+						<div class="label">Qualifications excerpt</div>
+						<p>One year specialized experience equivalent to GS-13, including coordinating multi-agency disaster response and supervising 3+ direct reports.</p>
+					</div>
+				</div>
+				<div class="pay-row">
+					<span class="pay">$122,198 – $158,860 <span class="pay-note">GS · exact pay table</span></span>
+				</div>
+				<div class="row-actions">
+					<button class="save" data-save-posting>★ Save to My Postings</button>
+					<button class="hide">⊘ Hide</button>
 				</div>
 			</article>
 
+			<!-- Row 2 -->
 			<article class="row">
-				<h4>Contract Specialist</h4>
-				<div class="meta">
-					<strong style="color: var(--c-text-2);">GSA</strong>
-					<span>Chicago, IL · 0 mi</span>
-					<span>GS-12/13 · 1102</span>
-					<span class="badge badge-soon">3d</span>
-					<span class="badge badge-info">Remote</span>
+				<div class="title-line">
+					<h4>Contract Specialist</h4>
+					<span class="badge badge-soon">Closes in 3d</span>
+					<span class="badge badge-info">Remote-eligible</span>
 				</div>
-				<p class="summary">Primary acquisition lead for a portfolio of complex IT services contracts supporting nationwide federal customer agencies, with full pre-award and post-award authority.</p>
-				<div class="pay-row">
-					<span class="pay">$94,199 – $145,617</span>
-					<div class="actions">
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+				<div class="meta">
+					<strong>GSA</strong> · Chicago, IL · 0 mi · GS-12 / 13 · 1102
+				</div>
+				<div class="excerpts">
+					<div>
+						<div class="label">Summary excerpt</div>
+						<p>Primary acquisition lead for a portfolio of complex IT services contracts supporting nationwide federal customer agencies, with full pre-award and post-award authority.</p>
 					</div>
+					<div>
+						<div class="label">Qualifications excerpt</div>
+						<p>FAC-C Level III or DAWIA equivalent required. One year specialized experience at the next-lower grade administering services contracts above the SAT.</p>
+					</div>
+				</div>
+				<div class="pay-row">
+					<span class="pay">$94,199 – $145,617 <span class="pay-note">GS · ladder 12 → 13</span></span>
+				</div>
+				<div class="row-actions">
+					<button class="save" data-save-posting>★ Save to My Postings</button>
+					<button class="hide">⊘ Hide</button>
 				</div>
 			</article>
 
+			<!-- Row 3 -->
 			<article class="row">
-				<h4>Electrician Supervisor (WG)</h4>
-				<div class="meta">
-					<strong style="color: var(--c-text-2);">VA</strong>
-					<span>Hines, IL · 12 mi</span>
-					<span>WS-10 · 2805</span>
+				<div class="title-line">
+					<h4>Wage Grade — Electrician Supervisor</h4>
+					<span class="hist-badge">2nd repost · 11 mo</span>
 				</div>
-				<p class="summary">Supervises a section of journey-level electricians providing 24/7 facility-power coverage at a level 1A VA medical center.</p>
-				<div class="pay-row">
-					<span class="pay">$45.62 – $53.21 /hr</span>
-					<div class="actions">
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">★</button>
-						<button class="pill-btn" style="font-size: 10px; padding: 0.18rem 0.5rem;">⊘</button>
+				<div class="meta">
+					<strong>VA</strong> · Hines, IL · 12 mi · WS-10 · 2805
+				</div>
+				<div class="excerpts">
+					<div>
+						<div class="label">Summary excerpt</div>
+						<p>Supervises journey-level electricians providing 24/7 facility-power coverage at a level 1A VA medical center, responsible for crew assignments and apprentice development.</p>
+					</div>
+					<div>
+						<div class="label">Qualifications excerpt</div>
+						<p>Experience equivalent to the next-lower WG grade, including operating high-voltage switchgear ≥ 4.16 kV and reading single-line and ladder diagrams.</p>
 					</div>
 				</div>
+				<div class="pay-row">
+					<span class="pay">$45.62 – $53.21 /hr <span class="pay-note">WS · hourly · snapshot</span></span>
+				</div>
+				<div class="row-actions">
+					<button class="save" data-save-posting>★ Save to My Postings</button>
+					<button class="hide">⊘ Hide</button>
+				</div>
 			</article>
+
+			<!-- Row 4 -->
+			<article class="row">
+				<div class="title-line">
+					<h4>Program Analyst</h4>
+					<span class="badge badge-soon">Closes in 6d</span>
+				</div>
+				<div class="meta">
+					<strong>HHS</strong> · Anywhere remote · GS-13 · 0343
+					<span class="muted" style="font-size: 10px;">ⓘ Locality follows eventual duty station</span>
+				</div>
+				<div class="excerpts">
+					<div>
+						<div class="label">Summary excerpt</div>
+						<p>Program-analytics lead for a national health-services initiative, building dashboards, briefing senior leadership weekly, translating policy guidance into measurable indicators.</p>
+					</div>
+					<div>
+						<div class="label">Qualifications excerpt</div>
+						<p>One year specialized experience at GS-12, including independent program evaluation, briefing SES audiences, building analytic products in SQL, R, or Python.</p>
+					</div>
+				</div>
+				<div class="pay-row">
+					<span class="pay">$103,409 – $134,435 <span class="pay-note">GS · locality TBD</span></span>
+				</div>
+				<div class="row-actions">
+					<button class="save" data-save-posting>★ Save to My Postings</button>
+					<button class="hide">⊘ Hide</button>
+				</div>
+			</article>
+
+			<!-- Row 5 — viewed -->
+			<article class="row viewed">
+				<div class="title-line">
+					<h4>IT Specialist (Customer Support)</h4>
+					<span class="badge badge-muted">Viewed</span>
+				</div>
+				<div class="meta">
+					<strong>DOJ</strong> · Chicago, IL · 3 mi · GS-11 · 2210
+				</div>
+				<div class="excerpts">
+					<div>
+						<div class="label">Summary excerpt</div>
+						<p>Tier-2 and Tier-3 desktop and infrastructure support to a 1,200-person Chicago field office, including hardware lifecycle and deployment imaging.</p>
+					</div>
+					<div>
+						<div class="label">Qualifications excerpt</div>
+						<p>IT-related experience demonstrating attention to detail, customer service, oral communication, and problem solving. Active Top Secret clearance preferred.</p>
+					</div>
+				</div>
+				<div class="pay-row">
+					<span class="pay">$74,477 – $96,818 <span class="pay-note">GS · exact</span></span>
+				</div>
+				<div class="row-actions">
+					<button class="save" data-save-posting>★ Save to My Postings</button>
+					<button class="hide">⊘ Hide</button>
+				</div>
+			</article>
+
+			<div class="list-end">Showing 5 of 47 · scroll to load more</div>
 		</section>
 
-		<!-- Area tab -->
-		<section class="tab tab-area" data-tab="area">
-			<div class="eyebrow">Locality · smallest enclosing area</div>
+		<!-- ============ Here tab (was "Area") ============ -->
+		<section class="tab tab-here" data-tab="here">
+			<div class="eyebrow">Here · smallest area containing the map viewport</div>
 			<h2>Chicago–Naperville, IL–IN–WI</h2>
-			<p class="subtitle">CHI · 47 open · 15 fed properties</p>
+			<p class="subtitle">CHI · 47 open postings · 15 federal properties · 13 counties</p>
 
-			<div class="pulse-band">
-				<div class="pulse-metric placeholder">
-					<div class="label">Open</div>
-					<div class="value">47</div>
-					<div class="delta">↑ 23% vs 90d</div>
-				</div>
-				<div class="pulse-metric placeholder">
-					<div class="label">New 7d</div>
-					<div class="value">12</div>
-					<div class="delta">↑ 4 vs typ</div>
-				</div>
-				<div class="pulse-metric placeholder">
-					<div class="label">Med close</div>
-					<div class="value">14d</div>
-					<div class="delta">↓ 3d</div>
-				</div>
-				<div class="pulse-metric placeholder">
-					<div class="label">≤ 3d</div>
-					<div class="value">5</div>
-					<div class="delta">3 GS, 2 WG</div>
-				</div>
+			<!-- Deterministic, templated area summary — no LLM call, ever. -->
+			<div class="area-summary">
+				<div class="label">Area summary · auto-generated</div>
+				47 open postings in this locality. 12 posted in the last 7 days
+				(↑ 4 vs. a typical week). Median close window is 14 days; 5 close
+				within 3 days. GS-13 step 1 here pays <strong>$107,540</strong>,
+				which is <strong>108.4</strong> on the pay-vs-COL index
+				(state average = 100). Top hiring agencies: HSCB, DOJ, GSA.
 			</div>
 
-			<dl>
-				<dt>Locality pay</dt><dd>30.41%</dd>
-				<dt>GS-13 step 1</dt><dd>$107,540</dd>
-				<dt>RPP (overall)</dt><dd>105.3</dd>
-				<dt>Pay / COL</dt><dd>108.4</dd>
-				<dt>Top series</dt><dd>0301 · 1102</dd>
-				<dt>Top agencies</dt><dd>HSCB · DOJ · GSA</dd>
-			</dl>
+			<!-- Four metric blocks — 2x2 grid, tap to expand. Pay vs COL open by default. -->
+			<div class="metric-blocks" id="metricBlocks">
+
+				<div class="mblock" data-metric="postings">
+					<div class="label">Postings (open)</div>
+					<div class="value">47</div>
+					<div class="delta up">↑ 23% vs 90d avg</div>
+					<div class="expand-hint">▾ tap to expand</div>
+					<div class="head"><span class="label">Postings (open)</span> <span class="value">47</span></div>
+					<dl class="detail-grid">
+						<dt>New in last 7 days</dt><dd>12</dd>
+						<dt>Closed in last 30 days</dt><dd>18</dd>
+						<dt>Median close window</dt><dd>14 days</dd>
+						<dt>Top series</dt><dd>0301 · 1102 · 2210</dd>
+						<dt>vs. 90-day average</dt><dd>↑ 23%</dd>
+					</dl>
+					<div class="detail-src">Source: USAJOBS /Search, current filter</div>
+					<div class="collapse-hint">▴ tap to collapse</div>
+				</div>
+
+				<div class="mblock" data-metric="workforce">
+					<div class="label">Workforce</div>
+					<div class="value">~89k</div>
+					<div class="delta">civilian, FY24 OPM</div>
+					<div class="expand-hint">▾ tap to expand</div>
+					<div class="head"><span class="label">Workforce</span> <span class="value">~89k</span></div>
+					<dl class="detail-grid">
+						<dt>Civilian headcount (FY24)</dt><dd>~89,000</dd>
+						<dt>Largest agency</dt><dd>VA</dd>
+						<dt>Accessions (FY24)</dt><dd>4,210</dd>
+						<dt>Separations (FY24)</dt><dd>3,880</dd>
+					</dl>
+					<div class="detail-src">Source: OPM FedScope — workforce counts, not postings</div>
+					<div class="collapse-hint">▴ tap to collapse</div>
+				</div>
+
+				<div class="mblock open" data-metric="paycol">
+					<div class="label">Pay vs COL</div>
+					<div class="value">108.4</div>
+					<div class="delta up">↑ 4.2 above national</div>
+					<div class="expand-hint">▾ tap to expand</div>
+					<div class="head"><span class="label">Pay vs COL</span> <span class="value">108.4</span> <span class="delta up">↑ 4.2 above national</span></div>
+					<dl class="detail-grid">
+						<dt>Locality pay adjustment</dt><dd>30.41%</dd>
+						<dt>GS-13 step 1 (2026)</dt><dd>$107,540</dd>
+						<dt>BEA RPP (overall, IL)</dt><dd>105.3</dd>
+						<dt>ACS median rent (Cook Co.)</dt><dd>$1,387 / mo</dd>
+						<dt>Index formula</dt><dd class="formula">(locality pay ÷ national base) ÷ (RPP ÷ 100) × 100</dd>
+					</dl>
+					<div class="detail-src">Source: OPM 2026 locality tables · BEA RPP · Census ACS</div>
+					<div class="collapse-hint">▴ tap to collapse</div>
+				</div>
+
+				<div class="mblock" data-metric="urgency">
+					<div class="label">Urgency</div>
+					<div class="value">5</div>
+					<div class="delta down">closing ≤ 3d</div>
+					<div class="expand-hint">▾ tap to expand</div>
+					<div class="head"><span class="label">Urgency</span> <span class="value">5</span></div>
+					<dl class="detail-grid">
+						<dt>Closing today</dt><dd>1</dd>
+						<dt>Closing in ≤ 3 days</dt><dd>5</dd>
+						<dt>Closing in ≤ 7 days</dt><dd>14</dd>
+						<dt>Median window</dt><dd>14 days</dd>
+					</dl>
+					<div class="detail-src">Source: USAJOBS close_date on the current filter</div>
+					<div class="collapse-hint">▴ tap to collapse</div>
+				</div>
+
+			</div>
 
 			<div class="actions">
-				<button class="pill-btn accent">View 47 postings</button>
+				<button class="pill-btn accent" id="saveJobListBtn2">+ Save as Job List</button>
+				<button class="pill-btn" data-jump="list">View all 47 postings</button>
 				<button class="pill-btn">+ Add to search</button>
-				<button class="pill-btn">📊 Open metrics</button>
 			</div>
 		</section>
 
-		<!-- Metrics tab -->
-		<section class="tab tab-metrics" data-tab="metrics">
-			<div class="eyebrow">Metrics · current scope (IL · 50 mi of Chicago · HSCB)</div>
-			<h2 style="margin: 0.2rem 0 0.8rem; font-size: 18px;">Posting climate</h2>
-
-			<div class="metric-card">
-				<span class="placeholder-tag">PLACEHOLDER · slice via on-demand call</span>
-				<h4>Postings volume — trailing 12 months</h4>
-				<p class="lede">Monthly USAJOBS posting count for the current filter.</p>
-				<div class="bars">
-					<span style="height: 28%;"></span>
-					<span style="height: 42%;"></span>
-					<span style="height: 38%;"></span>
-					<span style="height: 56%;"></span>
-					<span style="height: 71%;"></span>
-					<span style="height: 64%;"></span>
-					<span style="height: 49%;"></span>
-					<span style="height: 60%;"></span>
-					<span style="height: 78%;"></span>
-					<span style="height: 88%;"></span>
-					<span style="height: 95%;"></span>
-					<span style="height: 100%;"></span>
-				</div>
-				<p class="lede" style="margin-top: 0.5rem; color: var(--c-success);">↑ 23% above 90d average for this filter</p>
-			</div>
-
-			<div class="metric-card">
-				<span class="placeholder-tag">PLACEHOLDER</span>
-				<h4>Top 5 hiring agencies</h4>
-				<p class="lede">Posting count for the current filter.</p>
-				<div style="font-size: 11px;">
-					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>HSCB (FEMA)</span><strong>12</strong></div>
-					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>DOJ</span><strong>9</strong></div>
-					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>GSA</span><strong>8</strong></div>
-					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>VA</span><strong>7</strong></div>
-					<div style="display:flex; justify-content:space-between; padding:0.15rem 0;"><span>HHS</span><strong>5</strong></div>
-				</div>
-			</div>
-
-			<div class="metric-card">
-				<span class="placeholder-tag">PLACEHOLDER</span>
-				<h4>Fill signal</h4>
-				<p class="lede">Median posting window vs. trailing 90 days.</p>
-				<div style="font-size: 12px; line-height: 1.6;">
-					<div>Median window <strong>14 days</strong> <span class="muted">(typical 17)</span></div>
-					<div><span style="color: var(--c-warn);">5</span> closing in ≤ 3 days</div>
-					<div><span style="color: var(--c-success);">12</span> opened in the last 7 days</div>
-				</div>
-			</div>
-
-			<div class="metric-card" style="border-style: dashed; opacity: 0.85;">
-				<span class="placeholder-tag">SLICE · investigate</span>
-				<h4>Concentration</h4>
-				<p class="lede">Posting density vs. workforce population — depends on OPM accessions slice we don't have yet.</p>
-				<div style="font-size: 11px; color: var(--c-muted);">Awaiting slice from <code>opm_accessions</code> + <code>jobs</code> aggregation.</div>
-			</div>
-		</section>
-
-		<!-- Saved tab -->
+		<!-- ============ Saved tab ============ -->
 		<section class="tab tab-saved" data-tab="saved">
 			<div class="eyebrow">My jobs</div>
-			<h2 style="margin: 0.2rem 0 0.8rem; font-size: 18px;">Saved · hidden · viewed</h2>
+			<h2 style="margin: 0.2rem 0 0; font-size: 18px;">Saved &amp; tracked</h2>
 
-			<div class="sub-tabs">
-				<button class="pill-btn accent" style="font-size: 11px;">Saved (3)</button>
-				<button class="pill-btn" style="font-size: 11px;">Hidden (1)</button>
-				<button class="pill-btn" style="font-size: 11px;">Viewed-closed (2)</button>
+			<div class="sub-tabs" id="savedSubTabs">
+				<button class="pill-btn accent" data-sub="lists">Job Lists (3)</button>
+				<button class="pill-btn" data-sub="postings">My Postings (3)</button>
+				<button class="pill-btn" data-sub="hidden">Hidden (1)</button>
+				<button class="pill-btn" data-sub="viewed">Viewed-closed (2)</button>
 			</div>
 
-			<article class="saved-row">
-				<div class="title">Supervisory Emergency Management Specialist</div>
-				<div class="meta">FEMA · Chicago, IL · GS-14 · saved 2 days ago</div>
-			</article>
-			<article class="saved-row">
-				<div class="title">Contract Specialist</div>
-				<div class="meta">GSA · Chicago, IL · GS-12/13 · saved 4 days ago</div>
-			</article>
-			<article class="saved-row">
-				<div class="title">Program Analyst</div>
-				<div class="meta">HHS · Remote · GS-13 · saved 5 days ago</div>
-			</article>
-
-			<div style="margin-top: 1rem;">
-				<div class="eyebrow">Saved searches</div>
-				<article class="saved-row" style="margin-top: 0.4rem;">
-					<div class="title">Chicago + HSCB + GS-12+</div>
-					<div class="meta">Open 47 · last run today · re-run nightly</div>
+			<!-- Job Lists — saved filter sets. -->
+			<div class="saved-panel active" data-sub="lists">
+				<article class="saved-row">
+					<div class="title"><span class="joblist-tag">JOB LIST</span> Chicago FEMA mid-grade</div>
+					<div class="meta">Locality: Chicago–Naperville · FEMA · GS-13–14 · 47 postings · saved today</div>
+					<div class="row-mini-actions">
+						<button>Open</button><button>Run now</button><button>Rename</button><button>Delete</button>
+					</div>
 				</article>
 				<article class="saved-row">
-					<div class="title">Anywhere remote · 0343 · GS-13</div>
-					<div class="meta">Open 28 · last run yesterday</div>
+					<div class="title"><span class="joblist-tag">JOB LIST</span> Anywhere remote · 0343</div>
+					<div class="meta">Remote · series 0343 · GS-13 · 28 postings · saved yesterday</div>
+					<div class="row-mini-actions">
+						<button>Open</button><button>Run now</button><button>Rename</button><button>Delete</button>
+					</div>
 				</article>
+				<article class="saved-row">
+					<div class="title"><span class="joblist-tag">JOB LIST</span> VA facilities trades</div>
+					<div class="meta">VA · WG / WS · IL · 15 postings · saved 3 days ago</div>
+					<div class="row-mini-actions">
+						<button>Open</button><button>Run now</button><button>Rename</button><button>Delete</button>
+					</div>
+				</article>
+				<p class="empty-note">Job Lists persist a whole filtered search. They are separate from the dashboard's Application Tracker.</p>
+			</div>
+
+			<!-- My Postings — individual saved jobs. -->
+			<div class="saved-panel" data-sub="postings">
+				<article class="saved-row">
+					<div class="title">★ Supervisory Emergency Management Specialist</div>
+					<div class="meta">FEMA · Chicago, IL · GS-14 · saved 2 days ago</div>
+					<div class="row-mini-actions"><button>Open</button><button>Remove</button></div>
+				</article>
+				<article class="saved-row">
+					<div class="title">★ Contract Specialist</div>
+					<div class="meta">GSA · Chicago, IL · GS-12 / 13 · saved 4 days ago</div>
+					<div class="row-mini-actions"><button>Open</button><button>Remove</button></div>
+				</article>
+				<article class="saved-row">
+					<div class="title">★ Program Analyst</div>
+					<div class="meta">HHS · Anywhere remote · GS-13 · saved 5 days ago</div>
+					<div class="row-mini-actions"><button>Open</button><button>Remove</button></div>
+				</article>
+				<p class="empty-note">My Postings persists one posting at a time. It is not an application — use the dashboard's Application Tracker for that.</p>
+			</div>
+
+			<!-- Hidden. -->
+			<div class="saved-panel" data-sub="hidden">
+				<article class="saved-row">
+					<div class="title">IT Specialist (Customer Support)</div>
+					<div class="meta">DOJ · Chicago, IL · GS-11 · hidden 1 day ago</div>
+					<div class="row-mini-actions"><button>Unhide</button></div>
+				</article>
+				<p class="empty-note">Hidden postings drop out of the map, the list, and scoped counts until you unhide them.</p>
+			</div>
+
+			<!-- Viewed-closed. -->
+			<div class="saved-panel" data-sub="viewed">
+				<article class="saved-row">
+					<div class="title">Budget Analyst</div>
+					<div class="meta">Treasury · Chicago, IL · GS-12 · closed 3 days ago</div>
+				</article>
+				<article class="saved-row">
+					<div class="title">Human Resources Specialist</div>
+					<div class="meta">OPM · Chicago, IL · GS-11 · closed 6 days ago</div>
+				</article>
+				<p class="empty-note">Postings you viewed that have since closed — kept for reference.</p>
 			</div>
 		</section>
 
 	</div>
 
-	<!-- Dock -->
+	<!-- Provenance toast — slides up from bottom-center after a save. -->
+	<aside class="toast" id="toast">
+		<div class="toast-label" id="toastLabel">Saved as Job List</div>
+		<div class="toast-body" id="toastBody">
+			From <strong>Locality: Chicago–Naperville, IL–IN–WI</strong> · filtered to
+			<strong>FEMA, GS-13–14</strong> · 47 postings.
+			Saved as a new Job List: <strong>"Chicago FEMA mid-grade"</strong>.
+		</div>
+		<div class="toast-actions">
+			<button class="primary" id="toastPrimary">Open Job Lists</button>
+			<button id="toastUndo">Undo</button>
+		</div>
+	</aside>
+
+	<!-- Dock — 4 tabs (Metrics removed; Area renamed Here). -->
 	<nav class="dock">
 		<button data-target="map"><span class="icon">🗺</span><span>Map</span></button>
 		<button data-target="list" class="active"><span class="icon">≡</span><span>List</span></button>
-		<button data-target="area"><span class="icon">◉</span><span>Area</span></button>
-		<button data-target="metrics"><span class="icon">📊</span><span>Metrics</span></button>
-		<button data-target="saved"><span class="icon">★</span><span>Saved</span></button>
+		<button data-target="here"><span class="icon">◉</span><span>Here</span></button>
+		<button data-target="saved"><span class="icon">★</span><span class="pip">4</span><span>Saved</span></button>
 	</nav>
 </div>
 
 <p style="text-align: center; color: var(--c-muted); font-size: 12px; max-width: 420px; margin: 0 auto 3rem; padding: 0 1rem;">
-	The same content as the desktop mosaic, single-pane. The scope bar (geo chips) and the masthead pills stay
-	above the tab content so users always see what they're filtered to and can switch view modes without losing
-	state. Tap a dock tab to switch panes.
+	Rev 2, single-pane. One filter bar (List toolbar) drives the map markers, the Here card metrics, and the
+	list rows together — no separate metric switcher. The scope bar and masthead pills stay above every tab so
+	the active filter is always visible. Tap a dock tab to switch panes.
 </p>
 
 <script>
+	// Dock tab switching.
 	document.querySelectorAll('.dock button').forEach((btn) => {
+		btn.addEventListener('click', () => switchTab(btn.dataset.target));
+	});
+	function switchTab(target) {
+		document.querySelectorAll('.dock button').forEach((b) => b.classList.toggle('active', b.dataset.target === target));
+		document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === target));
+		document.querySelector('.content').scrollTop = 0;
+	}
+	// Cross-tab "jump" links (callout, here-strip, Here-tab actions).
+	document.querySelectorAll('[data-jump]').forEach((el) => {
+		el.addEventListener('click', (e) => { e.preventDefault(); switchTab(el.dataset.jump); });
+	});
+
+	// "Here" context strip — pin + collapse (the mobile adaptation of desktop pin/unpin).
+	const tabList = document.querySelector('.tab-list');
+	const hereStrip = document.getElementById('hereStrip');
+	document.getElementById('hsPin').addEventListener('click', (e) => {
+		e.stopPropagation();
+		const btn = e.currentTarget;
+		const pinned = btn.classList.toggle('on');
+		tabList.classList.toggle('unpinned', !pinned);
+		btn.title = pinned
+			? 'Pinned — strip stays put while the list scrolls'
+			: 'Unpinned — strip scrolls away with the list';
+	});
+	document.getElementById('hsCollapse').addEventListener('click', (e) => {
+		e.stopPropagation();
+		const collapsed = hereStrip.classList.toggle('collapsed');
+		e.currentTarget.textContent = collapsed ? '▸' : '▾';
+	});
+
+	// Metric blocks — tap to expand, one open at a time.
+	document.querySelectorAll('#metricBlocks .mblock').forEach((block) => {
+		block.addEventListener('click', () => {
+			const wasOpen = block.classList.contains('open');
+			document.querySelectorAll('#metricBlocks .mblock').forEach((b) => b.classList.remove('open'));
+			if (!wasOpen) block.classList.add('open');
+		});
+	});
+
+	// Saved tab sub-tabs.
+	document.querySelectorAll('#savedSubTabs button').forEach((btn) => {
 		btn.addEventListener('click', () => {
-			const target = btn.dataset.target;
-			document.querySelectorAll('.dock button').forEach((b) => b.classList.toggle('active', b === btn));
-			document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === target));
-			document.querySelector('.content').scrollTop = 0;
+			const sub = btn.dataset.sub;
+			document.querySelectorAll('#savedSubTabs button').forEach((b) => b.classList.toggle('accent', b === btn));
+			document.querySelectorAll('.tab-saved .saved-panel').forEach((p) => p.classList.toggle('active', p.dataset.sub === sub));
+		});
+	});
+
+	// "More filters" disclosure.
+	const moreBtn = document.getElementById('moreFilters');
+	moreBtn.addEventListener('click', () => {
+		const open = document.getElementById('advFilters').classList.toggle('open');
+		moreBtn.classList.toggle('on', open);
+	});
+
+	// Provenance toast — show after a save, leading with the source of the action.
+	const toast = document.getElementById('toast');
+	function showToast(label, bodyHTML, primaryText) {
+		document.getElementById('toastLabel').textContent = label;
+		document.getElementById('toastBody').innerHTML = bodyHTML;
+		document.getElementById('toastPrimary').textContent = primaryText;
+		toast.style.display = 'flex';
+		toast.style.animation = 'none';
+		void toast.offsetWidth;
+		toast.style.animation = 'toast-rise 260ms ease';
+	}
+	function hideToast() { toast.style.display = 'none'; }
+	document.getElementById('toastUndo').addEventListener('click', hideToast);
+	document.getElementById('toastPrimary').addEventListener('click', hideToast);
+
+	// "Save as Job List" — persists the current filter set.
+	[document.getElementById('saveJobListBtn'), document.getElementById('saveJobListBtn2')].forEach((btn) => {
+		btn.addEventListener('click', () => showToast(
+			'Saved as Job List',
+			'From <strong>Locality: Chicago–Naperville, IL–IN–WI</strong> · filtered to '
+			+ '<strong>HSCB (FEMA), GS only, Remote-eligible</strong> · 47 postings. '
+			+ 'Saved as a new Job List: <strong>"Chicago FEMA mid-grade"</strong>.',
+			'Open Job Lists'));
+	});
+
+	// "Save to My Postings" — persists one posting.
+	document.querySelectorAll('[data-save-posting]').forEach((btn) => {
+		btn.addEventListener('click', () => {
+			const title = btn.closest('.row').querySelector('h4').textContent;
+			showToast(
+				'Saved to My Postings',
+				'From the <strong>List tab</strong> · posting <strong>"' + title + '"</strong> '
+				+ 'saved to My Postings. This is not an application — track applications in the dashboard.',
+				'Open My Postings');
 		});
 	});
 </script>
