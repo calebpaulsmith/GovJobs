@@ -113,8 +113,34 @@ let costOfLivingCache: CostOfLiving | null = null;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
+// manifest.json is tiny and carries `generated_at`, which doubles as a
+// cache-busting token. It is always fetched fresh (no-store). Every other
+// bundle file is then fetched as `<file>?v=<generated_at>`: the same bundle
+// resolves to the same URL (cache hit), and a nightly refresh changes
+// generated_at, so the URL changes and the browser is guaranteed to pull
+// the new file. Without this, force-cache + stable filenames keep serving a
+// stale bundle long after the data has been refreshed.
+let bundleVersion: string | null = null;
+let manifestCache: unknown;
+
+async function loadBundleVersion(): Promise<string> {
+	if (bundleVersion !== null) return bundleVersion;
+	const url = `${DATA_BASE}/manifest.json`;
+	try {
+		const response = await fetch(url, { cache: 'no-store' });
+		manifestCache = response.ok ? await response.json() : null;
+	} catch (err) {
+		console.warn(`[public_map] failed to fetch ${url}:`, err);
+		manifestCache = null;
+	}
+	const generatedAt = (manifestCache as { generated_at?: unknown } | null)?.generated_at;
+	bundleVersion = generatedAt ? String(generatedAt) : 'unversioned';
+	return bundleVersion;
+}
+
 async function fetchJson<T>(filename: string, fallback: T): Promise<T> {
-	const url = `${DATA_BASE}/${filename}`;
+	const version = await loadBundleVersion();
+	const url = `${DATA_BASE}/${filename}?v=${encodeURIComponent(version)}`;
 	try {
 		const response = await fetch(url, { cache: import.meta.env.DEV ? 'no-store' : 'force-cache' });
 		if (!response.ok) {
@@ -141,7 +167,11 @@ export const loadClosedJobs = () =>
 	fetchJson<FeatureCollection>('closed_jobs.geojson', EMPTY_COLLECTION);
 export const loadFederalProperties = () =>
 	fetchJson<FeatureCollection>('federal_properties.geojson', EMPTY_COLLECTION);
-export const loadManifest = () => fetchJson<unknown>('manifest.json', null);
+export async function loadManifest(): Promise<unknown> {
+	// loadBundleVersion already fetched and cached manifest.json fresh.
+	await loadBundleVersion();
+	return manifestCache ?? null;
+}
 export async function loadAgencyOptions(): Promise<AgencyOption[]> {
 	agencyOptionsCache ??= (await fetchJson<AgencyOption[]>('agencies.json', [])).map((option) => ({
 		...option,
