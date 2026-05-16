@@ -42,7 +42,7 @@
 </head>
 <body>
 <h1>Browse UI mocks</h1>
-<p class="lede">Static, click-through mocks for the Browse view (ADR-0033 / D.5.28). The <strong>desktop mosaic is at rev 2</strong> — pinned top band, single filter bar, metrics folded into SmallestAreaCard, Job Lists / My Postings save verbs, provenance toast. The other three mocks are still on rev 1 and will be re-cut after rev 2 is approved.</p>
+<p class="lede">Static, click-through mocks for the Browse view (ADR-0033 / D.5.28). The <strong>desktop mosaic and mobile dock are at rev 2</strong> — single filter bar, metrics folded into the area card, Job Lists / My Postings save verbs, provenance toast. The remaining two mocks are still on rev 1 and will be re-cut after rev 2 is approved.</p>
 
 <div class="grid">
 	<a class="card panel" href="desktop-mosaic.html">
@@ -61,13 +61,12 @@
 			<div class="dock">
 				<span>Map</span>
 				<span class="active">List</span>
-				<span>Area</span>
-				<span>Metrics</span>
+				<span>Here</span>
 				<span>Saved</span>
 			</div>
 		</div>
-		<h3>2. Mobile / web-app dock <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — pending update</span></h3>
-		<p>Single-pane, dock-driven. Five tabs — Map / List / Here / Metrics / Saved. (Rev 2 will rename "Area" → "Here", drop the separate Metrics tab in favor of inline metric blocks inside the Here card, and surface Job Lists / My Postings.)</p>
+		<h3>2. Mobile / web-app dock <span class="badge badge-success" style="margin-left:0.4rem;">Rev 2</span></h3>
+		<p>Single-pane, dock-driven. Four tabs — Map / List / Here / Saved. One filter bar (List toolbar) drives map markers, Here card metrics, and list rows. Metrics fold into the Here card as four tap-to-expand blocks; the rev-1 "Area" tab is renamed "Here" and the standalone "Metrics" tab is gone. "Save as Job List" / "Save to My Postings" with a bottom-center provenance toast.</p>
 	</a>
 
 	<a class="card panel" href="metrics-pane.html">
