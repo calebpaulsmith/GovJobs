@@ -531,3 +531,104 @@ The user-picked answers from the four blocking questions: screen name **Browse**
 7. **Closed jobs in shared URLs.** Proposed: never 404; resolve filters/viewport and show a banner about the closed posting.
 8. **Bundle-size ceiling.** If `summary_excerpt` + `qualifications_excerpt` push the bundle over 25 MiB, switch to lazy-load excerpts via a Cloudflare Pages Function fed by the local DB snapshot; document the threshold in `docs/PUBLIC_MAP_PIPELINE.md`.
 
+
+## ADR-0034 — Per-plan pay resolution strategy
+Date: 2026-05-10 (revised same-day)
+Status: **Proposed — not yet scheduled; needs further discussion before implementation**
+Amends: CLAUDE.md hard rule 10 (no-widen guard binds immediately; per-plan rendering is target direction, not current behavior)
+
+**Revision note (2026-05-10).** This ADR is **not a green-light to build**. The user's intent on revisiting it: (a) capture the design direction so the no-widen guardrail can bind today even though no implementation work is scheduled, (b) record the locality reality (~75% of postings live on the OPM 58-area grid, not the ~53% the audit's GS-only count suggested), and (c) park a new "Locality-Pinned View" tool concept for future discussion. Status is Proposed. Items 1–6 below are the proposed taxonomy and consequences; items 7–9 are the revision additions; the "Deferral schedule" is rewritten so that nothing in this ADR ships before V1 is callable done. Open questions at the end must be settled before sequencing.
+
+**Context.** Rule 10 was originally written as "every posting has an exact pay table," which silently assumed GS-family pay. A `SELECT pay_plan, COUNT(*) FROM jobs GROUP BY pay_plan` against the live SQLite returned a top-30 distribution in which GS-family is only ~53% of postings. The other ~47% spans pay systems with structurally different rules:
+
+- **FWS** (`WG`/`WS`/`WL`, ~11%) uses 248 wage areas anchored on military bases / VAMCs — geometry that does not match the 58 OPM GS locality areas. The Jan 2025 OPM final rule begins aligning the two maps but only for ~10% of the FWS workforce in this round; convergence is slow.
+- **Non-Appropriated Fund** (`NF`/`NA`, ~11%) is its own pay system, set per local NAF instrumentality (MWR, exchanges, Marine Corps recreation). Not GS, not FWS, not OPM-published. The current `pay_plans` seed does not register it at all.
+- **Title 38 VHA** (`VM` physician/dentist market pay, `VN` nurse facility panels, ~8%) is facility-level. `VN` is registered; `VM` — the larger of the two and the 4th-largest plan in the live data — is not.
+- **Broadband / demo** (`NH`/`NJ`/`NK` AcqDemo; `IC`/`IH`/`IA` DCIPS; `FV`/`FG`/`AT` FAA Core Compensation; `SV` TSA; `CY` DoD Cyber Excepted Service; `ND` Navy demo; `ES` SES; ~14%) has ranges, not steps. None except `ES` are in the seed. `CY` is the 6th-largest plan in the live data.
+- **Administratively determined** (`AD`, ~3%) and uniformed services (`CC` USPHS/NOAA Commissioned Corps) have no published civilian pay table at all.
+
+The previous behavior — universal table lookup against `pay_scales` keyed by `(pay_plan, year, grade, step, locality_code)` — produces three failure modes for the non-GS half of postings: (a) `unavailable` status pinned on plans that *will never have* a table, indistinguishable from GS-family ingestion gaps; (b) `approximated` math derived from base × GS locality % for plans where GS locality is the wrong geography or no geography; (c) the temptation to "just add some rows" to `pay_scales` for FWS, Title 38, or broadband plans, which would silently corrupt the table by stuffing wage-area rates under fake locality codes or fabricating `step=0` rows for stepless plans.
+
+**Decision.** Every `pay_plans.code` is assigned exactly one `pay_resolution_strategy`. The pay_calculator, the public-map exporter, and the JobCard renderer all dispatch on that strategy. Six strategies cover the live-data top 30 and provide a typed "unknown / posting-only" fallback for codes that show up later.
+
+1. **Strategy taxonomy.**
+
+   | Strategy | Card behavior | Geography model |
+   |---|---|---|
+   | `gs_table` | Full grade × step locality-adjusted table from `pay_scales`. Status pills `exact` / `approximated` / `unavailable` keep their D.5.11 meaning. | OPM GS locality area |
+   | `range_only` | Statutory range or broadband min/max for the year from a per-plan range source, or the posting's `salary_min` / `salary_max` when no published range exists. Labeled "no step structure." | None or GS locality cap (plan-specific) |
+   | `wage_area_deferred` | Posting salary + "Federal Wage System — wage area not yet modeled in V1" note. **No GS locality stamp. No GS adjustment math.** | FWS wage area (Phase 13) |
+   | `facility_market` | Posting salary + plan name + a one-line link to the canonical schedule (VA OCHCO for VHA; State Department for Foreign Service). No fabricated table; no GS locality stamp. | VA facility / FS post |
+   | `admin_determined` | Posting salary only with "Agency-determined; no published table." | None |
+   | `unmodeled` | Posting salary only with "Pay system not modeled" + the raw plan code, so the operator can register it. | None |
+
+   The `unavailable` status is reserved for `gs_table` postings that should have a table but don't yet — never for plans on a different strategy.
+
+2. **Plan → strategy table** (seeded into `pay_plans.pay_resolution_strategy`; the table is the V1 contract, not exhaustive of every OPM pay plan code):
+
+   | Strategy | Plans |
+   |---|---|
+   | `gs_table` | `GS`, `GM`, `GL`, `GP`, `GR`, `GG`, `GW`, `LE`, `AL` |
+   | `range_only` | `ES`, `SL`, `ST`, `EX`, `NH`, `NJ`, `NK`, `ND`, `IC`, `IH`, `IA`, `FV`, `FG`, `AT`, `SV`, `CY`, `NF` |
+   | `wage_area_deferred` | `FW`, `WG`, `WL`, `WS`, `NA` |
+   | `facility_market` | `VN`, `VM`, `VP`, `FO`, `FP`, `CC` |
+   | `admin_determined` | `AD` |
+   | `unmodeled` | (default for any code present in `jobs.pay_plan` but absent from `pay_plans`) |
+
+   `NF` (NAF salaried bands) is classed `range_only` because the NAF pay-band structure publishes per-band ranges; `NA` (NAF wage grade) is classed `wage_area_deferred` because it follows the NAF wage-area survey model. Both will be revisited if the audit shows enough volume to justify a dedicated NAF strategy.
+
+3. **Registration discipline.** Adding a code to `pay_plans` requires picking a strategy from the taxonomy above. The Public Map Admin page (`pages/11_Public_Map_Admin.py`) gains an "Unregistered pay plans" panel that shows `SELECT DISTINCT pay_plan FROM jobs WHERE pay_plan NOT IN (SELECT code FROM pay_plans)`. Codes there default to `unmodeled` until an operator registers them. Introducing a new strategy (a seventh kind) requires a follow-up ADR.
+
+4. **The no-widen rule, codified.** `pay_scales` is for `gs_table` postings only.
+   - No `step=0` rows for `range_only` plans.
+   - No synthetic locality codes for `wage_area_deferred` plans.
+   - No facility-level rates inserted under fake locality codes for `facility_market` plans.
+   - No rows at all for `admin_determined` or `unmodeled`.
+
+   Range-only plans get rate data, when published, in a separate `pay_ranges` table keyed by `(pay_plan, year, band_or_grade)` — *not* in `pay_scales`. FWS wage-area rates, if/when ingested, get their own `fws_wage_areas` + `fws_pay` tables in Phase 13. Title 38 facility panels and Foreign Service post differentials get their own per-plan tables when those phases land. PRs that grow `pay_scales` for non-`gs_table` plans must be rejected and the work routed.
+
+5. **Choropleth scope.** The state / county pay-vs-COL choropleth and the GS-13 step 1 reference (`_gs_base_step1_for_year`, `_pay_vs_col`) remain anchored to GS-13 step 1 as the *reference cell* — but the polygon geometry (the 58 OPM locality areas) is the correct geography for every plan with `pay_area_kind = gs_locality` (see item 7). Tooltips and legends must say "GS-13 step 1, locality-adjusted" — not "federal pay" — and the legend must note "applies to ~75% of postings (GS-family + AcqDemo + DCIPS + FAA Core + TSA SV + SL/ST + CY's polygon, with CY's supplement amount differing). FWS, Title 38, NAF wage, and SES/EX postings sit on different geography or none." State Roundup and County Detail keep their compensation rows but gain a small "postings by pay-area kind" breakdown so the locality story doesn't pretend to cover the FWS / Title 38 / no-locality slice that physically lives inside the same polygon.
+
+6. **Deferral schedule (rewritten).** Nothing in this ADR ships before V1 is callable done. The original V1.5 plan is withdrawn; reintroducing any of it requires the operator to settle the Open Questions below and explicitly schedule the work.
+   - **Binds immediately, regardless of schedule:** the no-widen rule (item 4). No PR may grow `pay_scales` for non-`gs_table` plans. This is a code-review guard, not a sequenced feature.
+   - **V2 candidate (needs further discussion):** the per-plan strategy field on `pay_plans`, the plan→strategy seed table, the calculator dispatch, the five non-GS JobCard renderers, the Admin "Unregistered pay plans" panel, and the locality-polygon label change to "GS locality pay area." Sequenced only after V1 ships and the operator confirms that the GS-only JobCard is causing visible misinformation worth fixing.
+   - **V2+ candidate (needs further discussion):** the two-axis `pay_area_kind` field (item 7).
+   - **V2+ candidate (needs further discussion):** the Locality-Pinned View (item 8).
+   - **Out of scope until at least one of the above ships:** FWS wage-area layer, Title 38 facility panels, Foreign Service post differentials, special-rates "higher of" logic. These were previously sequenced as Phase 13 / 14 / V2+; that sequencing is withdrawn and will be re-decided once item 7's pay-area-kind model is approved.
+
+7. **Two-axis pay-area-kind model (Proposed; not implemented).** A pay plan has two independent attributes that the rate-table architecture has been conflating:
+
+   - **Table shape** (the existing `pay_resolution_strategy`): `gs_table`, `range_only`, `facility_panel`, `wage_area_table`, `single_rate`, `none`. Determines what the JobCard renders.
+   - **Pay-area kind** (new field, `pay_area_kind`): `gs_locality`, `lms_replacement`, `fws_wage_area`, `facility_specific`, `bah_area`, `none`. Determines which geography the plan's pay actually varies on, independent of the rate-table shape.
+
+   These axes are independent. AcqDemo (`NH`/`NJ`/`NK`) is `range_only` table shape with `gs_locality` pay-area kind — the broadband ranges differ by GS locality. SES (`ES`) is `range_only` with `none` — same range nationwide. FWS (`WG`/`WL`/`WS`) is `wage_area_table` with `fws_wage_area`. Title 38 nurses (`VN`) are `facility_panel` with `facility_specific`. DoD Cyber (`CY`) is `range_only` with `lms_replacement` — same 58 polygon geometry as GS locality, but the supplement amount comes from a published LMS table (and TLMS for STEM/cyber roles), not the OPM locality %.
+
+   Implication: the locality polygon layer is the correct geography for any plan whose `pay_area_kind` is `gs_locality` *or* `lms_replacement` — empirically ~75% of postings, not the ~53% covered by `pay_resolution_strategy='gs_table'`. The "GS-family only" framing in earlier items of this ADR is too narrow at the geography layer; it remains correct at the rate-table layer. Items 1, 2, 4 above are unchanged because they describe the rate-table layer.
+
+   Open question (see below): should `pay_area_kind` live as a column on `pay_plans`, or in a separate `pay_systems` table that `pay_plans.code` joins to? Geography evolves slower than rate tables.
+
+8. **Locality-Pinned View tool (Proposed feature; needs further discussion).** A new public-map view that makes the locality polygon honest by showing what it actually does and doesn't affect. Activation: user clicks a GS locality polygon, or selects "View by locality" from a polygon's scoped action window (CLAUDE.md rule 16), or applies a locality chip from the Compensation Comparator. Effects:
+
+   - The map filters to postings physically located inside that locality's constituent counties (using `locality_pay_counties`).
+   - Marker color/style is driven by the posting's `pay_area_kind`:
+     - `gs_locality` postings render as the primary marker color (matching the polygon's choropleth intensity) — these are the jobs whose pay the locality % actually affects.
+     - `lms_replacement` postings (CY etc.) render as the primary color with a small overlay badge indicating "same polygon, different supplement (LMS)."
+     - `fws_wage_area`, `facility_specific`, `bah_area`, `none` postings render in a desaturated style with a "different pay geography" badge — they're geographically in the locality but their pay does not vary by it.
+   - A side panel summarizes counts by `pay_area_kind`, with the "different geography" group expandable to its sub-kinds (FWS / Title 38 facility / NAF wage / SES / EX / Commissioned Corps / AD).
+   - An "Add to Search" chip applies a locality filter (per CLAUDE.md rule 17, additive with other geography chips).
+
+   Purpose: demonstrate visually that the locality polygon is meaningful for most postings inside it but not all, so the user understands which jobs the choropleth color is "about." Replaces the implicit promise of the current polygon layer (which appears to color *all* postings) with an explicit one.
+
+   Not designed yet. The decision items above (especially item 7's `pay_area_kind`) are prerequisites. Implementation, UI mockups, marker style choices, and panel layout are deferred to a future ADR or planning doc when the operator decides to schedule this.
+
+9. **Active scope.** From this revision until further notice, the only thing in this ADR that's actually "on": the **no-widen rule in item 4 binds today** as a code-review guard. The taxonomy in items 1–3, the broadened choropleth scope in item 5, the two-axis model in item 7, and the Locality-Pinned View in item 8 are recorded as design direction for future work and are not on any current sprint.
+
+**Open Questions** (must be settled before any work in this ADR is scheduled):
+1. Given that the dashboard's JobCard is GS-only today, is the right next move to (a) build the per-plan renderers in this ADR, (b) ship the Locality-Pinned View tool, or (c) something else — and which user-visible problem is most worth solving first?
+2. Does `pay_area_kind` belong on `pay_plans` (one row per plan code) or in a separate `pay_systems` table that plans reference? FWS sub-codes (`WG`/`WL`/`WS`) all share one wage-area geometry, suggesting separation; AcqDemo (`NH`/`NJ`/`NK`) all share one geometry too.
+3. For `CY` and other LMS plans: does the choropleth show GS-13 step 1 *with GS locality %* (the current reference cell), or does the legend explicitly say "this color reflects GS locality math; CY postings inside this polygon use LMS, which differs"? The first is simpler; the second is more honest.
+4. Is the Locality-Pinned View a V2 feature or a smaller V1.5 add-on that just adds a marker-coloring branch to the existing polygon click? The latter is cheap; the former is a bigger UI commitment.
+5. For Title 38 (`VN`/`VM`): facility-level pay isn't a polygon at all — it's a point per VAMC. Does the Locality-Pinned View show these as the "different geography" desaturated markers (current proposal), or does it eventually grow a separate VA-facility overlay (similar to ADR-0025's FRPP layer) so the user can see the actual facility pay schedules?
+6. Is the Phase 13 / Phase 14 sequencing (FWS, then Title 38) still right, or does the data argue for Title 38 first given VM is the 4th-largest plan in the live audit?
+
+**Consequences (revised).** Recording this ADR has three effects today and zero implementation effects until the operator schedules work. (1) The no-widen rule in item 4 is a code-review guard that prevents the most likely regression — someone "just adding a few rows" to `pay_scales` for FWS or Title 38. (2) Future work on pay rendering, locality scoping, and the Locality-Pinned View shares a single taxonomy, so we don't end up with three slightly-different implementations. (3) The audit query (`SELECT pay_plan, COUNT(*) FROM jobs GROUP BY pay_plan`) becomes a recurring admin-page sanity check and a freshness signal for the Open Questions above — as USAJOBS coverage broadens, the distribution will shift and the prioritization may change. No code, schema, or UI changes from this ADR; rule 10 in CLAUDE.md is reframed in parallel to clarify that the per-plan rendering is target direction, not current behavior, while the no-widen guard binds today.
