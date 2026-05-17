@@ -4,7 +4,8 @@
 	The List tab works from the deduplicated jobs_detail.json (one row per
 	posting). Agency is a code-backed picker (AgencyPicker.svelte); pay plan,
 	remote, grade, series, salary, and keyword live behind "More filters".
-	All inputs drive the one shared filter, mapState.filters.
+	All inputs drive the one shared filter, mapState.filters. The list itself
+	is the shared JobList component in rich mode.
 
 	Spec: public_map/mocks/browse/mobile-dock.html (rev 2), ADR-0033.
 	Map / Here / Saved tabs are filled in by later increments.
@@ -13,26 +14,16 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { mapState } from '$lib/store.svelte';
-	import { loadJobDetailsIndex, type JobDetails } from '$lib/data';
-	import { DEFAULT_FILTERS, filterJobDetails, type JobFilters } from '$lib/filters';
-	import { gradeRange, salaryRange, urgencyBadge } from '$lib/format';
+	import { DEFAULT_FILTERS, type JobFilters } from '$lib/filters';
 	import { jobProfile } from '$lib/jobProfile.svelte';
 	import AgencyPicker from '$lib/AgencyPicker.svelte';
+	import JobList from '$lib/JobList.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 
-	let jobs = $state<JobDetails[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-
-	type SortKey = 'closing_soon' | 'closing_late' | 'salary_high' | 'salary_low' | 'title';
-	let sortKey = $state<SortKey>('closing_soon');
-
-	const PAGE = 25;
-	let visibleCount = $state(PAGE);
 	let moreOpen = $state(false);
 
 	// Theme — read once, persist on change (so /browse themes when opened direct).
@@ -49,22 +40,6 @@
 	function toggleTheme() {
 		mapState.theme = mapState.theme === 'dark' ? 'light' : 'dark';
 	}
-
-	// Load the deduplicated posting index once (one entry per posting).
-	$effect(() => {
-		loading = true;
-		loadJobDetailsIndex()
-			.then((idx) => (jobs = Object.values(idx)))
-			.catch((err) => (error = (err as Error).message))
-			.finally(() => (loading = false));
-	});
-
-	// Reset the visible window when the filter or sort changes.
-	$effect(() => {
-		void mapState.filters;
-		void sortKey;
-		visibleCount = PAGE;
-	});
 
 	// --- the single shared filter ---
 	function setFilter<K extends keyof JobFilters>(key: K, value: JobFilters[K]) {
@@ -102,81 +77,9 @@
 		if (f.salaryMin) n += 1;
 		return n;
 	});
-	const anyFilter = $derived(mapState.filters.agencies.length > 0 || moreCount > 0 || mapState.filters.geographies.length > 0);
-
-	// --- the filtered, sorted, paginated list ---
-	function idOf(job: JobDetails): string {
-		return String(job.id ?? '');
-	}
-	function closeOf(job: JobDetails): number {
-		const t = Date.parse(String(job.close_date ?? ''));
-		return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
-	}
-	function salaryOf(job: JobDetails): number {
-		const v = Number(job.salary_min ?? 0);
-		return Number.isFinite(v) ? v : 0;
-	}
-
-	const filtered = $derived.by(() => {
-		const list = filterJobDetails(jobs, mapState.filters);
-		return list.filter((j) => !jobProfile.isHidden(idOf(j)));
-	});
-
-	const sorted = $derived.by(() => {
-		const list = filtered.slice();
-		switch (sortKey) {
-			case 'closing_soon':
-				return list.sort((a, b) => closeOf(a) - closeOf(b));
-			case 'closing_late':
-				return list.sort((a, b) => closeOf(b) - closeOf(a));
-			case 'salary_high':
-				return list.sort((a, b) => salaryOf(b) - salaryOf(a));
-			case 'salary_low':
-				return list.sort((a, b) => salaryOf(a) - salaryOf(b));
-			case 'title':
-				return list.sort((a, b) =>
-					String(a.title ?? '').localeCompare(String(b.title ?? ''))
-				);
-			default:
-				return list;
-		}
-	});
-
-	const totalJobs = $derived(jobs.length);
-	const filteredCount = $derived(filtered.length);
-	const visible = $derived(sorted.slice(0, visibleCount));
-
-	function locationLabel(job: JobDetails): string {
-		if (String(job.remote_status ?? '').toLowerCase() === 'remote') return 'Anywhere remote';
-		const locs = job.locations ?? [];
-		if (locs.length === 0) return 'Location not listed';
-		const first = String(locs[0]?.city ?? locs[0]?.location_text ?? '').trim() || 'Location not listed';
-		return locs.length > 1 ? `${first} +${locs.length - 1} more` : first;
-	}
-
-	// --- save / hide (local profile) ---
-	function toggleSave(job: JobDetails) {
-		const id = idOf(job);
-		if (!id) return;
-		if (jobProfile.isSaved(id)) {
-			jobProfile.unsaveJob(id);
-		} else {
-			jobProfile.saveJob(id, {
-				title: String(job.title ?? 'Untitled posting'),
-				agency: String(job.agency ?? job.agency_code ?? ''),
-				close_date: job.close_date ?? null,
-				url: job.url ?? null
-			});
-		}
-	}
-	function hide(job: JobDetails) {
-		const id = idOf(job);
-		if (id) jobProfile.hideJob(id);
-	}
-	function markViewed(job: JobDetails) {
-		const id = idOf(job);
-		if (id) jobProfile.markViewed(id);
-	}
+	const anyFilter = $derived(
+		mapState.filters.agencies.length > 0 || moreCount > 0 || mapState.filters.geographies.length > 0
+	);
 
 	const savedCount = $derived(jobProfile.savedJobs.length);
 </script>
@@ -217,13 +120,9 @@
 							More filters{#if moreCount > 0}<span class="badge">{moreCount}</span>{/if}
 							<span class="caret">{moreOpen ? '▴' : '▾'}</span>
 						</button>
-						<select class="sort" bind:value={sortKey} aria-label="Sort postings">
-							<option value="closing_soon">Closing soonest</option>
-							<option value="closing_late">Closing latest</option>
-							<option value="salary_high">Highest pay</option>
-							<option value="salary_low">Lowest pay</option>
-							<option value="title">Title A–Z</option>
-						</select>
+						{#if anyFilter}
+							<button type="button" class="clear" onclick={clearAll}>Clear filters</button>
+						{/if}
 					</div>
 
 					{#if moreOpen}
@@ -316,81 +215,9 @@
 							</div>
 						</div>
 					{/if}
-
-					<div class="summary">
-						{#if loading}
-							<span>Loading postings…</span>
-						{:else if error}
-							<span class="err">Couldn't load postings: {error}</span>
-						{:else}
-							<span><strong>{filteredCount.toLocaleString()}</strong> of {totalJobs.toLocaleString()} postings</span>
-							{#if anyFilter}
-								<button type="button" class="clear" onclick={clearAll}>Clear filters</button>
-							{/if}
-						{/if}
-					</div>
 				</div>
 
-				{#if !loading && !error}
-					{#if filteredCount === 0}
-						<p class="empty">No postings match the current filter. Remove an agency or open More filters to widen it.</p>
-					{:else}
-						<ul class="rows">
-							{#each visible as job (job.id)}
-								{@const urg = urgencyBadge(job.close_date)}
-								{@const id = idOf(job)}
-								{@const saved = jobProfile.isSaved(id)}
-								{@const viewed = jobProfile.isViewed(id)}
-								<li class="row" class:viewed>
-									<div class="row-head">
-										{#if job.url}
-											<a
-												class="row-title"
-												href={job.url}
-												target="_blank"
-												rel="noopener noreferrer"
-												onclick={() => markViewed(job)}
-											>
-												{job.title ?? 'Untitled posting'}
-											</a>
-										{:else}
-											<span class="row-title">{job.title ?? 'Untitled posting'}</span>
-										{/if}
-										{#if urg.level}
-											<span class="urgency {urg.level}">{urg.text}</span>
-										{:else if viewed}
-											<span class="urgency viewed-tag">Viewed</span>
-										{/if}
-									</div>
-									<div class="row-meta">
-										<strong>{job.agency ?? job.agency_code ?? 'Agency unknown'}</strong>
-										<span>{locationLabel(job)}</span>
-										<span>{gradeRange(job.pay_plan, job.grade_low, job.grade_high)}</span>
-										{#if job.series}<span>Series {job.series}</span>{/if}
-									</div>
-									<div class="row-foot">
-										<span class="pay">{salaryRange(job.salary_min, job.salary_max, job.salary_type)}</span>
-										<div class="row-actions">
-											<button type="button" class="act save" class:on={saved} onclick={() => toggleSave(job)}>
-												{saved ? '★ Saved' : '★ Save to My Postings'}
-											</button>
-											<button type="button" class="act hide" onclick={() => hide(job)}>⊘ Hide</button>
-										</div>
-									</div>
-								</li>
-							{/each}
-						</ul>
-
-						{#if visibleCount < filteredCount}
-							<button type="button" class="load-more" onclick={() => (visibleCount += PAGE)}>
-								Show {Math.min(PAGE, filteredCount - visibleCount)} more
-								<span class="muted">({visibleCount.toLocaleString()} of {filteredCount.toLocaleString()})</span>
-							</button>
-						{:else}
-							<p class="list-end">All {filteredCount.toLocaleString()} matching postings shown.</p>
-						{/if}
-					{/if}
-				{/if}
+				<JobList richMode />
 			</section>
 
 		<!-- ===================== Map tab ===================== -->
@@ -534,6 +361,7 @@
 	}
 	.tools {
 		display: flex;
+		align-items: center;
 		gap: 0.35rem;
 	}
 	.more-btn {
@@ -568,16 +396,21 @@
 	.more-btn .caret {
 		font-size: 9px;
 	}
-	.sort {
-		flex: 1;
+	.clear {
+		margin-left: auto;
 		appearance: none;
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		background: transparent;
 		border: 1px solid var(--c-border-input, #2c4870);
 		color: var(--c-text-2, #cfd9e6);
-		border-radius: 6px;
-		padding: 0.4rem 0.45rem;
-		font-size: 12px;
+		font-size: 10px;
+		font-weight: 600;
+		padding: 0.3rem 0.6rem;
+		border-radius: 999px;
 		cursor: pointer;
+	}
+	.clear:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
 	}
 
 	/* More filters */
@@ -622,174 +455,6 @@
 	.fld input:focus,
 	.fld select:focus {
 		border-color: var(--c-accent, #7bd0f2);
-	}
-
-	.summary {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		font-size: 11px;
-		color: var(--c-muted, #94a3b8);
-	}
-	.summary strong {
-		color: var(--c-text, #e5edf5);
-	}
-	.summary .err {
-		color: var(--c-danger, #f7a0a0);
-	}
-	.clear {
-		margin-left: auto;
-		appearance: none;
-		background: transparent;
-		border: 1px solid var(--c-border-input, #2c4870);
-		color: var(--c-text-2, #cfd9e6);
-		font-size: 10px;
-		font-weight: 600;
-		padding: 0.22rem 0.55rem;
-		border-radius: 999px;
-		cursor: pointer;
-	}
-	.clear:hover {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-
-	/* Rows */
-	.rows {
-		list-style: none;
-		margin: 0;
-		padding: 0.6rem 0.75rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.row {
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		border: 1px solid var(--c-border-subtle, #22344c);
-		border-radius: 8px;
-		padding: 0.65rem 0.7rem;
-	}
-	.row.viewed {
-		opacity: 0.72;
-	}
-	.row-head {
-		display: flex;
-		gap: 0.4rem;
-		align-items: baseline;
-	}
-	.row-title {
-		flex: 1;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--c-text, #e5edf5);
-		text-decoration: none;
-		line-height: 1.3;
-	}
-	a.row-title:hover {
-		color: var(--c-accent, #7bd0f2);
-		text-decoration: underline;
-	}
-	.urgency {
-		flex-shrink: 0;
-		font-size: 10px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 0.1rem 0.4rem;
-		border-radius: 4px;
-	}
-	.urgency.critical {
-		background: rgba(220, 80, 80, 0.18);
-		border: 1px solid #dc5050;
-		color: var(--c-danger, #f7a0a0);
-	}
-	.urgency.soon {
-		background: rgba(220, 160, 50, 0.18);
-		border: 1px solid #e0a030;
-		color: var(--c-warn, #f0c878);
-	}
-	.urgency.viewed-tag {
-		background: rgba(140, 140, 160, 0.16);
-		border: 1px solid #6a6a82;
-		color: var(--c-muted, #94a3b8);
-	}
-	.row-meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.3rem 0.5rem;
-		margin: 0.3rem 0;
-		font-size: 11px;
-		color: var(--c-muted, #94a3b8);
-	}
-	.row-meta strong {
-		color: var(--c-text-2, #cfd9e6);
-		font-weight: 600;
-	}
-	.row-foot {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-	.pay {
-		font-size: 12px;
-		font-weight: 700;
-		color: var(--c-text, #e5edf5);
-	}
-	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-	}
-	.act {
-		appearance: none;
-		border: 1px solid var(--c-border-input, #2c4870);
-		background: var(--c-bg, #06111f);
-		color: var(--c-text-2, #cfd9e6);
-		font-size: 10px;
-		font-weight: 600;
-		padding: 0.3rem 0.5rem;
-		border-radius: 5px;
-		cursor: pointer;
-	}
-	.act.save:hover,
-	.act.save.on {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.act.hide:hover {
-		border-color: var(--c-danger-border, #6b2020);
-		color: var(--c-danger, #f7a0a0);
-	}
-
-	.load-more {
-		display: block;
-		width: calc(100% - 1.5rem);
-		margin: 0 0.75rem 0.9rem;
-		appearance: none;
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		border: 1px solid var(--c-border-input, #2c4870);
-		color: var(--c-text, #e5edf5);
-		border-radius: 8px;
-		padding: 0.55rem;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-	.load-more:hover {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.list-end,
-	.empty {
-		text-align: center;
-		font-size: 11px;
-		color: var(--c-muted, #94a3b8);
-		padding: 0.9rem 1rem;
-	}
-	.muted {
-		color: var(--c-muted, #94a3b8);
-		font-weight: 500;
 	}
 
 	/* Stub tabs */
