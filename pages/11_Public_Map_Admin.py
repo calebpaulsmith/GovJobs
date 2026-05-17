@@ -18,6 +18,7 @@ import io
 import json
 import subprocess
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -595,6 +596,84 @@ def _pay_scale_diff(conn) -> pd.DataFrame:
     )
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _inconsistent_stacks_from_bundle() -> pd.DataFrame:
+    """Scan ``jobs.geojson`` for coordinates where multiple jobs share the
+    same lat/lon but carry **different** ``city, state`` text.
+
+    Most coord-stacks (~99%) carry one consistent label; the rest fall into
+    three buckets the operator should know about:
+
+    1. **Benign:** city + county fallback at the same centroid
+       (e.g. "Oklahoma City, OK" vs "Oklahoma County, OK").
+    2. **Installation alongside city:** "NIWC LANT Charleston, SC" alongside
+       "Charleston, SC".
+    3. **Real geocoder collapse:** distinct cities or installations geocoded
+       to one shared coordinate, e.g. four Okinawa bases all landing at one
+       point. Worth investigating in the source geocoder.
+
+    The expander on the admin page surfaces these so the operator can
+    prioritise (3). Cached for 60s so re-rendering the page doesn't re-parse
+    a 23 MB GeoJSON every time.
+    """
+    path = PUBLIC_MAP_DATA / "jobs.geojson"
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return pd.DataFrame()
+    features = payload.get("features") or []
+    groups: dict[tuple[float, float], list[dict]] = defaultdict(list)
+    for feature in features:
+        geom = feature.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        try:
+            key = (round(float(coords[0]), 5), round(float(coords[1]), 5))
+        except (TypeError, ValueError):
+            continue
+        groups[key].append(feature.get("properties") or {})
+
+    rows: list[dict] = []
+    for key, members in groups.items():
+        if len(members) <= 1:
+            continue
+        labels = Counter(
+            (
+                str(m.get("city") or "").strip(),
+                str(m.get("state") or "").strip(),
+            )
+            for m in members
+        )
+        if len(labels) <= 1:
+            continue
+        ranked = labels.most_common()
+        dominant_pair, dominant_count = ranked[0]
+        dominant_label = ", ".join(part for part in dominant_pair if part)
+        variant_strs = []
+        for pair, count in ranked[1:]:
+            label = ", ".join(part for part in pair if part)
+            variant_strs.append(f"{label or '(blank)'} ×{count}")
+        rows.append(
+            {
+                "Coordinate (lon, lat)": f"{key[0]:.5f}, {key[1]:.5f}",
+                "Total jobs": len(members),
+                "Dominant label (count)": f"{dominant_label or '(blank)'} ×{dominant_count}",
+                "Other variants": "  ·  ".join(variant_strs),
+                "Variant count": len(labels),
+            }
+        )
+    if not rows:
+        return pd.DataFrame()
+    return (
+        pd.DataFrame(rows)
+        .sort_values("Total jobs", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
 # Spot-check sample for D.5.14 — three published OPM cells per year. The
 # operator pastes the official values from the OPM PDF; the page compares
 # against pay_scales rows for the active reference year and flags any cell
@@ -719,6 +798,32 @@ def main() -> None:
             "that is far above typical annual locality movement."
         )
         st.dataframe(diff, use_container_width=True, hide_index=True)
+
+    st.subheader("Bundle audits")
+    with st.expander(
+        "Same-coord stacks with inconsistent location text",
+        expanded=False,
+    ):
+        inconsistent = _inconsistent_stacks_from_bundle()
+        if inconsistent.empty:
+            st.success(
+                "Every coord-stack in the current bundle carries a single "
+                "(city, state) label. No geocoder collapses to investigate."
+            )
+        else:
+            st.caption(
+                f"{len(inconsistent):,} coordinate(s) where the bundle has "
+                "multiple distinct (city, state) strings collapsed to one "
+                "lat/lon. Most are benign (city + county fallback at the same "
+                "centroid, or an installation name alongside its host city); "
+                "rows with very different city names are the geocoder bugs "
+                "worth investigating. Sorted by total jobs at the coord."
+            )
+            st.dataframe(
+                inconsistent,
+                use_container_width=True,
+                hide_index=True,
+            )
 
     st.subheader("Export")
     _export_now()

@@ -2,7 +2,7 @@
 // Stored in localStorage under key STORAGE_KEY, never sent to any server.
 // Reactive via Svelte $state so components re-render on mutations.
 
-const STORAGE_KEY = 'tgp.public_map.job_profile.v1';
+const STORAGE_KEY = 'fedfinder.public_map.job_profile.v1';
 
 interface SavedJob {
 	ts: number;

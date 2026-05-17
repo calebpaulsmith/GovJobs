@@ -6,7 +6,8 @@ laptop. The flow:
 1. Initialize the SQLite schema (no-op if it already exists).
 2. Run reference-data ingests (states, counties, locality pay, BEA RPP, …).
 3. Refresh the agency code list (so new sub-elements show up in the typeahead).
-4. Run a federal-wide USAJOBS Search import with a configurable page cap.
+4. Run a federal-wide USAJOBS Search import, sliced per department so the
+   USAJOBS 10,000-result-per-query cap does not truncate the corpus.
 5. Backfill agency_code on any rows that came in without one.
 6. Re-export the public-map static bundle.
 
@@ -76,10 +77,20 @@ def _run_script(script: str, *args: str) -> None:
 
 
 def _run_federal_current(max_pages: int) -> None:
-    """Federal-wide current Search import via the public-map corpus preset."""
+    """Federal-wide current Search import, department-sliced.
+
+    USAJOBS Search caps any single query at 10,000 results, so a no-filter
+    federal-wide query silently truncates the corpus and undercounts every
+    agency whose postings sort past the cap. The ``federal_full_by_department``
+    preset issues one ``Organization=<department>`` query per department, so
+    each slice stays under the ceiling and the full corpus comes through.
+    """
     from src.public_map_corpus import run_public_map_corpus_preset
 
-    logger.info("--- federal-wide current Search import (max_pages=%d) ---", max_pages)
+    logger.info(
+        "--- federal-wide current Search import, department-sliced (max_pages=%d per slice) ---",
+        max_pages,
+    )
     config = load_config()
     conn = connect(config.database_path)
     init_schema(conn)
@@ -87,7 +98,7 @@ def _run_federal_current(max_pages: int) -> None:
         result = run_public_map_corpus_preset(
             conn,
             config,
-            "federal_current",
+            "federal_full_by_department",
             current_max_pages=max_pages,
         )
         logger.info(

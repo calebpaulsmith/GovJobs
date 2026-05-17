@@ -10,7 +10,7 @@ Open bugs and inconsistencies that need fixing. Each entry: what's broken, where
 
 **Five-minute smoke procedure:**
 
-1. Open the live URL in any modern browser. Within ~5 s the U.S. basemap should render with thousands of clustered job markers, the masthead pill ("The Grand Pipeline"), the metric switcher (`Postings` / `Workforce` / …) at the bottom, and the Filters / Saved searches / Address widgets at top-left. If the page loads but markers never appear, open DevTools → Network and confirm `/data/jobs.geojson` returns 200; if it 404s the bundle wasn't exported.
+1. Open the live URL in any modern browser. Within ~5 s the U.S. basemap should render with thousands of clustered job markers, the masthead pill ("FedFinder"), the metric switcher (`Postings` / `Workforce` / …) at the bottom, and the Filters / Saved searches / Address widgets at top-left. If the page loads but markers never appear, open DevTools → Network and confirm `/data/jobs.geojson` returns 200; if it 404s the bundle wasn't exported.
 2. Hit the Posting Intelligence Function directly from DevTools → Console (with `location.origin` already on the deployed host):
    ```js
    const u = new URL('/api/job-history', location.origin);

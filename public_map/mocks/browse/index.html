@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse UI mocks — pick a direction</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+	body { padding: 4rem 2rem 6rem; max-width: 1100px; margin: 0 auto; }
+	h1 { font-size: 28px; margin: 0 0 0.4rem; }
+	.lede { color: var(--c-muted); font-size: 15px; max-width: 60ch; margin: 0 0 2rem; }
+	.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
+	@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+	.card { display: block; padding: 1.25rem; text-decoration: none; color: var(--c-text); }
+	.card:hover { border-color: var(--c-accent); }
+	.thumb {
+		height: 160px; border-radius: 6px; margin-bottom: 0.85rem;
+		border: 1px solid var(--c-border-subtle);
+		position: relative; overflow: hidden;
+	}
+	.thumb-desktop { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; padding: 3px; }
+	.thumb-desktop > div { background: var(--c-row-bg); border-radius: 3px; }
+	.thumb-desktop .map { grid-column: 1; grid-row: 1; background: linear-gradient(135deg, #0e2237, #1c3a5a); }
+	.thumb-desktop .area { grid-column: 2; grid-row: 1; }
+	.thumb-desktop .list { grid-column: 1 / 3; grid-row: 2; background: linear-gradient(180deg, rgba(28,42,64,0.85), rgba(20,32,50,0.7)); }
+	.thumb-mobile { display: flex; flex-direction: column; padding: 4px; gap: 4px; }
+	.thumb-mobile .top { flex: 1; background: linear-gradient(180deg, rgba(28,42,64,0.7), rgba(20,32,50,0.55)); border-radius: 3px; }
+	.thumb-mobile .dock { height: 28px; background: var(--c-panel); border: 1px solid var(--c-border-subtle); border-radius: 4px; display: flex; }
+	.thumb-mobile .dock span { flex: 1; display: grid; place-items: center; font-size: 9px; color: var(--c-muted); border-right: 1px solid var(--c-border-subtle); }
+	.thumb-mobile .dock span:last-child { border-right: none; }
+	.thumb-mobile .dock .active { color: var(--c-accent); background: var(--c-accent-bg); }
+	.thumb-metrics { background: linear-gradient(180deg, #0a1828, #0e2237); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px; }
+	.thumb-metrics > div { background: var(--c-row-bg); border-radius: 3px; }
+	.thumb-list { background: linear-gradient(180deg, #0a1828, #0e2237); padding: 6px 4px; }
+	.thumb-list > div { background: rgba(28,42,64,0.7); height: 22px; border-radius: 3px; margin-bottom: 4px; }
+	h3 { margin: 0 0 0.3rem; font-size: 16px; }
+	.card p { margin: 0; font-size: 13px; color: var(--c-muted); }
+	.note { margin: 2.5rem 0 0; padding: 1rem 1.2rem; background: var(--c-accent-bg); border-left: 3px solid var(--c-accent); border-radius: 4px; font-size: 13px; color: var(--c-text-2); }
+	.note strong { color: var(--c-accent); }
+	.legend { display: flex; gap: 1.5rem; margin: 2rem 0 0; font-size: 12px; color: var(--c-muted); flex-wrap: wrap; }
+	.legend span::before { content: '●'; color: var(--c-accent); margin-right: 0.4rem; }
+</style>
+</head>
+<body>
+<h1>Browse UI mocks</h1>
+<p class="lede">Static, click-through mocks for the Browse view (ADR-0033 / D.5.28). The <strong>desktop mosaic and mobile dock are at rev 2</strong> — single filter bar, metrics folded into the area card, Job Lists / My Postings save verbs, provenance toast. The remaining two mocks are still on rev 1 and will be re-cut after rev 2 is approved.</p>
+
+<div class="grid">
+	<a class="card panel" href="desktop-mosaic.html">
+		<div class="thumb thumb-desktop">
+			<div class="map"></div>
+			<div class="area"></div>
+			<div class="list"></div>
+		</div>
+		<h3>1. Desktop mosaic <span class="badge badge-success" style="margin-left:0.4rem;">Rev 2 — current</span></h3>
+		<p>Pinned-by-default top band (small map + SmallestAreaCard, 30 vh) over a tall JobList (70 vh). One filter bar drives map markers + list rows + metric blocks. Metrics live inline in the area card. "Save as Job List" persists a filtered set; "Save to My Postings" persists a single job.</p>
+	</a>
+
+	<a class="card panel" href="mobile-dock.html">
+		<div class="thumb thumb-mobile">
+			<div class="top"></div>
+			<div class="dock">
+				<span>Map</span>
+				<span class="active">List</span>
+				<span>Here</span>
+				<span>Saved</span>
+			</div>
+		</div>
+		<h3>2. Mobile / web-app dock <span class="badge badge-success" style="margin-left:0.4rem;">Rev 2</span></h3>
+		<p>Single-pane, dock-driven. Four tabs — Map / List / Here / Saved. One filter bar (List toolbar) drives map markers, Here card metrics, and list rows. Metrics fold into the Here card as four tap-to-expand blocks; the rev-1 "Area" tab is renamed "Here" and the standalone "Metrics" tab is gone. "Save as Job List" / "Save to My Postings" with a bottom-center provenance toast.</p>
+	</a>
+
+	<a class="card panel" href="metrics-pane.html">
+		<div class="thumb thumb-metrics">
+			<div></div>
+			<div></div>
+			<div></div>
+			<div></div>
+		</div>
+		<h3>3. Metrics pane <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — to be folded in</span></h3>
+		<p>Pre-revision standalone Metrics pane. In rev 2 this is no longer a separate surface — the four blocks (Postings / Workforce / Pay vs COL / Urgency) become expandable sections inside SmallestAreaCard. Kept here as a content reference for what each expanded block should show.</p>
+	</a>
+
+	<a class="card panel" href="joblist-toolbar.html">
+		<div class="thumb thumb-list">
+			<div style="height: 14px; margin-bottom: 6px;"></div>
+			<div></div>
+			<div></div>
+			<div></div>
+			<div></div>
+		</div>
+		<h3>4. JobList sticky toolbar (zoom-in) <span class="badge badge-muted" style="margin-left:0.4rem;">Rev 1 — pending update</span></h3>
+		<p>Detail view of the JobList toolbar. Rev 2 collapses this down to free text + sort + 4 most-used facets + a single "+ More filters" disclosure (instead of multiple facet rows + saved-search controls). Rev 2 toolbar already lives in mock #1.</p>
+	</a>
+</div>
+
+<div class="note">
+	<strong>Rev 2 design principles (locked in chat 2026-05-12):</strong>
+	<br><br>
+	<strong>1. Pin / unpin top band (default pinned).</strong> Pinned = sticky top band, JobList scrolls underneath. Unpinned = whole page scrolls as one. State persists per user.
+	<br><br>
+	<strong>2. Single filter bar.</strong> The JobList toolbar drives map markers, SmallestAreaCard metrics, and JobList rows — one source of truth. Hover a row → matching marker pulses. Filter input debounced at ~150ms.
+	<br><br>
+	<strong>3. Two save verbs.</strong> "Save as Job List" persists a filter set; "Save to My Postings" persists a single posting. A provenance toast confirms either in plain language ("Saved Chicago–Naperville locality, FEMA, GS-13–14 as a new Job List").
+	<br><br>
+	<strong>4. Metrics inside SmallestAreaCard.</strong> No standalone Metrics surface. Four top-line blocks (Postings / Workforce / Pay vs COL / Urgency), each click-to-expand inline.
+	<br><br>
+	<strong>5. Page purposes.</strong> Browse = "find jobs to apply to, right now" (decisional). Map-only = "see where federal hiring is happening" (exploratory). Localities = "compare places against each other" (comparative).
+	<br><br>
+	<strong>6. Area summary stays deterministic.</strong> Templated prose from local fields. No Claude API per request, ever. If we want richer narration, it's a nightly batch over all localities — never on-demand.
+</div>
+
+<div class="legend">
+	<span>Existing dark-theme tokens (no new colors)</span>
+	<span>Pill chips match FilterPanel / SavedSearchMenu</span>
+	<span>Tooltip ⓘ pattern from D.5.16 InfoTooltip</span>
+	<span>Light mode falls out of the tokens automatically</span>
+</div>
+</body>
+</html>

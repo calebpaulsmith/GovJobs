@@ -111,6 +111,18 @@ jobs:
           fi
           git commit -m "auto: refresh public-map bundle $(date -u +%Y-%m-%dT%H:%MZ)"
 
+          # The refresh can leave tracked files dirty outside the bundle
+          # (checked-in reference-data seeds, recon docs, etc.). The auto-
+          # refresh only commits the bundle, and any leftover unstaged change
+          # makes the `git rebase` below abort with "cannot rebase: You have
+          # unstaged changes" — silently dropping the freshly built bundle.
+          # Discard every non-bundle working-tree change before rebasing.
+          if ! git diff --quiet; then
+            echo "Discarding non-bundle working-tree changes before rebase:"
+            git status --porcelain
+            git checkout -- .
+          fi
+
           # Smart push: a human may have pushed source changes (which can
           # also touch the bundle) between when this workflow started and
           # now. Rebase onto the latest origin/master; if rebase hits a
@@ -143,6 +155,9 @@ jobs:
             echo "Bundle-only conflict; regenerating from current DB and continuing rebase."
             python scripts/export_public_map.py
             git add public_map/static/data/
+            # Drop any non-bundle files the re-export dirtied so rebase --continue
+            # doesn't abort on an unstaged change.
+            git checkout -- .
             git rebase --continue || {
               echo "::error::rebase --continue failed after bundle regen"
               git rebase --abort || true

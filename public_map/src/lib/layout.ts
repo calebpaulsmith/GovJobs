@@ -167,14 +167,18 @@ export const LAYOUT_RECTS: Record<LayoutSlot, SlotRects> = {
 		}
 	},
 	search: {
+		// Side column starts at the same top as the masthead — the centered
+		// masthead leaves the top-LEFT free, so search/saved-search/filters
+		// can stack vertically along the left edge without leaving an empty
+		// 5rem gap at the top of the column.
 		desktop: {
-			top: '5.15rem',
+			top: '1rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: '3rem'
 		},
 		tablet: {
-			top: '5.15rem',
+			top: '1rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: '3rem'
@@ -191,13 +195,13 @@ export const LAYOUT_RECTS: Record<LayoutSlot, SlotRects> = {
 	},
 	'saved-search': {
 		desktop: {
-			top: '8.85rem',
+			top: '4.7rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: '2.5rem'
 		},
 		tablet: {
-			top: '8.85rem',
+			top: '4.7rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: '2.5rem'
@@ -211,13 +215,13 @@ export const LAYOUT_RECTS: Record<LayoutSlot, SlotRects> = {
 	},
 	filters: {
 		desktop: {
-			top: '12.45rem',
+			top: '8.3rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: PANEL_INTRINSIC_HEIGHT
 		},
 		tablet: {
-			top: '12.45rem',
+			top: '8.3rem',
 			left: '1rem',
 			width: PANEL_WIDTH,
 			intrinsicHeight: PANEL_INTRINSIC_HEIGHT
