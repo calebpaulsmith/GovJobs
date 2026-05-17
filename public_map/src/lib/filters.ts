@@ -328,6 +328,8 @@ function jobDetailGeographyMatches(job: JobDetails, geographies: string[]): bool
 		const code = geo.slice(sep + 1).toUpperCase();
 		if (type === 'state' && states.has(code)) return true;
 		if (type === 'locality' && locality && locality === code) return true;
+		// 'county:' chips are not yet supported — jobs_detail.json carries no
+		// county FIPS, so a county chip matches nothing. See ROADMAP D.5.28.
 	}
 	return false;
 }
