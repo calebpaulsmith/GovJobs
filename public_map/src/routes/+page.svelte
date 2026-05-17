@@ -3,13 +3,13 @@
 	import { goto } from '$app/navigation';
 
 	onMount(() => {
-		goto('/map', { replaceState: true });
+		goto('/browse', { replaceState: true });
 	});
 </script>
 
 <main class="redirect">
-	<p>Loading the map…</p>
-	<p><a href="/map">Continue to the map</a></p>
+	<p>Loading FedFinder…</p>
+	<p><a href="/browse">Continue to Browse</a></p>
 </main>
 
 <style>
