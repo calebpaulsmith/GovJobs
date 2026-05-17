@@ -250,6 +250,18 @@ def test_job_details_groups_locations_by_job(conn):
     assert states == ["IL", "TX"]
 
 
+def test_job_details_includes_locality_code_of_first_location(conn):
+    _seed_chicago(conn)
+    _seed_locality(
+        conn, code="CHI", year=2026, name="Chicago-Naperville",
+        adjustment_pct=32.45, counties=["17031"],
+    )
+    upsert_job(conn, _job())
+
+    detail = next(iter(job_details(conn, year=2026).values()))
+    assert detail["locality_code"] == "CHI"
+
+
 def test_opm_state_aggregates_handles_missing_records(conn):
     assert opm_state_aggregates(conn) == {}
 

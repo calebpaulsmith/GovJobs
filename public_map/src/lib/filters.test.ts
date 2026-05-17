@@ -71,6 +71,15 @@ describe('matchesJobDetail', () => {
 		).toBe(true);
 	});
 
+	it('matches geography by locality_code', () => {
+		expect(matchesJobDetail(job({ locality_code: 'CHI' }), filters({ geographies: ['locality:CHI'] }))).toBe(true);
+		expect(matchesJobDetail(job({ locality_code: 'CHI' }), filters({ geographies: ['locality:DCB'] }))).toBe(false);
+		// Case-insensitive on the job's stored code.
+		expect(matchesJobDetail(job({ locality_code: 'chi' }), filters({ geographies: ['locality:CHI'] }))).toBe(true);
+		// 'county:' chips are not yet supported — they match nothing.
+		expect(matchesJobDetail(job({ locality_code: 'CHI' }), filters({ geographies: ['county:17031'] }))).toBe(false);
+	});
+
 	it('enforces the salary minimum', () => {
 		expect(matchesJobDetail(job(), filters({ salaryMin: '90000' }))).toBe(true);
 		expect(matchesJobDetail(job(), filters({ salaryMin: '120000' }))).toBe(false);

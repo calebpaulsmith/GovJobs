@@ -519,17 +519,32 @@ def job_details(
     location_rows = conn.execute(
         """
         SELECT j.id AS job_id, jl.city AS city, jl.state AS state,
-               jl.location_text AS location_text
+               jl.location_text AS location_text,
+               lpc.locality_code AS locality_code
         FROM jobs j
         JOIN job_locations jl ON jl.job_id = j.id
+        LEFT JOIN locations_geocoded city_lookup
+            ON city_lookup.city = LOWER(TRIM(COALESCE(jl.city, '')))
+            AND city_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN locality_pay_counties lpc
+            ON lpc.county_fips = city_lookup.county_fips
+            AND lpc.year = ?
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
-        """
+        """,
+        (resolved_year,),
     ).fetchall()
 
     locations_by_job: dict[int, list[dict[str, Any]]] = {}
+    # locality_code of each job's first listed duty location — the same
+    # location the pay grid is computed against. The Browse list's geography
+    # filter matches on this (see filters.ts::jobDetailGeographyMatches).
+    first_locality_by_job: dict[int, str | None] = {}
     for row in location_rows:
-        locations_by_job.setdefault(int(row["job_id"]), []).append(
+        job_id = int(row["job_id"])
+        if job_id not in locations_by_job:
+            first_locality_by_job[job_id] = (row["locality_code"] or "").upper() or None
+        locations_by_job.setdefault(job_id, []).append(
             {
                 "city": row["city"],
                 "state": (row["state"] or "").upper() or None,
@@ -569,6 +584,7 @@ def job_details(
             "close_date": row["close_date"],
             "hiring_paths": row["hiring_paths"],
             "url": row["url"],
+            "locality_code": first_locality_by_job.get(job_id),
             "locations": locations,
             "pay_grid": pay_grid,
         }
