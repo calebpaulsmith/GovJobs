@@ -138,6 +138,56 @@ async function loadBundleVersion(): Promise<string> {
 	return bundleVersion;
 }
 
+// Cloudflare Pages rejects any single file over 25 MiB, so the exporter
+// writes oversized bundle files (e.g. jobs.geojson) as numbered parts and
+// records the part count in manifest.json's `split` map. Files absent from
+// that map are single-file.
+async function loadSplitMap(): Promise<Record<string, number>> {
+	await loadBundleVersion();
+	const split = (manifestCache as { split?: unknown } | null)?.split;
+	return split && typeof split === 'object' ? (split as Record<string, number>) : {};
+}
+
+// `jobs.geojson` split into 3 parts -> ['jobs.geojson','jobs.2.geojson','jobs.3.geojson'].
+// The part number is inserted before the final extension; part 1 keeps the
+// original name.
+export function partFilename(name: string, index: number): string {
+	if (index <= 1) return name;
+	const dot = name.lastIndexOf('.');
+	if (dot === -1) return `${name}.${index}`;
+	return `${name.slice(0, dot)}.${index}${name.slice(dot)}`;
+}
+
+/** Concatenate the `features` of several FeatureCollections into one. */
+export function mergeFeatureCollections(parts: FeatureCollection[]): FeatureCollection {
+	return {
+		type: 'FeatureCollection',
+		features: parts.flatMap((part) => part?.features ?? [])
+	};
+}
+
+/** Shallow-merge several plain dicts into one (later parts override earlier). */
+export function mergeDicts<T>(parts: Record<string, T>[]): Record<string, T> {
+	return Object.assign({}, ...parts);
+}
+
+/**
+ * Fetch a bundle file that may have been split into numbered parts. Reads the
+ * part count from the manifest's `split` map (default 1), fetches every part
+ * in parallel, and merges them with `merge`.
+ */
+async function fetchSplitJson<P, T>(
+	filename: string,
+	merge: (parts: P[]) => T,
+	emptyPart: P
+): Promise<T> {
+	const splitMap = await loadSplitMap();
+	const partCount = Math.max(1, splitMap[filename] ?? 1);
+	const names = Array.from({ length: partCount }, (_, i) => partFilename(filename, i + 1));
+	const parts = await Promise.all(names.map((name) => fetchJson<P>(name, emptyPart)));
+	return merge(parts);
+}
+
 async function fetchJson<T>(filename: string, fallback: T): Promise<T> {
 	const version = await loadBundleVersion();
 	const url = `${DATA_BASE}/${filename}?v=${encodeURIComponent(version)}`;
@@ -162,7 +212,12 @@ export const loadMetros = () =>
 	fetchJson<FeatureCollection>('metros.geojson', EMPTY_COLLECTION);
 export const loadLocalities = () =>
 	fetchJson<FeatureCollection>('localities.geojson', EMPTY_COLLECTION);
-export const loadJobs = () => fetchJson<FeatureCollection>('jobs.geojson', EMPTY_COLLECTION);
+export const loadJobs = () =>
+	fetchSplitJson<FeatureCollection, FeatureCollection>(
+		'jobs.geojson',
+		mergeFeatureCollections,
+		EMPTY_COLLECTION
+	);
 export const loadClosedJobs = () =>
 	fetchJson<FeatureCollection>('closed_jobs.geojson', EMPTY_COLLECTION);
 export const loadFederalProperties = () =>
@@ -182,7 +237,11 @@ export async function loadAgencyOptions(): Promise<AgencyOption[]> {
 }
 
 export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {
-	jobDetailsIndexCache ??= await fetchJson<Record<string, JobDetails>>('jobs_detail.json', {});
+	jobDetailsIndexCache ??= await fetchSplitJson<Record<string, JobDetails>, Record<string, JobDetails>>(
+		'jobs_detail.json',
+		mergeDicts,
+		{}
+	);
 	return jobDetailsIndexCache;
 }
 
