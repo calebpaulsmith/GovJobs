@@ -459,8 +459,10 @@ User review on 2026-05-07 found eleven concrete defects: agency filter is a free
 
 ### Phase F — Operations and polish
 
-- [ ] Cloudflare Web Analytics, `robots.txt`, sitemap, OG image, share-preview meta.
-- [ ] `/about` page with attributions: USAJOBS, OPM, Census, BEA, OpenStreetMap, SimpleMaps. "Not affiliated with the U.S. government."
+> **Stale-PR disposition (2026-05-18).** PR #3 ("public map operations polish", 2026-05-08) drafted the `/about` page and the `robots.txt` / `sitemap.xml` / OG-metadata items below. It predates the FedFinder rename and the Browse-route changes, so its OG tags, brand strings, and footer wiring (into the old `/map`-centric layout) are all stale, and it conflicts heavily in `app.html` / `map/+page.svelte` / `CLAUDE.md` / `ROADMAP.md` / `README.md`. **Action: close PR #3** — do not rebase it; redo this work fresh, FedFinder-branded, with OG title "FedFinder" and `/browse` as the canonical route. PR #11 ("D.5.10 county-level COL", 2026-05-09) is an alternate implementation of the already-shipped D.5.10 (see above) — it is **superseded; action: close PR #11**, no further work.
+
+- [ ] Cloudflare Web Analytics, `robots.txt`, sitemap, OG image, share-preview meta. *(Redo fresh per the stale-PR note above — FedFinder branding.)*
+- [ ] `/about` page with attributions: USAJOBS, OPM, Census, BEA, OpenStreetMap, SimpleMaps. "Not affiliated with the U.S. government." *(Redo fresh per the stale-PR note above — FedFinder branding, route alongside `/browse` and `/map`.)*
 - [ ] ~~Windows Task Scheduler nightly job runs `refresh_public_map_data.py` + `export_public_map.py` + `git push`.~~ **(Superseded 2026-05-10: replaced by `.github/workflows/refresh-public-map.yml`, which runs daily at 09:00 UTC on a GitHub Actions runner and supports manual phone-triggered runs per `docs/REMOTE_OPERATIONS.md`. The workflow handles the rebase/conflict path per CLAUDE.md invariant #23 so the operator's laptop is no longer in the refresh path.)**
 - [ ] Update runbook in `docs/PUBLIC_MAP_PIPELINE.md`.
 
