@@ -19,6 +19,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from config import load_config  # noqa: E402
+from scripts.bundle_split import write_split_json  # noqa: E402
 from src.database import connect, init_schema  # noqa: E402
 from src.public_map_export import (  # noqa: E402
     agency_options,
@@ -141,29 +142,52 @@ def main() -> int:
 
     output: Path = args.output
     output.mkdir(parents=True, exist_ok=True)
-    sizes = {
-        "jobs.geojson": _write_json(output / "jobs.geojson", geojson),
-        "closed_jobs.geojson": _write_json(output / "closed_jobs.geojson", closed_geojson),
-        "jobs_detail.json": _write_json(output / "jobs_detail.json", details),
-        "opm_states.json": _write_json(output / "opm_states.json", opm),
-        "agencies.json": _write_json(output / "agencies.json", agencies),
-        "series.json": _write_json(output / "series.json", series),
-        "states.geojson": _write_json(output / "states.geojson", states),
-        "localities.geojson": _write_json(output / "localities.geojson", localities),
-        "counties.geojson": _write_json(output / "counties.geojson", counties),
-        "metros.geojson": _write_json(output / "metros.geojson", metros),
-        "pay_tables.json": _write_json(output / "pay_tables.json", pay_tables_payload),
-        "cost_of_living.json": _write_json(output / "cost_of_living.json", col_payload),
-        "zip_centroids.json": _write_json(output / "zip_centroids.json", zip_centroids),
-        "federal_properties.geojson": _write_json(
-            output / "federal_properties.geojson", federal_properties
-        ),
-        "manifest.json": _write_json(output / "manifest.json", man),
+
+    # Data files are written first so we know which ones split into parts.
+    # Files larger than the 20 MiB threshold are written as numbered parts
+    # (jobs.geojson, jobs.2.geojson, ...); the resulting `split` map is then
+    # injected into the manifest before it is written.
+    data_payloads: dict[str, object] = {
+        "jobs.geojson": geojson,
+        "closed_jobs.geojson": closed_geojson,
+        "jobs_detail.json": details,
+        "opm_states.json": opm,
+        "agencies.json": agencies,
+        "series.json": series,
+        "states.geojson": states,
+        "localities.geojson": localities,
+        "counties.geojson": counties,
+        "metros.geojson": metros,
+        "pay_tables.json": pay_tables_payload,
+        "cost_of_living.json": col_payload,
+        "zip_centroids.json": zip_centroids,
+        "federal_properties.geojson": federal_properties,
     }
+
+    sizes: dict[str, int] = {}
+    split_map: dict[str, int] = {}
+    for name, payload in data_payloads.items():
+        paths, part_count = write_split_json(output, name, payload)
+        if part_count > 1:
+            split_map[name] = part_count
+        for path in paths:
+            sizes[path.name] = path.stat().st_size
+
+    # Only files with more than one part appear in the manifest's `split` map.
+    if split_map:
+        man["split"] = split_map
+
+    sizes["manifest.json"] = _write_json(output / "manifest.json", man)
+
     print()
     print(f"Wrote bundle to {output}")
-    for name, size in sizes.items():
-        print(f"  {name:<22} {size:>10,} bytes")
+    for name in sorted(sizes):
+        print(f"  {name:<24} {sizes[name]:>10,} bytes")
+    if split_map:
+        print()
+        print("Split (oversized) files:")
+        for name, count in split_map.items():
+            print(f"  {name:<24} {count} parts")
     return 0
 
 
