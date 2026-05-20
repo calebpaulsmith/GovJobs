@@ -18,6 +18,7 @@
 	import { jobProfile } from '$lib/jobProfile.svelte';
 	import AgencyPicker from '$lib/AgencyPicker.svelte';
 	import JobList from '$lib/JobList.svelte';
+	import SmallestAreaCard from '$lib/SmallestAreaCard.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
@@ -234,14 +235,7 @@
 
 		<!-- ===================== Here tab ===================== -->
 		{:else if tab === 'here'}
-			<section class="tab-stub">
-				<div class="eyebrow">Here</div>
-				<h2>Area card — next increment</h2>
-				<p>
-					The smallest area containing the map viewport, with a deterministic
-					summary and four tap-to-expand metric blocks.
-				</p>
-			</section>
+			<SmallestAreaCard onViewList={() => (tab = 'list')} />
 
 		<!-- ===================== Saved tab ===================== -->
 		{:else}
