@@ -18,6 +18,7 @@
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
 	import { jobProfile } from './jobProfile.svelte';
 	import QuickAdd from './QuickAdd.svelte';
+	import { FACETS, rowMatchesSearch, type FacetKey } from './jobListFacets';
 
 	let { listView, richMode = false }: { listView?: ListView; richMode?: boolean } = $props();
 
@@ -31,7 +32,18 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	type SortKey = 'closing_soon' | 'closing_late' | 'salary_high' | 'salary_low' | 'title' | 'agency';
+	// `newest` (by open_date desc) is rich-mode only — the scoped `<select>`
+	// below does not expose it. Both modes share this union so a single
+	// sort()-switch handles every value, but the scoped UI only renders the
+	// pre-existing six options.
+	type SortKey =
+		| 'closing_soon'
+		| 'closing_late'
+		| 'salary_high'
+		| 'salary_low'
+		| 'title'
+		| 'agency'
+		| 'newest';
 	let sortKey = $state<SortKey>('closing_soon');
 
 	// Scoped pager (prev/next, 20/page).
@@ -40,6 +52,29 @@
 	// Rich pager (incremental "show more", 25/page).
 	const RICH_PAGE = 25;
 	let visibleCount = $state(RICH_PAGE);
+
+	// --- rich-mode in-list toolbar state (PR C of D.5.28) ---
+	// TODO(D.5.29): hoist to `mapState.list = { search, sort, facets[] }`
+	// for URL round-trip + saved-searches v2. Until then this state is
+	// local to the component and is reset on full page reload.
+	let listSearchDraft = $state('');
+	let listSearch = $state('');
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+	function onListSearch(value: string) {
+		listSearchDraft = value;
+		if (searchTimer) clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			listSearch = listSearchDraft;
+		}, 200);
+	}
+	let activeFacets = $state<Set<FacetKey>>(new Set());
+	function toggleFacet(key: FacetKey) {
+		// Re-assign so Svelte 5 sees the mutation on the $state Set.
+		const next = new Set(activeFacets);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		activeFacets = next;
+	}
 
 	// Rich mode loads only the deduplicated detail index — it must not pull the
 	// ~70k-feature jobs.geojson. Scoped mode needs both.
@@ -61,12 +96,14 @@
 		}
 	});
 
-	// Reset paging when scope, filters, or sort changes.
+	// Reset paging when scope, filters, sort, in-list search, or facets change.
 	$effect(() => {
 		void listView?.scope;
 		void listView?.code;
 		void mapState.filters;
 		void sortKey;
+		void listSearch;
+		void activeFacets;
 		page = 0;
 		visibleCount = RICH_PAGE;
 	});
@@ -88,13 +125,57 @@
 		}
 	}
 
-	// Normalized rows for the active mode.
+	// Rich-mode base: global-filter applied + hidden-job exclusion. This is the
+	// set the in-list search and the facet chips narrow further. Facet counts
+	// are computed off this set (each facet is counted independently of the
+	// others and independently of `listSearch`) so users see the absolute
+	// size of each bucket.
+	const richBase = $derived.by<Row[]>(() => {
+		if (!richMode) return [];
+		const list = filterJobDetails(Object.values(detailsIndex), mapState.filters);
+		return list
+			.filter((job) => !jobProfile.isHidden(String(job.id)))
+			.map((job) => ({ id: String(job.id), detail: job, props: {} }));
+	});
+
+	// Per-facet counts against `richBase` — each chip shows its absolute size.
+	const facetCounts = $derived.by<Record<FacetKey, number>>(() => {
+		const counts: Record<FacetKey, number> = {
+			gs_family: 0,
+			remote_eligible: 0,
+			closing_7d: 0,
+			hide_viewed: 0
+		};
+		if (!richMode) return counts;
+		const ctx = { isViewed: (id: string) => jobProfile.isViewed(id) };
+		for (const row of richBase) {
+			const detail = row.detail;
+			if (!detail) continue;
+			for (const def of FACETS) {
+				if (def.match(detail, ctx)) counts[def.key] += 1;
+			}
+		}
+		return counts;
+	});
+
+	// Normalized rows for the active mode. In rich mode we apply, in order:
+	// the in-list search, then the active facets (AND across facets).
 	const rows = $derived.by<Row[]>(() => {
 		if (richMode) {
-			const list = filterJobDetails(Object.values(detailsIndex), mapState.filters);
-			return list
-				.filter((job) => !jobProfile.isHidden(String(job.id)))
-				.map((job) => ({ id: String(job.id), detail: job, props: {} }));
+			const search = listSearch;
+			const facets = activeFacets;
+			const ctx = { isViewed: (id: string) => jobProfile.isViewed(id) };
+			return richBase.filter((row) => {
+				const detail = row.detail;
+				if (!detail) return false;
+				if (search && !rowMatchesSearch(detail, row.props, search)) return false;
+				for (const key of facets) {
+					const def = FACETS.find((f) => f.key === key);
+					if (!def) continue;
+					if (!def.match(detail, ctx)) return false;
+				}
+				return true;
+			});
 		}
 		if (!allJobs) return [];
 		const filtered = filterJobs(allJobs, mapState.filters, details);
@@ -122,6 +203,12 @@
 		const t = Date.parse(raw);
 		return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
 	}
+	function openDateOf(row: Row): number {
+		// Higher number = later (use descending for newest).
+		const raw = String(row.detail?.open_date ?? row.props.open_date ?? '');
+		const t = Date.parse(raw);
+		return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY;
+	}
 
 	const sorted = $derived.by<Row[]>(() => {
 		const list = rows.slice();
@@ -138,6 +225,8 @@
 				return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
 			case 'agency':
 				return list.sort((a, b) => agencyOf(a).localeCompare(agencyOf(b)));
+			case 'newest':
+				return list.sort((a, b) => openDateOf(b) - openDateOf(a));
 			default:
 				return list;
 		}
@@ -233,8 +322,49 @@
 			<p class="error">{richMode ? `Couldn't load postings: ${error}` : error}</p>
 		{:else if totalCount === 0}
 			{#if richMode}
-				<div class="rich-toolbar">
-					<span class="count">0 of {Object.keys(detailsIndex).length.toLocaleString()} postings</span>
+				<!-- Render the sticky toolbar even when empty so the user can clear
+				     a too-narrow in-list search or active facet without first
+				     loosening a global chip. -->
+				<div class="rich-sticky">
+					<div class="rich-search-row">
+						<input
+							type="search"
+							class="rich-search"
+							placeholder="Search within results…"
+							value={listSearchDraft}
+							oninput={(e) => onListSearch(e.currentTarget.value)}
+							aria-label="Search within results"
+						/>
+						<label class="sort">
+							<span class="sort-label">Sort</span>
+							<select bind:value={sortKey} aria-label="Sort postings">
+								<option value="closing_soon">Closing soonest</option>
+								<option value="closing_late">Closing latest</option>
+								<option value="salary_high">Highest pay</option>
+								<option value="salary_low">Lowest pay</option>
+								<option value="title">Title A–Z</option>
+								<option value="agency">Agency A–Z</option>
+								<option value="newest">Newest</option>
+							</select>
+						</label>
+					</div>
+					<div class="facets" role="group" aria-label="Result facets">
+						{#each FACETS as f (f.key)}
+							<button
+								type="button"
+								class="facet-chip"
+								class:on={activeFacets.has(f.key)}
+								aria-pressed={activeFacets.has(f.key)}
+								onclick={() => toggleFacet(f.key)}
+							>
+								{f.label}
+								<span class="count">({facetCounts[f.key].toLocaleString()})</span>
+							</button>
+						{/each}
+					</div>
+					<div class="rich-toolbar">
+						<span class="count">0 of {Object.keys(detailsIndex).length.toLocaleString()} postings</span>
+					</div>
 				</div>
 				<p class="empty">No postings match the current filter. Remove an agency or open More filters to widen it.</p>
 			{:else}
@@ -242,21 +372,48 @@
 			{/if}
 		{:else}
 			{#if richMode}
-				<div class="rich-toolbar">
-					<span class="count">
-						<strong>{totalCount.toLocaleString()}</strong> of {Object.keys(detailsIndex).length.toLocaleString()} postings
-					</span>
-					<label class="sort">
-						<span class="sort-label">Sort</span>
-						<select bind:value={sortKey} aria-label="Sort postings">
-							<option value="closing_soon">Closing soonest</option>
-							<option value="closing_late">Closing latest</option>
-							<option value="salary_high">Highest pay</option>
-							<option value="salary_low">Lowest pay</option>
-							<option value="title">Title A–Z</option>
-							<option value="agency">Agency A–Z</option>
-						</select>
-					</label>
+				<div class="rich-sticky">
+					<div class="rich-search-row">
+						<input
+							type="search"
+							class="rich-search"
+							placeholder="Search within results…"
+							value={listSearchDraft}
+							oninput={(e) => onListSearch(e.currentTarget.value)}
+							aria-label="Search within results"
+						/>
+						<label class="sort">
+							<span class="sort-label">Sort</span>
+							<select bind:value={sortKey} aria-label="Sort postings">
+								<option value="closing_soon">Closing soonest</option>
+								<option value="closing_late">Closing latest</option>
+								<option value="salary_high">Highest pay</option>
+								<option value="salary_low">Lowest pay</option>
+								<option value="title">Title A–Z</option>
+								<option value="agency">Agency A–Z</option>
+								<option value="newest">Newest</option>
+							</select>
+						</label>
+					</div>
+					<div class="facets" role="group" aria-label="Result facets">
+						{#each FACETS as f (f.key)}
+							<button
+								type="button"
+								class="facet-chip"
+								class:on={activeFacets.has(f.key)}
+								aria-pressed={activeFacets.has(f.key)}
+								onclick={() => toggleFacet(f.key)}
+							>
+								{f.label}
+								<span class="count">({facetCounts[f.key].toLocaleString()})</span>
+							</button>
+						{/each}
+					</div>
+					<div class="rich-toolbar">
+						<span class="count">
+							<strong>{totalCount.toLocaleString()}</strong> of {Object.keys(detailsIndex).length.toLocaleString()} postings
+						</span>
+					</div>
 				</div>
 			{:else}
 				<div class="toolbar">
@@ -588,6 +745,91 @@
 
 	/* --- rich mode (Browse list) — namespaced so it doesn't collide with
 	   the scoped-mode .row button styles above. --- */
+
+	/* The sticky in-list toolbar pins under the page-level toolbar in
+	   browse/+page.svelte. The page-level toolbar is its own sticky element
+	   inside the scrolling .content area, so this one's `top: 0;` lands flush
+	   underneath it (sticky stacking is per-scroll-container). */
+	.rich-sticky {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--c-bg, #06111f);
+		border-bottom: 1px solid var(--c-border-subtle, #22344c);
+		padding: 0.55rem 0.75rem 0.4rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.rich-search-row {
+		display: flex;
+		gap: 0.4rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	.rich-search {
+		flex: 1 1 12rem;
+		min-width: 0;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-text, #e5edf5);
+		border-radius: 6px;
+		padding: 0.4rem 0.6rem;
+		font-size: 12.5px;
+		outline: none;
+	}
+	.rich-search:focus {
+		border-color: var(--c-accent, #7bd0f2);
+	}
+	.facets {
+		display: flex;
+		gap: 0.3rem;
+		overflow-x: auto;
+		flex-wrap: nowrap;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: thin;
+		margin: 0 -0.15rem;
+		padding: 0.05rem 0.15rem 0.2rem;
+	}
+	.facet-chip {
+		flex-shrink: 0;
+		appearance: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.25rem 0.6rem;
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1.2;
+		border-radius: 999px;
+		border: 1px solid var(--c-border-input, #2c4870);
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text-2, #cfd9e6);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.facet-chip:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.facet-chip:focus-visible {
+		outline: 2px solid var(--c-accent, #7bd0f2);
+		outline-offset: 1px;
+	}
+	.facet-chip.on {
+		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.facet-chip .count {
+		color: var(--c-muted, #94a3b8);
+		font-weight: 500;
+		margin-left: 0.05rem;
+	}
+	.facet-chip.on .count {
+		color: var(--c-accent, #7bd0f2);
+	}
+
 	.rich-toolbar {
 		display: flex;
 		justify-content: space-between;
@@ -595,7 +837,7 @@
 		gap: 0.6rem;
 		font-size: 11px;
 		color: var(--c-muted, #94a3b8);
-		padding: 0 0.75rem 0.55rem;
+		padding: 0;
 	}
 	.rich-toolbar .count strong {
 		color: var(--c-text, #e5edf5);
