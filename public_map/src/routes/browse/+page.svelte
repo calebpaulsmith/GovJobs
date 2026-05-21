@@ -19,6 +19,7 @@
 	import AgencyPicker from '$lib/AgencyPicker.svelte';
 	import JobList from '$lib/JobList.svelte';
 	import SmallestAreaCard from '$lib/SmallestAreaCard.svelte';
+	import SavedTab from '$lib/SavedTab.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
@@ -239,15 +240,7 @@
 
 		<!-- ===================== Saved tab ===================== -->
 		{:else}
-			<section class="tab-stub">
-				<div class="eyebrow">Saved</div>
-				<h2>Saved &amp; tracked — next increment</h2>
-				<p>Job Lists, My Postings, Hidden, and Viewed-closed.</p>
-				<p class="muted">
-					You have {savedCount} posting{savedCount === 1 ? '' : 's'} saved. Save and Hide
-					from the List tab already work and persist locally.
-				</p>
-			</section>
+			<SavedTab onViewList={() => (tab = 'list')} />
 		{/if}
 	</main>
 
@@ -472,9 +465,6 @@
 		font-size: 12.5px;
 		line-height: 1.5;
 		color: var(--c-text-2, #cfd9e6);
-	}
-	.tab-stub p.muted {
-		color: var(--c-muted, #94a3b8);
 	}
 	.stub-link {
 		display: inline-block;
