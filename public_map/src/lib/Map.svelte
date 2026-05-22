@@ -40,6 +40,26 @@
 	import { mapState, type Manifest } from './store.svelte';
 	import { METRICS, METRIC_ORDER, type MetricKey } from './metrics';
 
+	// `browseMode` is set only when this map is embedded in the /browse dock.
+	// In that mode a polygon click additively adds a geo: chip to the shared
+	// filter (ADR-0033 / CLAUDE.md invariant #27), in addition to the normal
+	// fit-bounds + selected-feature flow. On /map (browseMode === false)
+	// nothing in this file changes.
+	let { browseMode = false }: { browseMode?: boolean } = $props();
+
+	// Add a state:/locality: geography chip to mapState.filters if absent,
+	// reassigning the whole object so every consumer sees one fresh reference.
+	function addGeoChip(type: 'state' | 'locality', code: string): void {
+		const value = String(code ?? '').trim().toUpperCase();
+		if (!value) return;
+		const chip = `${type}:${value}`;
+		if (mapState.filters.geographies.includes(chip)) return;
+		mapState.filters = {
+			...mapState.filters,
+			geographies: [...mapState.filters.geographies, chip]
+		};
+	}
+
 	let container: HTMLDivElement;
 	let map: MaplibreMap | null = null;
 	let mounted = false;
@@ -397,9 +417,13 @@
 					return;
 				}
 				if (layerId === LAYER_IDS.localitiesFill) {
+					if (browseMode) addGeoChip('locality', String(props.code ?? ''));
 					openLocalityStack(props);
 					fitFocusedFeature(m, layerId, feature);
 					return;
+				}
+				if (browseMode && layerId === LAYER_IDS.statesFill) {
+					addGeoChip('state', String(props.state ?? ''));
 				}
 				mapState.jobStack = null;
 				mapState.selectedFeature = {
