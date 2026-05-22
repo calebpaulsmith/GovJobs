@@ -253,7 +253,9 @@
 			-->
 			<section class="tab-map">
 				<div class="map-frame">
-					<Map />
+					<!-- browseMode: polygon (state/locality) clicks additively add a
+					     geo: chip to the shared filter (ADR-0033 / invariant #27). -->
+					<Map browseMode />
 				</div>
 			</section>
 
