@@ -20,6 +20,7 @@
 	import JobList from '$lib/JobList.svelte';
 	import SmallestAreaCard from '$lib/SmallestAreaCard.svelte';
 	import SavedTab from '$lib/SavedTab.svelte';
+	import Map from '$lib/Map.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
@@ -224,14 +225,36 @@
 
 		<!-- ===================== Map tab ===================== -->
 		{:else if tab === 'map'}
-			<section class="tab-stub">
-				<div class="eyebrow">Map</div>
-				<h2>Map view — next increment</h2>
-				<p>
-					The live map drops in here, crossfiltered to the same agency and
-					filters that drive this List.
-				</p>
-				<a class="stub-link" href="/map">Open the current map →</a>
+			<!--
+				Live Map.svelte embedded inside the Browse dock. The map reads
+				mapState.filters directly (the same filters the List tab
+				writes) and re-filters its sources on every change, so
+				switching to this tab "just works" without extra wiring.
+
+				Tradeoff: this is a *conditional mount* (`{#if tab === 'map'}`),
+				which means swapping to List/Here/Saved destroys the Mapbox
+				instance and we re-pay init cost on the next Map tab visit.
+				That's an explicit choice for this increment — keeping it
+				simple and avoiding a multi-mounted-Map invariant in mapState
+				(which is a singleton today). A future increment can keep
+				the map mounted with `visibility: hidden` + a `map.resize()`
+				on re-show if the re-init cost becomes user-visible.
+
+				Map.svelte's click handlers still write to
+				mapState.selectedFeature / .jobStack / .listView / .focusedArea.
+				/browse does not mount FeaturePanel, MetricSwitcher, or any of
+				the side panels (per the embedding contract), so those writes
+				are effectively inert here — harmless but invisible. The
+				planned "polygon click → add `geo:` chip" behavior from ADR-0033
+				is explicitly DEFERRED to a follow-up that introduces a `mode`
+				prop on Map.svelte so /browse can opt into chip-add semantics
+				without affecting /map. Do not branch on the route inside
+				Map.svelte — keep the boundary at this embedding site.
+			-->
+			<section class="tab-map">
+				<div class="map-frame">
+					<Map />
+				</div>
 			</section>
 
 		<!-- ===================== Here tab ===================== -->
@@ -329,6 +352,7 @@
 	}
 
 	.content {
+		position: relative;
 		flex: 1;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
@@ -444,34 +468,21 @@
 		border-color: var(--c-accent, #7bd0f2);
 	}
 
-	/* Stub tabs */
-	.tab-stub {
-		padding: 1.5rem 1.1rem;
-		max-width: 30rem;
+	/* Map tab — fills .content. .content is position:relative so the absolute
+	   fill works; .map-frame is the positioning context Map.svelte's inner
+	   `.map-container` (position:absolute; inset:0) needs. min-height keeps
+	   the map usable even if a future layout shrinks .content below 24rem. */
+	.tab-map {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
 	}
-	.eyebrow {
-		color: var(--c-accent, #7bd0f2);
-		font-size: 10px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-	}
-	.tab-stub h2 {
-		margin: 0.25rem 0 0.6rem;
-		font-size: 17px;
-	}
-	.tab-stub p {
-		margin: 0 0 0.6rem;
-		font-size: 12.5px;
-		line-height: 1.5;
-		color: var(--c-text-2, #cfd9e6);
-	}
-	.stub-link {
-		display: inline-block;
-		margin-top: 0.3rem;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--c-accent, #7bd0f2);
+	.map-frame {
+		position: relative;
+		flex: 1;
+		min-height: 24rem;
+		width: 100%;
 	}
 
 	/* Dock */
