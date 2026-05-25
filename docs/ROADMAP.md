@@ -271,11 +271,11 @@ Implementation checklist:
 
 - Automated submission of applications.
 - Browser scraping in lieu of APIs.
-- Multi-tenant / cloud SaaS deployment of the dashboard. (The public map at `thegrandpipeline.com/map` is a separate product per ADR-0016, not a hosted version of the dashboard.)
+- Multi-tenant / cloud SaaS deployment of the dashboard. (The public map at `map.thegrandpipeline.com` is a separate product per ADR-0016, not a hosted version of the dashboard.)
 
 ---
 
-## Parallel track — Public Map Tool (`thegrandpipeline.com/map`)
+## Parallel track — Public Map Tool (`map.thegrandpipeline.com`)
 
 A separate sibling product per ADR-0016, ADR-0017, ADR-0018, and ADR-0019. The dashboard remains local-first; the public map is a static, read-only website fed by nightly snapshots from the local SQLite. Lives in `public_map/` with its own `package.json`. Stack: SvelteKit (static adapter) + Mapbox GL JS + Cloudflare Pages. **Layered, zoom-driven map** with maxzoom 9. Runs independently of the dashboard's V1/V2/V3 build order. The detailed implementation plan is at `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. External dataset catalog: `docs/PUBLIC_MAP_DATA_SOURCES.md`.
 
@@ -430,8 +430,8 @@ User review on 2026-05-07 found eleven concrete defects: agency filter is a free
 - [ ] **D.5.29 — Shareable view URLs (per ADR-0033).**
   - [ ] URL state extended: filters + metric + viewport + theme + `selectedJobId` + `listScrollOffset` + radius chips. New keys `selected=<jobId>`, `scroll=<0..1>`, `radius=<lng>,<lat>,<miles>` (repeated). Existing repeated-key conventions preserved.
   - [ ] `Copy share link` button in the masthead next to the Saved Searches menu.
-  - [ ] `public_map/functions/api/share.ts` Pages Function: POST stashes the param string in KV namespace `fedfinder_share` with a 7-character base32 hash, returns the short URL `https://thegrandpipeline.com/map/s/<hash>`. KV `expirationTtl: 7776000` (90 days).
-  - [ ] `public_map/functions/map/s/[hash].ts` Pages Function: GET reads KV, 302-redirects to `/browse?<params>`. KV miss renders a friendly "this share link has expired" page with the unfiltered `/browse`.
+  - [ ] `public_map/functions/api/share.ts` Pages Function: POST stashes the param string in KV namespace `fedfinder_share` with a 7-character base32 hash, returns the short URL `https://map.thegrandpipeline.com/s/<hash>`. KV `expirationTtl: 7776000` (90 days). *(The app serves at the `map.` subdomain root, so the short link is `/s/<hash>`, not `/map/s/<hash>`.)*
+  - [ ] `public_map/functions/s/[hash].ts` Pages Function: GET reads KV, 302-redirects to `/browse?<params>`. KV miss renders a friendly "this share link has expired" page with the unfiltered `/browse`. *(Was `functions/map/s/[hash].ts` in CLAUDE.md invariant #28 / ADR-0033 — reconcile that `/map/` segment when this ships.)*
   - [ ] KV namespace setup documented in `docs/REMOTE_OPERATIONS.md` (Cloudflare dashboard → Workers & Pages → KV).
   - [ ] Failure mode: if Function call non-2xxs, the button shows the long URL with "short link unavailable" inline notice. Clipboard copy still works.
   - [ ] Closed-job fallback: shared link whose `selected=<jobId>` is now closed resolves to filters + viewport with a banner "the highlighted posting has closed; here's the same filter on current postings." Never 404.
@@ -452,10 +452,10 @@ User review on 2026-05-07 found eleven concrete defects: agency filter is a free
 ### Phase E — Deploy
 
 - [ ] Cloudflare Pages from GitHub, build root `public_map/`.
-- [ ] Custom domain `thegrandpipeline.com`, route `/map`.
+- [ ] Custom domain `map.thegrandpipeline.com` (the app serves at the subdomain root; `/` redirects to `/browse`, and `/map` is the Map-only route).
 - [ ] Mapbox token in Pages env vars + URL referrer restrictions in Mapbox dashboard.
 
-**Exit:** `https://thegrandpipeline.com/map` resolves over HTTPS and matches local build.
+**Exit:** `https://map.thegrandpipeline.com` resolves over HTTPS (redirecting to `/browse`) and matches local build.
 
 ### Phase F — Operations and polish
 
@@ -463,7 +463,7 @@ User review on 2026-05-07 found eleven concrete defects: agency filter is a free
 >
 > **Stale codex branches (2026-05-25).** The two `codex/review-*` remote branches were the disjoint-history (no common ancestor with `master`) Phase A.5/B-era origin of the PR #3 work. Their only files absent from `master` were the four mis-branded ("The Grand Pipeline") SEO/about leftovers. The fresh FedFinder-branded redo below supersedes them; the branches can be deleted from the GitHub UI (the managed git proxy here rejects ref deletion via push).
 
-- [x] **`robots.txt`, `sitemap.xml`, OG image, share-preview meta — redone fresh, FedFinder-branded (2026-05-25).** `public_map/static/robots.txt` (allows all, points at the sitemap), `public_map/static/sitemap.xml` (`/browse`, `/map`, `/about` at `https://thegrandpipeline.com`), `public_map/static/og-image.svg` (1200×630 FedFinder card), and `og:image` / `og:url` / `twitter:*` / `<link rel="canonical">` wired into `app.html` with `/browse` as the canonical route. Build emits `robots.txt`, `sitemap.xml`, `og-image.svg`, and `about.html`. **Still open:** Cloudflare Web Analytics beacon (needs a CF account token; deferred).
+- [x] **`robots.txt`, `sitemap.xml`, OG image, share-preview meta — redone fresh, FedFinder-branded (2026-05-25).** `public_map/static/robots.txt` (allows all, points at the sitemap), `public_map/static/sitemap.xml` (`/browse`, `/map`, `/about` at `https://map.thegrandpipeline.com` — the live deployment is the `map.` subdomain root, **not** the `thegrandpipeline.com/map` path the older deploy docs described), `public_map/static/og-image.svg` (1200×630 FedFinder card), and `og:image` / `og:url` / `twitter:*` / `<link rel="canonical">` wired into `app.html` with `/browse` as the canonical route. Build emits `robots.txt`, `sitemap.xml`, `og-image.svg`, and `about.html`. **Still open:** Cloudflare Web Analytics beacon (needs a CF account token; deferred).
 - [x] **`/about` page — redone fresh, FedFinder-branded (2026-05-25).** `public_map/src/routes/about/+page.svelte`: theme-aware (uses the global `[data-theme]` CSS vars), attributions (USAJOBS, OPM, Census, BEA, GSA, Mapbox/OpenStreetMap), a corrected precision section (markers reach street-level zoom 19; only polygon overlays cap at zoom 9 — the old "capped at zoom 9 / not parcel-level" copy was stale), a local-only-data/privacy note, and the "not affiliated with the U.S. government" disclaimer. Reachable via an `About` link added to both the `/browse` and `/map` mastheads.
 - [ ] ~~Windows Task Scheduler nightly job runs `refresh_public_map_data.py` + `export_public_map.py` + `git push`.~~ **(Superseded 2026-05-10: replaced by `.github/workflows/refresh-public-map.yml`, which runs daily at 09:00 UTC on a GitHub Actions runner and supports manual phone-triggered runs per `docs/REMOTE_OPERATIONS.md`. The workflow handles the rebase/conflict path per CLAUDE.md invariant #23 so the operator's laptop is no longer in the refresh path.)**
 - [ ] Update runbook in `docs/PUBLIC_MAP_PIPELINE.md`.

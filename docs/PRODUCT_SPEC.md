@@ -100,7 +100,7 @@ The Public Map Tool below is a **separate sibling product** (ADR-0016) that is h
 
 ---
 
-## Public Map Tool — `thegrandpipeline.com/map`
+## Public Map Tool — `map.thegrandpipeline.com`
 
 A separate, public-facing, static web tool that helps anyone find federal jobs on a map. Fed one-way by nightly snapshots from the local dashboard's SQLite. The dashboard remains local-first; the public map is the only piece that ever lives on the internet.
 
@@ -202,7 +202,7 @@ The map also includes a personal compensation comparator. A visitor can enter a 
 16. Compensation comparator returns sourced COL-adjusted equivalents for GS grade/step/locality and custom-wage inputs.
 17. Job cards show closing-soon and source-backed fill/applicant badges when data exists.
 18. Viewed/saved/hidden state persists locally; hidden jobs are excluded from default map/list/search views and recoverable from Hidden Jobs; viewed jobs that later close appear in the local profile.
-19. Nightly export + git push + Cloudflare Pages rebuild lands on `thegrandpipeline.com/map`; footer credits every source with freshness.
+19. Nightly export + git push + Cloudflare Pages rebuild lands on `map.thegrandpipeline.com`; footer credits every source with freshness.
 20. `pytest` green; pay tables for at least three localities x three pay plans match published OPM values exactly; layout / typeahead / basemap-fallback / pay-grid / federal-properties / scoped-search / compensation-comparison / local-profile-state tests all green.
 
 The full implementation plan lives in `docs/ROADMAP.md` (Public Map Tool track) and the detailed Phase D.5 sub-phase list in `C:\Users\caleb\.claude\plans\review-the-new-map-playful-wind.md`. External datasets are catalogued in `docs/PUBLIC_MAP_DATA_SOURCES.md`. Pipeline operations are documented in `docs/PUBLIC_MAP_PIPELINE.md`.
