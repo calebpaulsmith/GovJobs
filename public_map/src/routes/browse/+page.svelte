@@ -103,6 +103,7 @@
 		<button type="button" class="theme-btn" onclick={toggleTheme} aria-label="Toggle light or dark mode">
 			{mapState.theme === 'dark' ? '☀' : '☾'}
 		</button>
+		<a class="about-link" href="/about">About</a>
 	</header>
 
 	<main class="content">
@@ -350,6 +351,16 @@
 	}
 	.theme-btn:hover {
 		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.about-link {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--c-muted, #94a3b8);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.about-link:hover {
 		color: var(--c-accent, #7bd0f2);
 	}
 

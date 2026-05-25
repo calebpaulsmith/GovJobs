@@ -93,6 +93,7 @@
 		>
 			{mapState.theme === 'dark' ? '☀' : '☾'}
 		</button>
+		<a class="about-link" href="/about">About</a>
 	</header>
 
 	<ProfileDrawer />
@@ -226,6 +227,15 @@
 		flex-shrink: 0;
 	}
 	.theme-btn:hover { border-color: var(--c-accent, #7bd0f2); color: var(--c-accent, #7bd0f2); }
+	.about-link {
+		pointer-events: all;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--c-muted, #94a3b8);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.about-link:hover { color: var(--c-accent, #7bd0f2); }
 	.attrib {
 		/* Position from public_map/src/lib/layout.ts (slot 'freshness'). */
 		position: absolute;
