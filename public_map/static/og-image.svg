@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+	<title id="title">FedFinder — Federal Job Map</title>
+	<desc id="desc">A free map of open USAJOBS postings, federal pay, and cost of living.</desc>
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0" stop-color="#06111f" />
+			<stop offset="1" stop-color="#0d1f33" />
+		</linearGradient>
+		<radialGradient id="glow" cx="0.78" cy="0.28" r="0.6">
+			<stop offset="0" stop-color="#7bd0f2" stop-opacity="0.22" />
+			<stop offset="1" stop-color="#7bd0f2" stop-opacity="0" />
+		</radialGradient>
+	</defs>
+
+	<rect width="1200" height="630" fill="url(#bg)" />
+	<rect width="1200" height="630" fill="url(#glow)" />
+	<rect x="0" y="0" width="1200" height="10" fill="#7bd0f2" />
+
+	<!-- Map pin motif -->
+	<g transform="translate(940 250)">
+		<path d="M0 -120 C66 -120 120 -66 120 0 C120 86 0 200 0 200 C0 200 -120 86 -120 0 C-120 -66 -66 -120 0 -120 Z"
+			fill="none" stroke="#7bd0f2" stroke-width="10" stroke-opacity="0.55" />
+		<circle cx="0" cy="0" r="44" fill="#7bd0f2" fill-opacity="0.85" />
+		<circle cx="0" cy="0" r="44" fill="none" stroke="#06111f" stroke-width="6" />
+	</g>
+
+	<text x="82" y="232" fill="#94a3b8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="6">FEDERAL JOB MAP</text>
+	<text x="78" y="350" fill="#e5edf5" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="124" font-weight="800" letter-spacing="-2">FedFinder</text>
+	<text x="82" y="430" fill="#cfd9e6" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="34" font-weight="500">Where does a federal paycheck go furthest?</text>
+
+	<text x="82" y="556" fill="#94a3b8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="600">Open USAJOBS postings · OPM pay &amp; workforce · cost of living</text>
+</svg>
