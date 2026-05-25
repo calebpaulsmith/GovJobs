@@ -87,6 +87,10 @@ export interface JobDetails {
 	locality_code?: string | null;
 	locations?: JobLocation[];
 	pay_grid?: PayGrid | null;
+	// D.5.28: <=200-char previews from job_text. Omitted (undefined) or null
+	// when the announcement-text importer hasn't pulled this posting yet.
+	summary_excerpt?: string | null;
+	qualifications_excerpt?: string | null;
 }
 
 export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;

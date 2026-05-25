@@ -473,6 +473,41 @@ def _build_pay_grid(
     }
 
 
+EXCERPT_MAX_CHARS = 200
+
+
+def _excerpt(text: Any, max_chars: int = EXCERPT_MAX_CHARS) -> str | None:
+    """Collapse a long-form text field into a single-line preview.
+
+    Used to power the Browse List's rich rows (D.5.28) without shipping the
+    full duties/qualifications text in `jobs_detail.json`. Returns None for
+    empty input so the consumer can omit the field cleanly.
+    """
+    if text is None:
+        return None
+    raw = str(text).strip()
+    if not raw:
+        return None
+    # USAJOBS announcement text is often HTML; strip tags + entities to a
+    # plain run of whitespace-separated tokens.
+    import html
+    import re
+
+    no_tags = re.sub(r"<[^>]+>", " ", raw)
+    decoded = html.unescape(no_tags)
+    collapsed = " ".join(decoded.split())
+    if not collapsed:
+        return None
+    if len(collapsed) <= max_chars:
+        return collapsed
+    # Trim at the last whitespace before the limit so we don't break a word.
+    trimmed = collapsed[: max_chars - 1].rstrip()
+    space = trimmed.rfind(" ")
+    if space > max_chars * 0.6:
+        trimmed = trimmed[:space]
+    return f"{trimmed}…"
+
+
 def job_details(
     conn: sqlite3.Connection,
     *,
@@ -487,6 +522,10 @@ def job_details(
     computed against the job's first listed duty location; JobCard shows the
     grid when ``status`` is ``exact``/``approximated`` and a "see admin"
     fallback when ``status`` is ``unavailable``.
+
+    ``summary_excerpt`` and ``qualifications_excerpt`` are <=200-char
+    previews of ``job_text.summary`` and ``job_text.qualifications`` for the
+    Browse List's rich rows (D.5.28); the full text stays out of the bundle.
     """
     resolved_year = int(year) if year is not None else current_reference_year(conn)
     job_rows = conn.execute(
@@ -552,6 +591,27 @@ def job_details(
             }
         )
 
+    # D.5.28: 200-char excerpts for the Browse list's rich rows. job_text is
+    # populated by the AnnouncementText importer; many open postings won't
+    # have a row yet, so a missing entry is normal and just omits the field.
+    text_rows = conn.execute(
+        """
+        SELECT jt.job_id          AS job_id,
+               jt.summary         AS summary,
+               jt.qualifications  AS qualifications
+        FROM job_text jt
+        JOIN jobs j ON j.id = jt.job_id
+        WHERE j.source LIKE 'usajobs%'
+          AND (j.close_date IS NULL OR j.close_date >= date('now'))
+        """
+    ).fetchall()
+    text_by_job: dict[int, dict[str, str | None]] = {}
+    for row in text_rows:
+        text_by_job[int(row["job_id"])] = {
+            "summary_excerpt": _excerpt(row["summary"]),
+            "qualifications_excerpt": _excerpt(row["qualifications"]),
+        }
+
     details: dict[str, dict[str, Any]] = {}
     for row in job_rows:
         job_id = int(row["job_id"])
@@ -566,6 +626,7 @@ def job_details(
             grade_low=row["grade_low"],
             grade_high=row["grade_high"],
         )
+        text = text_by_job.get(job_id, {})
         details[str(job_id)] = {
             "id": job_id,
             "title": row["title"],
@@ -587,6 +648,8 @@ def job_details(
             "locality_code": first_locality_by_job.get(job_id),
             "locations": locations,
             "pay_grid": pay_grid,
+            "summary_excerpt": text.get("summary_excerpt"),
+            "qualifications_excerpt": text.get("qualifications_excerpt"),
         }
     return details
 

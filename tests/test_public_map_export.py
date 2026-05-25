@@ -10,10 +10,13 @@ from src.database import (
     record_geocoding_miss,
     upsert_geocoded_location,
     upsert_job,
+    upsert_job_text,
     upsert_zip_centroid,
     utc_now,
 )
 from src.public_map_export import (
+    EXCERPT_MAX_CHARS,
+    _excerpt,
     agency_options,
     closed_jobs_geojson,
     current_reference_year,
@@ -260,6 +263,84 @@ def test_job_details_includes_locality_code_of_first_location(conn):
 
     detail = next(iter(job_details(conn, year=2026).values()))
     assert detail["locality_code"] == "CHI"
+
+
+# ---- D.5.28: summary/qualifications excerpts -----------------------------
+
+
+def test_excerpt_returns_none_for_empty_or_whitespace():
+    assert _excerpt(None) is None
+    assert _excerpt("") is None
+    assert _excerpt("   \n\t  ") is None
+
+
+def test_excerpt_passes_short_text_through_unchanged():
+    text = "Lead disaster recovery efforts across Region V."
+    assert _excerpt(text) == text
+
+
+def test_excerpt_strips_html_tags_and_entities():
+    html = (
+        "<p>Lead <strong>disaster recovery</strong> efforts.</p>"
+        "<ul><li>Plan&nbsp;and&nbsp;execute</li></ul>"
+    )
+    assert _excerpt(html) == "Lead disaster recovery efforts. Plan and execute"
+
+
+def test_excerpt_trims_to_max_chars_with_ellipsis_on_word_boundary():
+    long = "word " * 100  # 500 chars of "word "
+    out = _excerpt(long)
+    assert out is not None
+    assert len(out) <= EXCERPT_MAX_CHARS
+    assert out.endswith("…")
+    # Last visible char before the ellipsis should not be mid-word; we trim
+    # at the last whitespace inside the budget.
+    assert not out[:-1].endswith("wor")
+
+
+def test_excerpt_respects_custom_max_chars():
+    out = _excerpt("a" * 50, max_chars=10)
+    assert out is not None
+    assert len(out) <= 10
+    assert out.endswith("…")
+
+
+def test_job_details_includes_excerpts_when_job_text_present(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job())
+    job_id = conn.execute("SELECT id FROM jobs LIMIT 1").fetchone()["id"]
+    upsert_job_text(
+        conn,
+        job_id,
+        {
+            "summary": (
+                "<p>Lead <b>disaster recovery</b> efforts across Region V, "
+                "coordinating with state and tribal partners.</p>"
+            ),
+            "qualifications": (
+                "One year of specialized experience equivalent to the GS-12 "
+                "level demonstrating program-management leadership."
+            ),
+        },
+    )
+
+    detail = next(iter(job_details(conn).values()))
+    assert detail["summary_excerpt"] == (
+        "Lead disaster recovery efforts across Region V, "
+        "coordinating with state and tribal partners."
+    )
+    assert detail["qualifications_excerpt"].startswith("One year of specialized experience")
+    assert len(detail["qualifications_excerpt"]) <= EXCERPT_MAX_CHARS
+
+
+def test_job_details_omits_excerpts_when_job_text_missing(conn):
+    _seed_chicago(conn)
+    upsert_job(conn, _job())
+    detail = next(iter(job_details(conn).values()))
+    assert "summary_excerpt" in detail
+    assert "qualifications_excerpt" in detail
+    assert detail["summary_excerpt"] is None
+    assert detail["qualifications_excerpt"] is None
 
 
 def test_opm_state_aggregates_handles_missing_records(conn):

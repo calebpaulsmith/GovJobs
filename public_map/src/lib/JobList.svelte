@@ -473,6 +473,15 @@
 									<span>{gradeRange(job.pay_plan, job.grade_low, job.grade_high)}</span>
 									{#if job.series}<span>Series {job.series}</span>{/if}
 								</div>
+								{#if job.summary_excerpt}
+									<p class="row-excerpt summary">{job.summary_excerpt}</p>
+								{/if}
+								{#if job.qualifications_excerpt}
+									<p class="row-excerpt quals">
+										<span class="excerpt-label">Qualifications</span>
+										{job.qualifications_excerpt}
+									</p>
+								{/if}
 								<div class="row-foot">
 									<span class="pay">{salaryRange(job.salary_min, job.salary_max, job.salary_type)}</span>
 									<div class="row-actions">
@@ -907,6 +916,24 @@
 	.row-meta-rich strong {
 		color: var(--c-text-2, #cfd9e6);
 		font-weight: 600;
+	}
+	.row-excerpt {
+		margin: 0.25rem 0 0;
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--c-text-2, #cfd9e6);
+	}
+	.row-excerpt.quals {
+		color: var(--c-muted, #94a3b8);
+	}
+	.row-excerpt .excerpt-label {
+		display: inline-block;
+		margin-right: 0.35rem;
+		font-size: 9px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--c-accent, #7bd0f2);
 	}
 	.row-foot {
 		display: flex;
