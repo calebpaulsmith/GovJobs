@@ -21,6 +21,7 @@
 	import FilterSheet from '$lib/FilterSheet.svelte';
 	import BrowseSheet from '$lib/BrowseSheet.svelte';
 	import SavedDrawer from '$lib/SavedDrawer.svelte';
+	import BuildStamp from '$lib/BuildStamp.svelte';
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 
@@ -63,6 +64,9 @@
 		</button>
 		<a class="about-link" href="/about">About</a>
 	</header>
+
+	<!-- Build/version + USAJOBS data freshness. -->
+	<BuildStamp />
 
 	<!-- Map fills the home surface; overlays sit on top of it. -->
 	<main class="content">
