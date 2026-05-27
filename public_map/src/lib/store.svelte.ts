@@ -50,6 +50,8 @@ class MapState {
 	theme = $state<'light' | 'dark'>('dark');
 	// D.5.17: compensation/COL comparator drawer.
 	compareOpen = $state<boolean>(false);
+	// Browse map: left-edge filter sheet (shares FilterFields with /map).
+	filterSheetOpen = $state<boolean>(false);
 }
 
 export interface MapViewport {

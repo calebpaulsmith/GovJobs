@@ -14,13 +14,14 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { mapState } from '$lib/store.svelte';
-	import { DEFAULT_FILTERS, type JobFilters } from '$lib/filters';
+	import { DEFAULT_FILTERS, activeFilterCount, type JobFilters } from '$lib/filters';
 	import { jobProfile } from '$lib/jobProfile.svelte';
 	import AgencyPicker from '$lib/AgencyPicker.svelte';
 	import JobList from '$lib/JobList.svelte';
 	import SmallestAreaCard from '$lib/SmallestAreaCard.svelte';
 	import SavedTab from '$lib/SavedTab.svelte';
 	import Map from '$lib/Map.svelte';
+	import FilterSheet from '$lib/FilterSheet.svelte';
 
 	type Tab = 'map' | 'list' | 'here' | 'saved';
 	let tab = $state<Tab>('list');
@@ -257,6 +258,19 @@
 					<!-- browseMode: polygon (state/locality) clicks additively add a
 					     geo: chip to the shared filter (ADR-0033 / invariant #27). -->
 					<Map browseMode />
+					<button
+						type="button"
+						class="filters-fab"
+						onclick={() => (mapState.filterSheetOpen = true)}
+						aria-label="Open filters"
+					>
+						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
+						Filters
+						{#if activeFilterCount(mapState.filters) > 0}
+							<span class="fab-count">{activeFilterCount(mapState.filters)}</span>
+						{/if}
+					</button>
+					<FilterSheet />
 				</div>
 			</section>
 
@@ -496,6 +510,50 @@
 		flex: 1;
 		min-height: 24rem;
 		width: 100%;
+	}
+	.filters-fab {
+		position: absolute;
+		top: 0.75rem;
+		left: 0.75rem;
+		z-index: 6;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		appearance: none;
+		border: 1px solid var(--c-border, #2a3a52);
+		border-radius: 999px;
+		background: var(--c-panel-blur, rgba(14, 23, 38, 0.92));
+		backdrop-filter: blur(8px);
+		color: var(--c-text, #e5edf5);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		padding: 0.45rem 0.75rem;
+		cursor: pointer;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+	}
+	.filters-fab:hover {
+		border-color: var(--c-accent, #7bd0f2);
+	}
+	.filters-fab svg {
+		color: var(--c-accent, #7bd0f2);
+	}
+	.filters-fab:focus-visible {
+		outline: 2px solid var(--c-accent, #7bd0f2);
+		outline-offset: 2px;
+	}
+	.fab-count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.1rem;
+		height: 1.1rem;
+		padding: 0 0.3rem;
+		border-radius: 999px;
+		background: var(--c-accent-dim, #4979b3);
+		color: #fff;
+		font-size: 10px;
+		font-weight: 700;
 	}
 
 	/* Dock */
