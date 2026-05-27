@@ -1,5 +1,9 @@
 import type { Feature, FeatureCollection, JobDetails } from './data';
 
+// "Posted in the last N days" choices. '' = all time (no constraint).
+export const POSTED_WITHIN_VALUES = ['1', '3', '7', '30'] as const;
+export type PostedWithin = '' | (typeof POSTED_WITHIN_VALUES)[number];
+
 export interface JobFilters {
 	keyword: string;
 	agencies: string[];
@@ -12,6 +16,8 @@ export interface JobFilters {
 	payPlan: string;
 	// Geography chips: "state:IL", "locality:DC", etc. Multiple chips are ORed.
 	geographies: string[];
+	// '' (all time) | '1' | '3' | '7' | '30' days since the posting opened.
+	postedWithin: PostedWithin;
 }
 
 export const DEFAULT_FILTERS: JobFilters = {
@@ -24,7 +30,8 @@ export const DEFAULT_FILTERS: JobFilters = {
 	remote: 'any',
 	hiringPath: '',
 	payPlan: '',
-	geographies: []
+	geographies: [],
+	postedWithin: ''
 };
 
 export const FILTER_PARAM_KEYS = [
@@ -37,7 +44,8 @@ export const FILTER_PARAM_KEYS = [
 	'remote',
 	'hiringPath',
 	'payPlan',
-	'geo'
+	'geo',
+	'posted'
 ] as const;
 
 type JobDetailsIndex = Record<string, JobDetails>;
@@ -60,7 +68,23 @@ export function activeFilterCount(filters: JobFilters): number {
 	if (filters.hiringPath.trim()) count += 1;
 	if (filters.payPlan.trim()) count += 1;
 	if (filters.geographies.length > 0) count += 1;
+	if (filters.postedWithin) count += 1;
 	return count;
+}
+
+// True when `openDate` (an ISO date/datetime string) falls within the last
+// `within` days of `now`. '' / 0 / invalid `within` means no constraint and
+// returns true. A missing/unparseable `openDate` cannot be confirmed recent,
+// so it returns false whenever a real window is requested.
+export function isPostedWithin(openDate: unknown, within: string, now: Date = new Date()): boolean {
+	if (!within) return true;
+	const days = Number(within);
+	if (!Number.isFinite(days) || days <= 0) return true;
+	const raw = String(openDate ?? '').trim();
+	if (!raw) return false;
+	const posted = Date.parse(raw);
+	if (Number.isNaN(posted)) return false;
+	return posted >= now.getTime() - days * 86_400_000;
 }
 
 export function normalizeAgencyCodes(values: string[] | string | undefined | null): string[] {
@@ -81,6 +105,10 @@ export function normalizeFilters(input: Partial<JobFilters> & { agency?: string 
 		? input.remote
 		: DEFAULT_FILTERS.remote;
 	const rawGeos = input.geographies ?? (input.geo ? (Array.isArray(input.geo) ? input.geo : [input.geo]) : []);
+	const postedWithin: PostedWithin =
+		input.postedWithin && (POSTED_WITHIN_VALUES as readonly string[]).includes(input.postedWithin)
+			? (input.postedWithin as PostedWithin)
+			: DEFAULT_FILTERS.postedWithin;
 	return {
 		keyword: clean(input.keyword),
 		agencies: normalizeAgencyCodes(input.agencies ?? input.agency),
@@ -91,7 +119,8 @@ export function normalizeFilters(input: Partial<JobFilters> & { agency?: string 
 		remote,
 		hiringPath: clean(input.hiringPath),
 		payPlan: clean(input.payPlan),
-		geographies: rawGeos.filter((g) => g && g.includes(':'))
+		geographies: rawGeos.filter((g) => g && g.includes(':')),
+		postedWithin
 	};
 }
 
@@ -106,7 +135,8 @@ export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 		remote: (params.get('remote') as JobFilters['remote'] | null) ?? 'any',
 		hiringPath: params.get('hiringPath') ?? '',
 		payPlan: params.get('payPlan') ?? '',
-		geographies: params.getAll('geo')
+		geographies: params.getAll('geo'),
+		postedWithin: (params.get('posted') as PostedWithin | null) ?? ''
 	});
 }
 
@@ -121,6 +151,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	params.delete('hiringPath');
 	params.delete('payPlan');
 	params.delete('geo');
+	params.delete('posted');
 
 	if (filters.keyword) params.set('q', filters.keyword);
 	for (const agency of filters.agencies) params.append('agency', agency);
@@ -132,6 +163,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	if (filters.hiringPath) params.set('hiringPath', filters.hiringPath);
 	if (filters.payPlan) params.set('payPlan', filters.payPlan.toUpperCase());
 	for (const geo of filters.geographies) params.append('geo', geo);
+	if (filters.postedWithin) params.set('posted', filters.postedWithin);
 }
 
 export function filterJobs(
@@ -164,6 +196,7 @@ export function matchesJobFeature(
 	if (filters.hiringPath && !containsText(combined.hiring_paths, filters.hiringPath)) return false;
 	if (filters.salaryMin && !meetsSalaryMinimum(combined.salary_min, filters.salaryMin)) return false;
 	if (!gradeRangeOverlaps(combined.grade_low, combined.grade_high, filters.gradeMin, filters.gradeMax)) return false;
+	if (!isPostedWithin(combined.open_date, filters.postedWithin)) return false;
 
 	return true;
 }
@@ -291,6 +324,7 @@ export function matchesJobDetail(job: JobDetails, filters: JobFilters): boolean 
 	if (filters.hiringPath && !containsText(job.hiring_paths, filters.hiringPath)) return false;
 	if (filters.salaryMin && !meetsSalaryMinimum(job.salary_min, filters.salaryMin)) return false;
 	if (!gradeRangeOverlaps(job.grade_low, job.grade_high, filters.gradeMin, filters.gradeMax)) return false;
+	if (!isPostedWithin(job.open_date, filters.postedWithin)) return false;
 	return true;
 }
 
