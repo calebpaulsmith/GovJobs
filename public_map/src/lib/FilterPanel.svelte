@@ -189,7 +189,21 @@
 				/>
 			</label>
 
-			<div class="agency-picker">
+			<label>
+					<span>Posted in last</span>
+					<select
+						value={mapState.filters.postedWithin}
+						onchange={(e) => setFilter('postedWithin', e.currentTarget.value as JobFilters['postedWithin'])}
+					>
+						<option value="">Any time</option>
+						<option value="1">1 day</option>
+						<option value="3">3 days</option>
+						<option value="7">7 days</option>
+						<option value="30">30 days</option>
+					</select>
+				</label>
+
+				<div class="agency-picker">
 				<span>Agencies</span>
 				<div class="chips" aria-label="Selected agencies">
 					{#each selectedAgencyOptions() as option (option.code)}

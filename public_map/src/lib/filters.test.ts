@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_FILTERS, matchesJobDetail, filterJobDetails, type JobFilters } from './filters';
+import {
+	DEFAULT_FILTERS,
+	matchesJobDetail,
+	filterJobDetails,
+	isPostedWithin,
+	type JobFilters
+} from './filters';
 import type { JobDetails } from './data';
 
 function job(overrides: Partial<JobDetails> = {}): JobDetails {
@@ -83,6 +89,46 @@ describe('matchesJobDetail', () => {
 	it('enforces the salary minimum', () => {
 		expect(matchesJobDetail(job(), filters({ salaryMin: '90000' }))).toBe(true);
 		expect(matchesJobDetail(job(), filters({ salaryMin: '120000' }))).toBe(false);
+	});
+
+	it('filters by posted-within window using open_date', () => {
+		const recent = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+		expect(matchesJobDetail(job({ open_date: recent }), filters({ postedWithin: '7' }))).toBe(true);
+		expect(matchesJobDetail(job({ open_date: '2000-01-01' }), filters({ postedWithin: '7' }))).toBe(false);
+		// Unknown open_date can't be confirmed recent, so a real window excludes it.
+		expect(matchesJobDetail(job({ open_date: null }), filters({ postedWithin: '30' }))).toBe(false);
+		// All-time (default) ignores open_date entirely.
+		expect(matchesJobDetail(job({ open_date: '2000-01-01' }), filters({ postedWithin: '' }))).toBe(true);
+	});
+});
+
+describe('isPostedWithin', () => {
+	const now = new Date('2026-05-27T12:00:00Z');
+
+	it('treats an empty window as no constraint', () => {
+		expect(isPostedWithin('2000-01-01', '', now)).toBe(true);
+		expect(isPostedWithin(null, '', now)).toBe(true);
+	});
+
+	it('includes postings opened inside the window', () => {
+		expect(isPostedWithin('2026-05-25', '7', now)).toBe(true);
+		expect(isPostedWithin('2026-05-27', '1', now)).toBe(true);
+	});
+
+	it('excludes postings opened before the window', () => {
+		expect(isPostedWithin('2026-05-10', '7', now)).toBe(false);
+		expect(isPostedWithin('2026-05-25', '1', now)).toBe(false);
+	});
+
+	it('excludes a missing or unparseable open_date when a window is set', () => {
+		expect(isPostedWithin(null, '7', now)).toBe(false);
+		expect(isPostedWithin('', '7', now)).toBe(false);
+		expect(isPostedWithin('not-a-date', '7', now)).toBe(false);
+	});
+
+	it('treats a non-positive or invalid window as no constraint', () => {
+		expect(isPostedWithin(null, '0', now)).toBe(true);
+		expect(isPostedWithin('not-a-date', 'abc', now)).toBe(true);
 	});
 });
 
