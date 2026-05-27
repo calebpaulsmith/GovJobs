@@ -6,7 +6,7 @@ Open bugs and inconsistencies that need fixing. Each entry: what's broken, where
 
 ## How to view the deployed public map and reproduce these issues
 
-**Live URL:** https://map.thegrandpipeline.com/map (Cloudflare Pages, custom domain).
+**Live URL:** https://map.thegrandpipeline.com/browse (Cloudflare Pages, custom domain; `/` redirects to `/browse`, `/map` is the Map-only route).
 
 **Five-minute smoke procedure:**
 

@@ -1,4 +1,4 @@
-# public_map — thegrandpipeline.com/map
+# public_map — map.thegrandpipeline.com
 
 Static SvelteKit + Mapbox GL JS site, deployed to Cloudflare Pages. Read-only
 sibling product to the local Streamlit dashboard (per ADR-0016). Fed nightly by

@@ -246,7 +246,7 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Source**: Mapbox vector tiles (Streets v12 or a custom dark style). Token-gated.
 - **License**: per Mapbox terms; free tier 50K loads/month.
 - **Lands in**: not stored locally; tiles fetched at runtime by Mapbox GL JS.
-- **Token security**: env var on Cloudflare Pages, restricted by URL referrer to `thegrandpipeline.com` and `*.pages.dev` (per ADR-0016).
+- **Token security**: env var on Cloudflare Pages, restricted by URL referrer to `map.thegrandpipeline.com` and `*.pages.dev` (per ADR-0016).
 - **Attribution**: "© Mapbox © OpenStreetMap" surfaced in the map UI per Mapbox terms.
 
 ## Reference: how to add a new data source

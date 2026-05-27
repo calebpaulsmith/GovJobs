@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://thegrandpipeline.com/sitemap.xml
+Sitemap: https://map.thegrandpipeline.com/sitemap.xml

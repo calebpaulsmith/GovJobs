@@ -1,6 +1,6 @@
 # PUBLIC_MAP_PIPELINE.md
 
-Operator's runbook for the Public Map Tool at `thegrandpipeline.com/map`.
+Operator's runbook for the Public Map Tool at `map.thegrandpipeline.com`.
 
 The public map is a separate sibling product per ADR-0016. The dashboard reads and writes the local SQLite database; the public map only **reads** through the export script and ships static files to Cloudflare Pages.
 
@@ -27,7 +27,7 @@ Local SQLite (data/federal_jobs.sqlite)
      }
   -> git commit + git push (auto)
   -> Cloudflare Pages rebuild
-  -> https://thegrandpipeline.com/map
+  -> https://map.thegrandpipeline.com
 ```
 
 The public site is read-only. No backend, no API, no auth, no DB online.
@@ -51,8 +51,8 @@ Per ADR-0027 (self-bootstrapping ingests, shipped 2026-05-08), the orchestrator 
    python scripts/export_public_map.py
    ```
    You should see polygon counts in the manifest (e.g., 56 states / 38+ localities / 3,235 counties / 935 metros) and `pay_vs_col` populated as a 60–140 purchasing-power index.
-5. **Cloudflare Pages.** Connect the GitHub repo, set the build root to `public_map/`, set the Mapbox token as a build env var, add `thegrandpipeline.com` as a custom domain.
-6. **Mapbox token hardening.** In Mapbox dashboard, restrict the token by URL referrer to `thegrandpipeline.com` and `*.pages.dev`.
+5. **Cloudflare Pages.** Connect the GitHub repo, set the build root to `public_map/`, set the Mapbox token as a build env var, add `map.thegrandpipeline.com` as a custom domain.
+6. **Mapbox token hardening.** In Mapbox dashboard, restrict the token by URL referrer to `map.thegrandpipeline.com` and `*.pages.dev`.
 
 ### Annual refresh of the OPM / BEA seeds
 

@@ -4,9 +4,9 @@
 		name="description"
 		content="About FedFinder: a free, read-only map of open USAJOBS postings, OPM workforce data, locality-adjusted federal pay, and cost of living. Its data sources, precision limits, privacy posture, and government-affiliation disclaimer."
 	/>
-	<link rel="canonical" href="https://thegrandpipeline.com/about" />
+	<link rel="canonical" href="https://map.thegrandpipeline.com/about" />
 	<meta property="og:title" content="About FedFinder — Federal Job Map" />
-	<meta property="og:url" content="https://thegrandpipeline.com/about" />
+	<meta property="og:url" content="https://map.thegrandpipeline.com/about" />
 </svelte:head>
 
 <main class="about-shell">

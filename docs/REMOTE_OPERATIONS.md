@@ -75,7 +75,7 @@ USAJOBS credentials: Cowork doesn't need them as long as you're triggering the G
 
 ## Watching the live site
 
-The custom domain `thegrandpipeline.com/map` is the production URL. Cloudflare Pages gives every deploy its own permanent URL like `9202521b.govjobs-map.pages.dev/map` — those URLs **never update**, they snapshot one specific deploy. Always check the production URL to see "the latest live map."
+The custom domain `map.thegrandpipeline.com` is the production URL (the app serves at the subdomain root; `/` redirects to `/browse`). Cloudflare Pages gives every deploy its own permanent URL like `9202521b.govjobs-map.pages.dev` — those URLs **never update**, they snapshot one specific deploy. Always check the production URL to see "the latest live map."
 
 To find the latest preview/deploy URL, open `https://dash.cloudflare.com/?to=/:account/pages/view/govjobs-map` from your phone.
 
