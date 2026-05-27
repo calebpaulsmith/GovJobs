@@ -1,8 +1,21 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
+// Build identity, surfaced in the UI so you can tell which deploy you're on.
+// Cloudflare Pages sets CF_PAGES_* during the build (preview deploys get the
+// PR's head branch; production gets `master`). Falls back to local/dev so
+// `npm run dev` and `npm run build` work without those vars.
+const buildSha = (process.env.CF_PAGES_COMMIT_SHA ?? '').slice(0, 7) || 'dev';
+const buildBranch = process.env.CF_PAGES_BRANCH ?? 'local';
+const buildTime = new Date().toISOString();
+
 export default defineConfig({
 	plugins: [sveltekit()],
+	define: {
+		__BUILD_SHA__: JSON.stringify(buildSha),
+		__BUILD_BRANCH__: JSON.stringify(buildBranch),
+		__BUILD_TIME__: JSON.stringify(buildTime)
+	},
 	server: {
 		port: 5173,
 		strictPort: false
