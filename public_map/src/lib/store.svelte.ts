@@ -52,6 +52,11 @@ class MapState {
 	compareOpen = $state<boolean>(false);
 	// Browse map: left-edge filter sheet (shares FilterFields with /map).
 	filterSheetOpen = $state<boolean>(false);
+	// Browse map: bottom sheet (Here area card ↔ Postings list).
+	browseSheetExpanded = $state<boolean>(false);
+	browseSheetPage = $state<'here' | 'list'>('list');
+	// Browse map: Saved drawer (job lists + saved/hidden/viewed jobs).
+	savedDrawerOpen = $state<boolean>(false);
 }
 
 export interface MapViewport {

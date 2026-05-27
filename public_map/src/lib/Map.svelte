@@ -40,25 +40,15 @@
 	import { mapState, type Manifest } from './store.svelte';
 	import { METRICS, METRIC_ORDER, type MetricKey } from './metrics';
 
-	// `browseMode` is set only when this map is embedded in the /browse dock.
-	// In that mode a polygon click additively adds a geo: chip to the shared
-	// filter (ADR-0033 / CLAUDE.md invariant #27), in addition to the normal
-	// fit-bounds + selected-feature flow. On /map (browseMode === false)
+	// `browseMode` is set only when this map is embedded in the /browse map-home
+	// view. In that mode every polygon tap (state / locality / county / metro)
+	// resolves to a `selectedFeature` so the bottom sheet can show that area's
+	// card — including localities, which on /map open a scoped job list instead.
+	// Taps do NOT mutate filters here: adding an area to the working list is an
+	// explicit "Add this area to my list" button in the sheet (per the operator
+	// review — no auto-chips on every tap). On /map (browseMode === false)
 	// nothing in this file changes.
 	let { browseMode = false }: { browseMode?: boolean } = $props();
-
-	// Add a state:/locality: geography chip to mapState.filters if absent,
-	// reassigning the whole object so every consumer sees one fresh reference.
-	function addGeoChip(type: 'state' | 'locality', code: string): void {
-		const value = String(code ?? '').trim().toUpperCase();
-		if (!value) return;
-		const chip = `${type}:${value}`;
-		if (mapState.filters.geographies.includes(chip)) return;
-		mapState.filters = {
-			...mapState.filters,
-			geographies: [...mapState.filters.geographies, chip]
-		};
-	}
 
 	let container: HTMLDivElement;
 	let map: MaplibreMap | null = null;
@@ -417,13 +407,22 @@
 					return;
 				}
 				if (layerId === LAYER_IDS.localitiesFill) {
-					if (browseMode) addGeoChip('locality', String(props.code ?? ''));
+					if (browseMode) {
+						// Browse: show the locality card in the bottom sheet (not a
+						// scoped job list, which is the /map gesture).
+						mapState.jobStack = null;
+						mapState.listView = null;
+						mapState.selectedFeature = {
+							source: layerId,
+							label: labelFor(layerId),
+							properties: props
+						};
+						fitFocusedFeature(m, layerId, feature);
+						return;
+					}
 					openLocalityStack(props);
 					fitFocusedFeature(m, layerId, feature);
 					return;
-				}
-				if (browseMode && layerId === LAYER_IDS.statesFill) {
-					addGeoChip('state', String(props.state ?? ''));
 				}
 				mapState.jobStack = null;
 				mapState.selectedFeature = {
