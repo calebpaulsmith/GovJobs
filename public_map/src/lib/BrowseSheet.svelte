@@ -1,19 +1,25 @@
 <!--
 	Browse map bottom sheet. Sits over the bottom of the full-screen map and
-	holds two pages:
+	holds two swipeable pages:
 	  • "Here"     — the tapped area's card (State / Locality / County), a job
 	                 card for a tapped marker, or the smallest enclosing area for
 	                 the viewport when nothing is selected.
 	  • "Postings" — the shared JobList (rich mode), i.e. the working list the
 	                 filters produce and that can be saved.
 
-	Layer 3 switches pages with a segmented control and expands/collapses via the
-	grabber; Layer 4 upgrades the page switch to a horizontal swipe with a dots
-	affordance and remembers the last page. Tapping any feature on the map auto-
-	opens this sheet to the Here page. "Add this area to my list" is the explicit,
+	Pages switch by horizontal swipe (page dots show which page + that you can
+	swipe) or by tapping the pill labels. The last page is remembered in
+	localStorage, defaulting to Postings. Tapping any feature on the map auto-
+	opens the sheet to the Here page. "Add this area to my list" is the explicit,
 	opt-in way to narrow the working list by geography (no auto-chips on tap).
+
+	Swipe vs. scroll: the pager sets `touch-action: pan-y`, so the browser keeps
+	handling vertical scroll of the active panel natively while horizontal drags
+	are delivered to our handlers — no preventDefault, no scroll hijacking.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { mapState } from './store.svelte';
 	import { LAYER_IDS } from './layers';
 	import { propString, countValue } from './format';
@@ -25,9 +31,22 @@
 	import JobList from './JobList.svelte';
 	import PointJobList from './PointJobList.svelte';
 
+	const PAGE_KEY = 'fedfinder.public_map.browse_sheet_page.v1';
+
+	// Restore the last page (Postings by default), then persist on change.
+	onMount(() => {
+		if (!browser) return;
+		const stored = localStorage.getItem(PAGE_KEY);
+		if (stored === 'here' || stored === 'list') mapState.browseSheetPage = stored;
+	});
+	$effect(() => {
+		if (!browser) return;
+		localStorage.setItem(PAGE_KEY, mapState.browseSheetPage);
+	});
+
 	// Auto-open the Here page (expanded) when a new feature/point is tapped.
-	// Tracks selection identity so switching to the Postings page while a feature
-	// stays selected doesn't get yanked back to Here.
+	// Tracks selection identity so switching to Postings while a feature stays
+	// selected doesn't get yanked back to Here.
 	let lastSelection: unknown = null;
 	$effect(() => {
 		const sel = mapState.selectedFeature ?? mapState.jobStack;
@@ -64,6 +83,48 @@
 		return mapState.filters.geographies.includes(`${type}:${String(code ?? '').trim().toUpperCase()}`);
 	}
 
+	// --- horizontal swipe between the two pages ---
+	let pagerEl = $state<HTMLDivElement | null>(null);
+	let dragging = $state(false);
+	let dragPx = $state(0);
+	let startX = 0;
+	let startY = 0;
+	let axis: 'h' | 'v' | null = null;
+
+	const pageIndex = $derived(mapState.browseSheetPage === 'here' ? 0 : 1);
+
+	function onTouchStart(e: TouchEvent) {
+		if (e.touches.length !== 1) return;
+		startX = e.touches[0].clientX;
+		startY = e.touches[0].clientY;
+		axis = null;
+		dragPx = 0;
+	}
+	function onTouchMove(e: TouchEvent) {
+		if (e.touches.length !== 1) return;
+		const dx = e.touches[0].clientX - startX;
+		const dy = e.touches[0].clientY - startY;
+		if (axis === null) {
+			if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+			axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+		}
+		if (axis !== 'h') return;
+		dragging = true;
+		// Only allow dragging toward the page that exists in that direction.
+		dragPx = pageIndex === 0 ? Math.min(0, dx) : Math.max(0, dx);
+	}
+	function onTouchEnd() {
+		if (axis === 'h' && pagerEl) {
+			const w = pagerEl.clientWidth || 1;
+			const ratio = dragPx / w;
+			if (pageIndex === 0 && ratio < -0.2) setPage('list');
+			else if (pageIndex === 1 && ratio > 0.2) setPage('here');
+		}
+		dragging = false;
+		dragPx = 0;
+		axis = null;
+	}
+
 	const sel = $derived(mapState.selectedFeature);
 	const peekLabel = $derived.by(() => {
 		if (mapState.jobStack && !sel) return mapState.jobStack.label;
@@ -87,59 +148,81 @@
 	</button>
 
 	{#if mapState.browseSheetExpanded}
-		<!-- Layer 4 turns this segmented control into a swipe with page dots. -->
-		<div class="seg" role="tablist" aria-label="Panel view">
-			<button type="button" role="tab" aria-selected={mapState.browseSheetPage === 'here'} class:active={mapState.browseSheetPage === 'here'} onclick={() => setPage('here')}>
-				Here
-			</button>
-			<button type="button" role="tab" aria-selected={mapState.browseSheetPage === 'list'} class:active={mapState.browseSheetPage === 'list'} onclick={() => setPage('list')}>
-				Postings
-			</button>
+		<div class="pager-head">
+			<div class="seg" role="tablist" aria-label="Panel view">
+				<button type="button" role="tab" aria-selected={mapState.browseSheetPage === 'here'} class:active={mapState.browseSheetPage === 'here'} onclick={() => setPage('here')}>
+					Here
+				</button>
+				<button type="button" role="tab" aria-selected={mapState.browseSheetPage === 'list'} class:active={mapState.browseSheetPage === 'list'} onclick={() => setPage('list')}>
+					Postings
+				</button>
+			</div>
+			<div class="dots" aria-hidden="true" title="Swipe to switch">
+				<span class="dot" class:on={mapState.browseSheetPage === 'here'}></span>
+				<span class="dot" class:on={mapState.browseSheetPage === 'list'}></span>
+			</div>
 		</div>
 
-		<div class="body">
-			{#if mapState.browseSheetPage === 'list'}
-				<JobList richMode />
-			{:else if mapState.jobStack && !sel}
-				<PointJobList stack={mapState.jobStack} />
-			{:else if sel}
-				{#if sel.source === LAYER_IDS.markers}
-					<JobCard properties={sel.properties} />
-				{:else if sel.source === LAYER_IDS.statesFill}
-					<button
-						type="button"
-						class="add-area"
-						disabled={isInList('state', String(sel.properties.state ?? ''))}
-						onclick={() => addAreaToList('state', String(sel.properties.state ?? ''))}
-					>
-						{isInList('state', String(sel.properties.state ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
-					</button>
-					<StateRoundup properties={sel.properties} />
-				{:else if sel.source === LAYER_IDS.localitiesFill}
-					<button
-						type="button"
-						class="add-area"
-						disabled={isInList('locality', String(sel.properties.code ?? ''))}
-						onclick={() => addAreaToList('locality', String(sel.properties.code ?? ''))}
-					>
-						{isInList('locality', String(sel.properties.code ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
-					</button>
-					<LocalityDetail properties={sel.properties} />
-				{:else if sel.source === LAYER_IDS.countiesOutline}
-					<CountyDetail properties={sel.properties} />
-				{:else}
-					<section class="generic">
-						<h2>{propString(sel.properties, 'name')}</h2>
-						<dl>
-							<dt>Open postings</dt><dd>{countValue(sel.properties.postings)}</dd>
-							{#if sel.properties.cbsa_code}<dt>CBSA</dt><dd>{propString(sel.properties, 'cbsa_code')}</dd>{/if}
-							{#if sel.properties.agency}<dt>Agency</dt><dd>{propString(sel.properties, 'agency')}</dd>{/if}
-						</dl>
-					</section>
-				{/if}
-			{:else}
-				<SmallestAreaCard onViewList={() => setPage('list')} />
-			{/if}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="pager"
+			bind:this={pagerEl}
+			ontouchstart={onTouchStart}
+			ontouchmove={onTouchMove}
+			ontouchend={onTouchEnd}
+			ontouchcancel={onTouchEnd}
+		>
+			<div
+				class="track"
+				class:dragging
+				style="transform: translateX(calc({pageIndex * -100}% + {dragPx}px));"
+			>
+				<div class="panel">
+					{#if mapState.jobStack && !sel}
+						<PointJobList stack={mapState.jobStack} />
+					{:else if sel}
+						{#if sel.source === LAYER_IDS.markers}
+							<JobCard properties={sel.properties} />
+						{:else if sel.source === LAYER_IDS.statesFill}
+							<button
+								type="button"
+								class="add-area"
+								disabled={isInList('state', String(sel.properties.state ?? ''))}
+								onclick={() => addAreaToList('state', String(sel.properties.state ?? ''))}
+							>
+								{isInList('state', String(sel.properties.state ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
+							</button>
+							<StateRoundup properties={sel.properties} />
+						{:else if sel.source === LAYER_IDS.localitiesFill}
+							<button
+								type="button"
+								class="add-area"
+								disabled={isInList('locality', String(sel.properties.code ?? ''))}
+								onclick={() => addAreaToList('locality', String(sel.properties.code ?? ''))}
+							>
+								{isInList('locality', String(sel.properties.code ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
+							</button>
+							<LocalityDetail properties={sel.properties} />
+						{:else if sel.source === LAYER_IDS.countiesOutline}
+							<CountyDetail properties={sel.properties} />
+						{:else}
+							<section class="generic">
+								<h2>{propString(sel.properties, 'name')}</h2>
+								<dl>
+									<dt>Open postings</dt><dd>{countValue(sel.properties.postings)}</dd>
+									{#if sel.properties.cbsa_code}<dt>CBSA</dt><dd>{propString(sel.properties, 'cbsa_code')}</dd>{/if}
+									{#if sel.properties.agency}<dt>Agency</dt><dd>{propString(sel.properties, 'agency')}</dd>{/if}
+								</dl>
+							</section>
+						{/if}
+					{:else}
+						<SmallestAreaCard onViewList={() => setPage('list')} />
+					{/if}
+				</div>
+				<div class="panel">
+					<JobList richMode />
+				</div>
+			</div>
 		</div>
 	{:else}
 		<button type="button" class="peek" onclick={toggleExpanded}>
@@ -187,11 +270,17 @@
 		border-radius: 999px;
 		background: var(--c-border-input, #2c4870);
 	}
-	.seg {
+	.pager-head {
 		flex-shrink: 0;
 		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.35rem;
+		padding: 0 0.75rem 0.4rem;
+	}
+	.seg {
+		display: flex;
 		gap: 0.25rem;
-		padding: 0 0.75rem 0.5rem;
 	}
 	.seg button {
 		appearance: none;
@@ -211,13 +300,46 @@
 		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
 		color: var(--c-accent, #7bd0f2);
 	}
-	.body {
+	.dots {
+		display: flex;
+		justify-content: center;
+		gap: 0.35rem;
+	}
+	.dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 999px;
+		background: var(--c-border-input, #2c4870);
+		transition: background 150ms ease, width 150ms ease;
+	}
+	.dot.on {
+		width: 16px;
+		background: var(--c-accent, #7bd0f2);
+	}
+	.pager {
 		flex: 1;
+		overflow: hidden;
+		touch-action: pan-y;
+	}
+	.track {
+		display: flex;
+		height: 100%;
+		transition: transform 250ms ease;
+	}
+	.track.dragging {
+		transition: none;
+	}
+	.panel {
+		flex: 0 0 100%;
+		height: 100%;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
 		padding: 0.25rem 0.75rem 1rem;
 		color: var(--c-text-2, #cfd9e6);
 		font-size: 12px;
+	}
+	.panel:last-child {
+		padding: 0;
 	}
 	.peek {
 		appearance: none;
