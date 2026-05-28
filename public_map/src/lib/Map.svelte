@@ -389,6 +389,13 @@
 		];
 
 		m.on('click', (e) => {
+			// The hover popup is a DOM overlay positioned at the previously-
+			// hovered feature. On touch devices its mouseleave never fires,
+			// so it sticks to the last marker and absorbs the NEXT tap before
+			// Mapbox can dispatch click to the map. Dismissing it on every
+			// click makes the popup transient and keeps it from intercepting
+			// subsequent feature selections.
+			hoverPopup?.remove();
 			for (const layerId of layerOrder) {
 				if (!m.getLayer(layerId)) continue;
 				if (layerId === LAYER_IDS.closedMarkers && !mapState.closedJobsEnabled) continue;
@@ -458,7 +465,15 @@
 			LAYER_IDS.closedMarkers,
 			LAYER_IDS.federalProperties
 		];
-		for (const id of tooltipLayers) {
+		// Touch devices have no "hover" — mousemove is synthesized from taps
+		// but mouseleave never fires when the finger lifts. The popup then
+		// sticks to the last-tapped marker and blocks subsequent taps. Skip
+		// the hover wiring entirely when the device can't really hover.
+		const hasHover =
+			typeof window !== 'undefined' &&
+			typeof window.matchMedia === 'function' &&
+			window.matchMedia('(hover: hover)').matches;
+		for (const id of hasHover ? tooltipLayers : []) {
 			m.on('mousemove', id, (e) => {
 				if (!hoverPopup) return;
 				if (id === LAYER_IDS.closedMarkers && !mapState.closedJobsEnabled) return;
