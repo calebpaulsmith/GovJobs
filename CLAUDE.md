@@ -2,6 +2,105 @@
 
 Guidance for Claude Code (or any AI assistant) working in this repo.
 
+## In-flight investigation: Browse map bottom sheet (handoff 2026-05-28)
+
+Operator-reported bug on iOS Safari at `map.thegrandpipeline.com/browse`:
+tapping a feature on the map shows a small popup but the **bottom sheet does
+not update on subsequent taps** — it sticks on the first feature selected
+(e.g. "Camp Perry, Ohio"). Operator also reported the Filters FAB
+"acknowledges input but doesn't open."
+
+### What is shipped (in master)
+
+- **#45** — `DebugErrorOverlay.svelte` mounted from `+layout.svelte`,
+  gated by `?debug` URL param. Catches `window.error`,
+  `unhandledrejection`, `console.error`. Tap-logging added in #46.
+- **#46** — `BrowseSheet` `.sheet` raised from `z-index: 8` → `20` with
+  explicit `pointer-events: auto`. The map's "back to national" pill
+  (`Map.svelte` line 777, `position: absolute; z-index: 8`) had the same
+  z-index as the sheet and appears precisely on selection; equal-z with
+  later DOM order was letting that pill (and stuff behind it) eat taps in
+  the sheet region. **This fix is real and stays in master.**
+- **#48** — revert of **#47** (the big DebugErrorOverlay rewrite) because
+  it produced a blank screen in deployment. Root cause not pinned in
+  the local sandbox (see "Limits" below). Suspect was the combination of
+  `{#if enabled}` (always-render gate) + `bind:this={dbgEl}` to a `$state`
+  ref; #49 avoids both.
+
+### What is open but unmerged
+
+- **#49** — `DebugErrorOverlay` surgical fix (12-line diff vs master).
+  Two real bugs in the working overlay:
+  1. `add()` always set `open = true`, so every tap re-opened the log and
+     Hide was useless.
+  2. `.dbg` container had default `pointer-events: auto` — covered the
+     Filters FAB and the top of the expanded BrowseSheet.
+  Fix: `add(msg, autoOpen = true)`, tap handler passes `false`; container
+  is `pointer-events: none`, only `.bar button` and `.log` re-enable.
+  Template/state/structure unchanged from the #45/#46 working version.
+- **#50** — `BrowseSheet.expanded` height `70%` → `50%`. Originally shipped
+  on the belief that the 70% sheet was covering the map and blocking the
+  user from tapping new features. **Operator says this is wrong** — the
+  map is tappable and they CAN tap other features; the bug is that the
+  bottom panel doesn't update. PR can still ship for the UX benefit
+  (more map visible during selection) but it does not fix the stuck-panel
+  symptom.
+- **#51** — `Map.svelte` skip hover popup on touch devices
+  (`matchMedia('(hover: hover)')` gate around the `mousemove`/`mouseleave`
+  wiring) + `hoverPopup?.remove()` at the top of the click handler.
+  **Current best hypothesis** for the stuck panel: the `hoverPopup`
+  (`mapboxgl.Popup` constructed at `Map.svelte` line 117) is a DOM overlay
+  with `pointer-events: auto`. On touch, `mousemove` is synthesized from
+  taps but `mouseleave` never fires when the finger lifts — the popup
+  sticks to the last-tapped feature and absorbs the **next tap before
+  Mapbox can dispatch `click`** to the canvas. `queryRenderedFeatures`
+  doesn't run for the new tap, `openMarkerStack` isn't called,
+  `selectedFeature` stays on the first feature. The popup *itself* still
+  updates because `mousemove` fires from the new tap — which matches the
+  operator's "popup follows the tap, panel stays" report. This theory
+  fits all the symptoms but **has not been verified in a real browser**
+  (see Limits).
+
+### What is NOT verified
+
+- That the popup-intercept theory in #51 is actually the cause. It is
+  consistent with everything the operator described and with the iOS
+  hover-on-touch model, but I never reproduced it.
+- That #47's blank screen was the bind:this. It might have been an SSR /
+  prerender issue with `pointer-events: none` + `{#if enabled}` at
+  initial mount under `adapter-static`. Avoided by keeping #49 minimal.
+- That the reactive chain (`Map.svelte` sets `mapState.selectedFeature` →
+  `BrowseSheet` `$derived(mapState.selectedFeature)` → `LocalityDetail`
+  re-renders from `properties` prop) actually re-renders on subsequent
+  selections. Code-reading says it does (all `$derived`, all reactive),
+  but if #51 ships and the stuck-panel symptom persists, this chain is
+  the next place to look — and it is now the actual signal, not a guess.
+
+### Limits of this sandbox
+
+- The public map is `ssr: false` + `adapter-static` SPA mode. JSDOM
+  cannot drive its dynamic-import bundle (`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`).
+- No Chromium binary is reachable; Playwright's bundled-browser download
+  fails. There is no headless browser available for repro.
+- All client-side bugs must be diagnosed by code-reading + the on-screen
+  debug overlay; the operator deploys via PR-merge and reports back.
+
+### Process notes for the next session
+
+- **One bug → one PR.** PR #47 was a rewrite that mixed five changes and
+  caused a blank screen no one could repro. The operator was rightly
+  pissed. Surgical patches > rewrites when regression risk is high.
+- **Never push to a branch the operator has already merged.** PR #46
+  merged, then a second commit was pushed to the same branch instead of
+  a new PR — the operator called this out. Open a new PR for follow-ons.
+- The debug overlay is the only diagnostic available without leaving the
+  sandbox. Its tap-log was the signal that finally distinguished
+  "layering blocks taps" (taps go to `canvas.mapboxgl-canvas`) from
+  "taps reach controls but state doesn't update" (taps go to
+  `button.svelte-...`). Use it.
+- When the operator says a fix is wrong, they mean it. Don't argue the
+  diagnosis — re-read the code with their new signal as the premise.
+
 ## Source of truth
 
 `Project_Start.md` is the definitive project brief. When in doubt, defer to it. Planning docs in `docs/` elaborate on it but never contradict it.
