@@ -80,10 +80,28 @@ not update on subsequent taps** — it sticks on the first feature selected
 
 - The public map is `ssr: false` + `adapter-static` SPA mode. JSDOM
   cannot drive its dynamic-import bundle (`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`).
-- No Chromium binary is reachable; Playwright's bundled-browser download
-  fails. There is no headless browser available for repro.
-- All client-side bugs must be diagnosed by code-reading + the on-screen
-  debug overlay; the operator deploys via PR-merge and reports back.
+- **Chromium IS available.** A pre-installed Playwright Chromium lives
+  at `/opt/pw-browsers/chromium-1194/`. Pinning `playwright@1.56.1`
+  matches it. The earlier "no Chromium" claim was wrong. The local
+  touch-event harness at `public_map/tests/browse-touch.spec.mjs` boots
+  the Vite dev server with iPhone 13 emulation and drives real
+  `page.touchscreen.tap` calls.
+- The egress proxy intercepts TLS and blocks `tile.openstreetmap.org`
+  with CORS-stripped 403s, which stalls mapbox-gl's `load` event and
+  thus the whole data-hydration chain. The harness routes blank PNGs in
+  place of OSM tiles so the test rig can exercise the app independently.
+  This is sandbox-only — production tiles work fine.
+- Cannot drive `map.thegrandpipeline.com` from the sandbox (same proxy
+  rejects Cloudflare Pages requests with 403 / bot challenge). Use
+  `npm run dev` locally for any repro.
+- WebKit (real iOS Safari) is still not available here; Chromium with
+  iPhone touch emulation matches the event model (synthesized
+  `mousemove` on tap, no `mouseleave` on lift) but not WebKit-specific
+  rendering quirks. Bugs that only repro on real iOS still require the
+  operator to drive a device.
+- `Map.svelte` exposes `window.__ffMap` under `import.meta.env.DEV`
+  exclusively for the touch harness; the assignment is stripped from
+  production by Vite. Do not rely on it in any shipped code path.
 
 ### Process notes for the next session
 
