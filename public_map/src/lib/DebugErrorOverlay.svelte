@@ -14,11 +14,11 @@
 	let errors = $state<string[]>([]);
 	let open = $state(true);
 
-	function add(msg: string) {
+	function add(msg: string, autoOpen = true) {
 		const m = msg.slice(0, 800);
 		if (errors[errors.length - 1] === m) return;
 		errors = [...errors.slice(-19), m];
-		open = true;
+		if (autoOpen) open = true;
 	}
 
 	function safeStr(v: unknown): string {
@@ -52,7 +52,7 @@
 			const tag = t.tagName ? t.tagName.toLowerCase() : '?';
 			const clsAttr = t.getAttribute ? t.getAttribute('class') : '';
 			const cls = clsAttr ? '.' + clsAttr.trim().split(/\s+/).slice(0, 2).join('.') : '';
-			add(`tap → ${tag}${cls}`);
+			add(`tap → ${tag}${cls}`, false);
 		};
 		document.addEventListener('pointerdown', onTap, true);
 
@@ -118,6 +118,14 @@
 		color: #ffd9d9;
 		border-bottom: 2px solid #f7a0a0;
 		font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+		/* Empty regions of the overlay don't capture taps. Only the buttons
+		   (and the .log, when open) are interactive. Keeps the overlay from
+		   blocking controls of the app underneath (eg the Filters FAB). */
+		pointer-events: none;
+	}
+	.bar button,
+	.log {
+		pointer-events: auto;
 	}
 	.bar {
 		display: flex;
