@@ -256,7 +256,14 @@
 		overflow: hidden;
 	}
 	.sheet.expanded {
-		height: 70%;
+		/* Auto-expanded on selection. Keep this short enough that the user
+		   can still see and tap the map underneath to pick a different
+		   feature — otherwise the panel "gets stuck" on the first tap, since
+		   the sheet absorbs taps and there's no map left to click. The
+		   grabber can be dragged further by users who want more detail.
+		   On wide screens the sheet is centered with max-width and the rest
+		   of the page is map, so 50% is fine. */
+		height: 50%;
 	}
 	.grabber {
 		appearance: none;
