@@ -2,23 +2,30 @@
 	On-screen error console for mobile debugging. Inert by default — it only
 	installs listeners when the URL has ?debug (e.g. /browse?debug=1), so normal
 	visitors never see it. When enabled, uncaught errors, unhandled promise
-	rejections, and console.error calls surface as a red bar at the top of the
-	screen with a Copy button. Built into the bundle so no CSP / bookmarklet can
-	block it. Temporary diagnostic — remove once the Browse-map freeze is fixed.
+	rejections, console.error calls, and tap targets are captured. The overlay
+	renders a slim bar at the top and is pointer-events: none everywhere except
+	that bar, so it never blocks the underlying app's controls. Temporary
+	diagnostic — remove once the Browse-map freeze is fixed.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 
 	let enabled = $state(false);
-	let errors = $state<string[]>([]);
-	let open = $state(true);
+	let errs = $state<string[]>([]);
+	let taps = $state<string[]>([]);
+	let open = $state(false);
+	let dbgEl = $state<HTMLDivElement | null>(null);
 
-	function add(msg: string) {
+	function pushErr(msg: string) {
 		const m = msg.slice(0, 800);
-		if (errors[errors.length - 1] === m) return;
-		errors = [...errors.slice(-19), m];
-		open = true;
+		if (errs[errs.length - 1] === m) return;
+		errs = [...errs.slice(-19), m];
+	}
+	function pushTap(msg: string) {
+		const m = msg.slice(0, 200);
+		if (taps[taps.length - 1] === m) return;
+		taps = [...taps.slice(-19), m];
 	}
 
 	function safeStr(v: unknown): string {
@@ -35,31 +42,31 @@
 		enabled = true;
 
 		const onError = (e: ErrorEvent) =>
-			add(`ERROR: ${e.message}  (${(e.filename || '').split('/').pop()}:${e.lineno}:${e.colno})`);
+			pushErr(`ERROR: ${e.message}  (${(e.filename || '').split('/').pop()}:${e.lineno}:${e.colno})`);
 		const onRej = (e: PromiseRejectionEvent) => {
 			const r = e.reason;
-			add(`PROMISE: ${r instanceof Error ? `${r.message}\n${r.stack ?? ''}` : String(r)}`);
+			pushErr(`PROMISE: ${r instanceof Error ? `${r.message}\n${r.stack ?? ''}` : String(r)}`);
 		};
 		window.addEventListener('error', onError);
 		window.addEventListener('unhandledrejection', onRej);
 
-		// Tap target logging — reveals which element actually receives a tap, so
-		// we can tell whether a control receives the event or something else
-		// (e.g. the map canvas) is intercepting it.
 		const onTap = (e: Event) => {
 			const t = e.target as Element | null;
 			if (!t) return;
+			// Ignore taps on the overlay's own UI so the log doesn't fill with
+			// noise from interacting with Copy / Clear / Show.
+			if (dbgEl && dbgEl.contains(t)) return;
 			const tag = t.tagName ? t.tagName.toLowerCase() : '?';
 			const clsAttr = t.getAttribute ? t.getAttribute('class') : '';
 			const cls = clsAttr ? '.' + clsAttr.trim().split(/\s+/).slice(0, 2).join('.') : '';
-			add(`tap → ${tag}${cls}`);
+			pushTap(`tap → ${tag}${cls}`);
 		};
 		document.addEventListener('pointerdown', onTap, true);
 
 		const orig = console.error.bind(console);
 		console.error = (...args: unknown[]) => {
 			try {
-				add(
+				pushErr(
 					'console.error: ' +
 						args
 							.map((a) =>
@@ -85,23 +92,46 @@
 		};
 	});
 
-	function copy() {
-		if (browser && navigator.clipboard) void navigator.clipboard.writeText(errors.join('\n\n'));
+	function copyAll() {
+		if (browser && navigator.clipboard) {
+			const body = [
+				errs.length ? 'ERRORS:\n' + errs.join('\n\n') : '',
+				taps.length ? 'TAPS:\n' + taps.join('\n') : ''
+			]
+				.filter(Boolean)
+				.join('\n\n');
+			void navigator.clipboard.writeText(body);
+		}
+	}
+
+	function clearAll() {
+		errs = [];
+		taps = [];
 	}
 </script>
 
-{#if enabled && errors.length > 0}
-	<div class="dbg">
+{#if enabled}
+	<div class="dbg" bind:this={dbgEl}>
 		<div class="bar">
-			<strong>⚠ {errors.length} error{errors.length > 1 ? 's' : ''}</strong>
+			<strong class:err={errs.length > 0}>
+				{errs.length === 0 ? '✓' : '⚠'}
+				{errs.length} err · {taps.length} tap{taps.length === 1 ? '' : 's'}
+			</strong>
 			<span class="spacer"></span>
-			<button type="button" onclick={copy}>Copy</button>
-			<button type="button" onclick={() => (errors = [])}>Clear</button>
+			<button type="button" onclick={copyAll}>Copy</button>
+			<button type="button" onclick={clearAll}>Clear</button>
 			<button type="button" onclick={() => (open = !open)}>{open ? 'Hide' : 'Show'}</button>
 		</div>
 		{#if open}
 			<div class="log">
-				{#each errors as e, i (i)}<pre>{e}</pre>{/each}
+				{#if errs.length}
+					<h4>Errors ({errs.length})</h4>
+					{#each errs as e, i (i)}<pre>{e}</pre>{/each}
+				{/if}
+				{#if taps.length}
+					<h4>Taps ({taps.length})</h4>
+					{#each taps as t, i (i)}<pre class="tap">{t}</pre>{/each}
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -114,18 +144,25 @@
 		left: 0;
 		right: 0;
 		z-index: 99999;
-		background: #2a0d0d;
-		color: #ffd9d9;
-		border-bottom: 2px solid #f7a0a0;
+		/* Container does not capture taps; only the bar and (optional) log do.
+		   Keeps the overlay from blocking the underlying app's controls. */
+		pointer-events: none;
 		font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
 	}
 	.bar {
+		pointer-events: auto;
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
 		padding: 0.35rem 0.6rem;
+		background: #2a0d0d;
+		color: #ffd9d9;
+		border-bottom: 2px solid #f7a0a0;
 	}
 	.bar strong {
+		color: #cfd6df;
+	}
+	.bar strong.err {
 		color: #ff8a8a;
 	}
 	.spacer {
@@ -142,16 +179,30 @@
 		cursor: pointer;
 	}
 	.log {
+		pointer-events: auto;
 		max-height: 45vh;
 		overflow: auto;
 		padding: 0 0.6rem 0.5rem;
+		background: #2a0d0d;
+		color: #ffd9d9;
+		border-bottom: 2px solid #f7a0a0;
+	}
+	.log h4 {
+		margin: 0.4rem 0 0.2rem;
+		font-size: 11px;
+		color: #f7a0a0;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 	pre {
 		white-space: pre-wrap;
 		word-break: break-word;
-		margin: 0 0 0.5rem;
-		padding: 0.4rem;
+		margin: 0 0 0.3rem;
+		padding: 0.3rem 0.4rem;
 		background: rgba(0, 0, 0, 0.3);
 		border-radius: 4px;
+	}
+	pre.tap {
+		opacity: 0.85;
 	}
 </style>
