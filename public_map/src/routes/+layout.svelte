@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { layoutCssBlock } from '$lib/layout';
+	import DebugErrorOverlay from '$lib/DebugErrorOverlay.svelte';
 
 	let { children } = $props();
 
@@ -13,6 +14,7 @@
 </svelte:head>
 
 {@render children()}
+<DebugErrorOverlay />
 
 <style>
 	/* ── Theme tokens (dark default, light override) ─────────────────── */
