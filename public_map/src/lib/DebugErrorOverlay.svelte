@@ -43,6 +43,19 @@
 		window.addEventListener('error', onError);
 		window.addEventListener('unhandledrejection', onRej);
 
+		// Tap target logging — reveals which element actually receives a tap, so
+		// we can tell whether a control receives the event or something else
+		// (e.g. the map canvas) is intercepting it.
+		const onTap = (e: Event) => {
+			const t = e.target as Element | null;
+			if (!t) return;
+			const tag = t.tagName ? t.tagName.toLowerCase() : '?';
+			const clsAttr = t.getAttribute ? t.getAttribute('class') : '';
+			const cls = clsAttr ? '.' + clsAttr.trim().split(/\s+/).slice(0, 2).join('.') : '';
+			add(`tap → ${tag}${cls}`);
+		};
+		document.addEventListener('pointerdown', onTap, true);
+
 		const orig = console.error.bind(console);
 		console.error = (...args: unknown[]) => {
 			try {
@@ -67,6 +80,7 @@
 		return () => {
 			window.removeEventListener('error', onError);
 			window.removeEventListener('unhandledrejection', onRej);
+			document.removeEventListener('pointerdown', onTap, true);
 			console.error = orig;
 		};
 	});

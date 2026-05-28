@@ -238,7 +238,12 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		z-index: 8;
+		/* Above the embedded map AND its overlays (the map's "back to national"
+		   pill is z-index 8 and appears on selection); below the filter/saved
+		   drawers (z-index 29/30). pointer-events:auto guarantees the sheet
+		   captures taps even while sitting over the interactive map canvas. */
+		z-index: 20;
+		pointer-events: auto;
 		height: 3.6rem;
 		display: flex;
 		flex-direction: column;
