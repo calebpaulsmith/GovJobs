@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { loadJobDetails, loadPayTables, type JobDetails, type PayGrid, type PayTables } from './data';
 	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
@@ -18,9 +19,19 @@
 	const saved = $derived(jobProfile.isSaved(jobId));
 	const hidden = $derived(jobProfile.isHidden(jobId));
 
-	// Mark viewed when the card loads.
+	// Mark viewed when the card mounts AND every time `jobId` changes
+	// (e.g. user taps a different marker while a card is already open).
+	// `markViewed` writes to `jobProfile.data.viewed` and `saveToStorage`
+	// then JSON.stringifies the whole proxy, so any read of `data` from
+	// within the effect would be tracked — producing a `state_unsafe_mutation`
+	// bailout that freezes the component and makes it stop re-rendering
+	// on the next `properties` prop change. That bailout is the most
+	// plausible cause of the operator's "tap a different feature, sheet
+	// stays on the first one" report on iOS Safari. `untrack` keeps the
+	// write side-effect outside the effect's dependency graph.
 	$effect(() => {
-		if (jobId) jobProfile.markViewed(jobId);
+		const id = jobId;
+		if (id) untrack(() => jobProfile.markViewed(id));
 	});
 
 	function toggleSave() {
