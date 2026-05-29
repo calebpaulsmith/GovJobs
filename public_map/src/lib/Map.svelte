@@ -114,6 +114,14 @@
 		);
 		map.on('moveend', () => updateViewport());
 
+		// Dev-only: expose the live map instance so the local Playwright
+		// touch-event harness in tests/browse-touch.spec.mjs can drive
+		// queryRenderedFeatures / project without re-implementing them.
+		// Stripped from production by Vite's import.meta.env.DEV gate.
+		if (import.meta.env.DEV) {
+			(window as unknown as { __ffMap?: typeof map }).__ffMap = map;
+		}
+
 		hoverPopup = new mapboxgl.Popup({
 			closeButton: false,
 			closeOnClick: false,
