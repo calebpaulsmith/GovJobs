@@ -18,7 +18,7 @@
 	are delivered to our handlers — no preventDefault, no scroll hijacking.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { mapState } from './store.svelte';
 	import { LAYER_IDS } from './layers';
@@ -51,8 +51,18 @@
 	$effect(() => {
 		const sel = mapState.selectedFeature ?? mapState.jobStack;
 		if (sel && sel !== lastSelection) {
-			mapState.browseSheetPage = 'here';
-			mapState.browseSheetExpanded = true;
+			// untrack the writes back to mapState so this effect doesn't
+			// subscribe to the very same properties it mutates. Without
+			// untrack, WebKit's Svelte 5 scheduler treats the read-then-
+			// write of mapState as a `state_unsafe_mutation` and bails the
+			// effect tree out, which produces the operator-reported "tap a
+			// locality, then the Filters FAB and sheet stop responding"
+			// freeze. Chromium's scheduler is more lenient here, so the
+			// dev harness didn't catch this.
+			untrack(() => {
+				mapState.browseSheetPage = 'here';
+				mapState.browseSheetExpanded = true;
+			});
 		}
 		lastSelection = sel;
 	});
