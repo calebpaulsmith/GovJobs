@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import type {
 		GeoJSONSource,
 		Map as MaplibreMap,
@@ -209,19 +209,31 @@
 		const filteredClosedJobs = filterJobs(allClosedJobs, filters, jobDetails);
 		const displayStates = cloneCollection(allStates);
 		deriveRemoteShare(displayStates, filteredJobs);
-		mapState.filteredJobCount = filteredJobs.features.length;
+		// Pull selectedFeature once via untrack so this effect doesn't also
+		// subscribe to it (the body conditionally writes back to the same
+		// property; WebKit's Svelte 5 scheduler treats that read-then-write
+		// of the same proxy as a `state_unsafe_mutation` and bails the
+		// effect graph out, freezing further mapState mutations — that's
+		// the operator-reported "after I tap a locality, the sheet won't
+		// update and the Filters FAB won't open" symptom).
+		const currentSelection = untrack(() => mapState.selectedFeature);
+		untrack(() => {
+			mapState.filteredJobCount = filteredJobs.features.length;
+		});
 		addOrUpdateSource(map, SOURCE_IDS.closedJobs, filteredClosedJobs);
 		addOrUpdateSource(map, SOURCE_IDS.jobs, filteredJobs, /* cluster */ true);
 		addOrUpdateSource(map, SOURCE_IDS.states, displayStates);
 		setStateFillMetric(map, mapState.metric);
-		if (mapState.selectedFeature?.source === LAYER_IDS.markers) {
-			const selectedId = String(mapState.selectedFeature.properties.id ?? '');
+		if (currentSelection?.source === LAYER_IDS.markers) {
+			const selectedId = String(currentSelection.properties.id ?? '');
 			const stillVisible = filteredJobs.features.some(
 				(feature) => String(feature.properties?.id ?? '') === selectedId
 			);
 			if (!stillVisible) {
-				mapState.selectedFeature = null;
-				mapState.jobStack = null;
+				untrack(() => {
+					mapState.selectedFeature = null;
+					mapState.jobStack = null;
+				});
 			}
 		}
 	});
@@ -230,7 +242,11 @@
 		const viewport = mapState.pendingViewport;
 		if (!mounted || !map || !viewport) return;
 		map.easeTo({ center: viewport.center, zoom: Math.min(viewport.zoom, MAXZOOM), duration: 600 });
-		mapState.pendingViewport = null;
+		// Same state_unsafe_mutation bailout class as above — this effect
+		// reads pendingViewport and immediately writes it back to null.
+		untrack(() => {
+			mapState.pendingViewport = null;
+		});
 	});
 
 	$effect(() => {
