@@ -11,6 +11,7 @@
 	  each row has working Save/Hide actions.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobs, loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs, filterJobDetails } from './filters';
@@ -29,7 +30,6 @@
 	let allJobs = $state<{ type: 'FeatureCollection'; features: Feature[] } | null>(null);
 	let details = $state<Record<string, JobDetails>>({});
 	let detailsIndex = $state<Record<string, JobDetails>>({});
-	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	// `newest` (by open_date desc) is rich-mode only — the scoped `<select>`
@@ -77,26 +77,32 @@
 	}
 
 	// Rich mode loads only the deduplicated detail index — it must not pull the
-	// ~70k-feature jobs.geojson. Scoped mode needs both.
-	$effect(() => {
-		loading = true;
+	// ~70k-feature jobs.geojson. Scoped mode needs both. Driven from onMount
+	// (not $effect) so the load fires exactly once per component instance.
+	// We removed the previous `loading: boolean` toggle — flipping a
+	// stand-alone $state false from inside the Promise's `.finally` set the
+	// value but did not always propagate to a top-level `{#if loading}`
+	// conditional (the template subscription failed under some Svelte 5
+	// reactivity paths). The empty-rows / error templates already handle the
+	// pre-resolution state cleanly, so the explicit loading branch is gone.
+	onMount(() => {
 		if (richMode) {
 			loadJobDetailsIndex()
 				.then((idx) => (detailsIndex = idx))
-				.catch((err) => (error = (err as Error).message))
-				.finally(() => (loading = false));
+				.catch((err) => (error = (err as Error).message));
 		} else {
 			Promise.all([loadJobs(), loadJobDetailsIndex()])
 				.then(([jobs, idx]) => {
 					allJobs = jobs;
 					details = idx;
 				})
-				.catch((err) => (error = (err as Error).message))
-				.finally(() => (loading = false));
+				.catch((err) => (error = (err as Error).message));
 		}
 	});
 
 	// Reset paging when scope, filters, sort, in-list search, or facets change.
+	// Also reset when the viewport bounds change in 'viewport' scope so the
+	// pager sticks with the visible page.
 	$effect(() => {
 		void listView?.scope;
 		void listView?.code;
@@ -104,6 +110,7 @@
 		void sortKey;
 		void listSearch;
 		void activeFacets;
+		if (listView?.scope === 'viewport') void mapState.viewport.bounds;
 		page = 0;
 		visibleCount = RICH_PAGE;
 	});
@@ -120,6 +127,21 @@
 				return String(details[String(props.id ?? '')]?.locations?.[0]?.state ?? '') === listView.code;
 			case 'cbsa':
 				return false;
+			case 'viewport': {
+				const b = mapState.viewport.bounds;
+				if (!b) return true;
+				const geom = feature.geometry;
+				if (!geom || geom.type !== 'Point') return false;
+				const coords = geom.coordinates;
+				const lng = Number(coords?.[0]);
+				const lat = Number(coords?.[1]);
+				if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+				if (lat < b.south || lat > b.north) return false;
+				// Handle longitude wrap (west > east) — happens when the
+				// viewport straddles the antimeridian; harmless for CONUS.
+				if (b.west <= b.east) return lng >= b.west && lng <= b.east;
+				return lng >= b.west || lng <= b.east;
+			}
 			default:
 				return false;
 		}
@@ -178,6 +200,9 @@
 			});
 		}
 		if (!allJobs) return [];
+		// Subscribe to viewport bounds so the list re-derives on pan/zoom
+		// when in viewport scope. The read is a no-op for other scopes.
+		if (listView?.scope === 'viewport') void mapState.viewport.bounds;
 		const filtered = filterJobs(allJobs, mapState.filters, details);
 		return filtered.features.filter(inScope).map((feature) => {
 			const props = feature.properties ?? {};
@@ -304,7 +329,7 @@
 	{#if !scopedReady}
 		<!-- Scoped mode with no listView: render nothing. -->
 	{:else}
-		{#if !richMode && listView}
+		{#if !richMode && listView && listView.scope !== 'viewport'}
 			<div class="header">
 				<button type="button" class="back" onclick={backToRoundup} aria-label="Back to roundup">
 					&lt;- Back
@@ -316,9 +341,7 @@
 			</div>
 		{/if}
 
-		{#if loading}
-			<p class="note">Loading postings...</p>
-		{:else if error}
+		{#if error}
 			<p class="error">{richMode ? `Couldn't load postings: ${error}` : error}</p>
 		{:else if totalCount === 0}
 			{#if richMode}

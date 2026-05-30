@@ -20,7 +20,15 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { browser } from '$app/environment';
-	import { mapState } from './store.svelte';
+	import { mapState, type ListView } from './store.svelte';
+
+	// Default Postings-tab scope when the user hasn't tapped a polygon
+	// or cluster yet. Filters by what's currently visible on the map.
+	const DEFAULT_VIEWPORT_SCOPE: ListView = {
+		scope: 'viewport',
+		code: '',
+		label: 'this area'
+	};
 	import { LAYER_IDS } from './layers';
 	import { propString, countValue } from './format';
 	import StateRoundup from './StateRoundup.svelte';
@@ -241,7 +249,15 @@
 					{/if}
 				</div>
 				<div class="panel">
-					<JobList richMode />
+					<div class="scoped-head">
+						<p class="eyebrow">Postings in {mapState.listView?.label ?? 'this area'}</p>
+						{#if mapState.listView}
+							<button type="button" class="clear-scope" onclick={() => (mapState.listView = null)} aria-label="Clear scope">
+								× show this area
+							</button>
+						{/if}
+					</div>
+					<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} />
 				</div>
 			</div>
 		</div>
@@ -399,6 +415,39 @@
 		flex-shrink: 0;
 		font-size: 11px;
 		font-weight: 600;
+		color: var(--c-accent, #7bd0f2);
+	}
+	.scoped-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0 0.75rem 0.4rem;
+	}
+	.scoped-head .eyebrow {
+		flex: 1;
+		margin: 0;
+		font-size: 11px;
+		color: var(--c-accent, #7bd0f2);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.clear-scope {
+		appearance: none;
+		flex-shrink: 0;
+		border: 1px solid var(--c-border-input, #2c4870);
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-muted, #94a3b8);
+		font: inherit;
+		font-size: 11px;
+		padding: 0.2rem 0.55rem;
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.clear-scope:hover {
+		border-color: var(--c-accent, #7bd0f2);
 		color: var(--c-accent, #7bd0f2);
 	}
 	.add-area {

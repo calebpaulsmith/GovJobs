@@ -390,9 +390,18 @@
 	function updateViewport(): void {
 		if (!map) return;
 		const center = map.getCenter();
+		const b = map.getBounds();
 		mapState.viewport = {
 			center: [Number(center.lng.toFixed(5)), Number(center.lat.toFixed(5))],
-			zoom: Number(map.getZoom().toFixed(2))
+			zoom: Number(map.getZoom().toFixed(2)),
+			bounds: b
+				? {
+					west: Number(b.getWest().toFixed(5)),
+					south: Number(b.getSouth().toFixed(5)),
+					east: Number(b.getEast().toFixed(5)),
+					north: Number(b.getNorth().toFixed(5))
+				}
+				: undefined
 		};
 	}
 
@@ -430,28 +439,29 @@
 				const feature = feats[0];
 				const props = feature.properties ?? {};
 				if (layerId === LAYER_IDS.clusters) {
-					// Open the sheet AND seed a placeholder `mapState.jobStack`
-					// synchronously from the click handler. This is the key to
-					// making the BrowseSheet template's
-					// `{#if mapState.jobStack && !sel}` switch into the
-					// PointJobList branch — writes from inside the async
-					// `getClusterLeaves` callback (which run inside mapbox-gl's
-					// worker actor message handler) reliably bump the $state
-					// proxy AND its $derived chain BUT do not trigger the
-					// template's if-block to re-render in Svelte 5. Seeding
-					// the placeholder here (sync, from the click handler tick)
-					// triggers the template switch up front; the async leaves
-					// callback then writes the real items into the already-
-					// mounted PointJobList via a prop change.
-					autoOpenBrowseSheet();
-					const pointCount = Number(feature.properties?.point_count ?? 0);
-					mapState.selectedFeature = null;
-					mapState.listView = null;
-					mapState.jobStack = {
-						label: pointCount > 0 ? `Loading ${pointCount.toLocaleString()} postings…` : 'Loading…',
-						selectedIndex: 0,
-						items: []
-					};
+					// Cluster tap: zoom in until the cluster's points spread
+					// out, and route the BrowseSheet's Postings tab to show
+					// jobs in the resulting viewport. Previously the cluster
+					// path tried to populate `mapState.jobStack` from inside
+					// `getClusterLeaves`' callback so PointJobList could show
+					// those exact leaves; writes from inside mapbox-gl's
+					// worker actor message handler don't reliably propagate
+					// to Svelte 5 template subscribers (verified by
+					// `tests/cluster-tap.spec.mjs`), so we sidestep the
+					// problem entirely — every job visible after the zoom is
+					// inside the viewport, and the viewport-scoped JobList
+					// renders them reactively from `mapState.viewport.bounds`.
+					if (browseMode) {
+						mapState.selectedFeature = null;
+						mapState.jobStack = null;
+						mapState.listView = {
+							scope: 'viewport',
+							code: '',
+							label: 'this area'
+						};
+						autoOpenBrowseSheet();
+						mapState.browseSheetPage = 'list';
+					}
 					zoomIntoCluster(m, feature);
 					return;
 				}
@@ -462,15 +472,18 @@
 				}
 				if (layerId === LAYER_IDS.localitiesFill) {
 					if (browseMode) {
-						// Browse: show the locality card in the bottom sheet (not a
-						// scoped job list, which is the /map gesture).
+						// Browse: select the locality (Here tab shows its card)
+						// AND scope the Postings tab to jobs in that locality
+						// by setting `listView`. Sheet auto-opens so the user
+						// can see either tab; we stay on whichever page they
+						// were on so they're not yanked off the list mid-flow.
 						mapState.jobStack = null;
-						mapState.listView = null;
 						mapState.selectedFeature = {
 							source: layerId,
 							label: labelFor(layerId),
 							properties: props
 						};
+						mapState.listView = listViewForPolygon(layerId, props);
 						autoOpenBrowseSheet();
 						fitFocusedFeature(m, layerId, feature);
 						return;
@@ -485,6 +498,9 @@
 					label: labelFor(layerId),
 					properties: props
 				};
+				if (browseMode) {
+					mapState.listView = listViewForPolygon(layerId, props);
+				}
 				autoOpenBrowseSheet();
 				fitFocusedFeature(m, layerId, feature);
 				return;
@@ -635,6 +651,38 @@
 	// selection mutation, with no $effect graph between the click and the
 	// visible result. No-op when the component is mounted outside browse
 	// mode (the desktop /map page).
+	// Compute the `mapState.listView` shape that scopes the BrowseSheet's
+	// Postings tab to the polygon the user just tapped. Returns null when
+	// the polygon doesn't have a usable scoping code (the JobList will
+	// fall back to its viewport scope in that case).
+	function listViewForPolygon(layerId: string, props: Record<string, unknown>): import('./store.svelte').ListView | null {
+		const propStr = (k: string) => String(props[k] ?? '').trim();
+		switch (layerId) {
+			case LAYER_IDS.statesFill: {
+				const code = propStr('state').toUpperCase();
+				const name = propStr('name') || code;
+				return code ? { scope: 'state', code, label: name } : null;
+			}
+			case LAYER_IDS.localitiesFill: {
+				const code = propStr('code').toUpperCase();
+				const name = propStr('name') || code;
+				return code ? { scope: 'locality', code, label: name } : null;
+			}
+			case LAYER_IDS.countiesOutline: {
+				const code = propStr('fips') || propStr('state');
+				const name = propStr('name') || code;
+				return code ? { scope: 'county', code, label: name } : null;
+			}
+			case LAYER_IDS.metrosOutline: {
+				const code = propStr('cbsa_code') || propStr('code');
+				const name = propStr('name') || code;
+				return code ? { scope: 'cbsa', code, label: name } : null;
+			}
+			default:
+				return null;
+		}
+	}
+
 	function autoOpenBrowseSheet(): void {
 		if (!browseMode) return;
 		mapState.browseSheetPage = 'here';
@@ -808,9 +856,20 @@
 		if (!source || !('getClusterExpansionZoom' in source) || clusterId === undefined) return;
 		const coords = feature.geometry.type === 'Point' ? feature.geometry.coordinates : null;
 		if (!coords) return;
+		// Previously also called `openClusterStack` to populate
+		// `mapState.jobStack` with the cluster's leaves. That path was
+		// broken by a Svelte 5 / mapbox-gl worker actor interaction
+		// (see `tests/cluster-tap.spec.mjs`). The cluster's contents are
+		// now surfaced via the viewport-scoped JobList after the zoom —
+		// every leaf is, by definition, inside the cluster's expansion
+		// bounds, and `mapState.viewport.bounds` updates on `moveend`
+		// so the list reactively renders the leaves once the camera
+		// lands. The Map.svelte cluster click handler sets
+		// `mapState.listView = { scope: 'viewport', … }` before calling
+		// this function so the user sees the list as soon as the sheet
+		// opens.
 		(source as GeoJSONSource).getClusterExpansionZoom(Number(clusterId), (err, zoom) => {
 			if (err || zoom === undefined || zoom === null) return;
-			openClusterStack(source as GeoJSONSource, Number(clusterId), feature);
 			const targetZoom = Math.min(zoom, MAXZOOM);
 			const shouldZoom = targetZoom > m.getZoom() + 0.1;
 			if (shouldZoom) {

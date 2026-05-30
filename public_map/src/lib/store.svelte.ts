@@ -62,6 +62,11 @@ class MapState {
 export interface MapViewport {
 	center: [number, number];
 	zoom: number;
+	// Visible map bounds at the current camera position. Updated on every
+	// moveend by `Map.svelte::updateViewport`. Lets `JobList` filter rows
+	// by what's currently visible without each consumer reaching for the
+	// mapbox-gl instance directly.
+	bounds?: { west: number; south: number; east: number; north: number };
 }
 
 export interface AddressTarget extends MapViewport {
@@ -71,8 +76,12 @@ export interface AddressTarget extends MapViewport {
 }
 
 export interface ListView {
-	scope: 'state' | 'locality' | 'county' | 'cbsa';
+	// `'viewport'` is the browse-mode default — list rows are filtered by
+	// `mapState.viewport.bounds`. The other scopes are polygon-membership
+	// based and use the `code` field (state postal, OPM locality code, etc.).
+	scope: 'state' | 'locality' | 'county' | 'cbsa' | 'viewport';
 	// 2-letter state postal, OPM locality code, 5-digit county FIPS, etc.
+	// Unused for `viewport` scope (use the empty string).
 	code: string;
 	// Display label for the panel header.
 	label: string;
