@@ -151,6 +151,13 @@
 				allClosedJobs = closedJobs;
 				jobDetails = details;
 				mapState.totalJobCount = jobs.features.length;
+				// Share the loaded jobs + details with downstream consumers
+				// (JobList, BrowseSheet, FeaturePanel) via mapState so they
+				// don't each fetch and parse a separate copy. See the comment
+				// on `mapState.allJobs` in store.svelte.ts for why this is a
+				// reactivity workaround as much as a perf win.
+				mapState.allJobs = jobs;
+				mapState.allJobDetails = details;
 
 				const filteredJobs = stampStackCounts(
 					excludeHidden(filterJobs(jobs, mapState.filters, jobDetails))

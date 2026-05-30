@@ -59,7 +59,9 @@ const snap = async (label) => {
 		domEyebrow: document.querySelector('.sheet .scoped-head .eyebrow')?.textContent,
 		domJobRowCount: document.querySelectorAll('.sheet .job-list ul > li').length,
 		domJobListInnerStart: document.querySelector('.sheet .job-list')?.innerHTML?.slice(0, 600),
-		domViewportBounds: m.viewport.bounds
+		domViewportBounds: m.viewport.bounds,
+		mapStateAllJobs: m.allJobs?.features?.length ?? null,
+		panelHtmlStart: document.querySelector('.sheet .panel')?.innerHTML?.slice(0, 300) ?? null
 	}), handle);
 	out(label, JSON.stringify(s));
 	return s;
