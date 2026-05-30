@@ -2,79 +2,123 @@
 
 Guidance for Claude Code (or any AI assistant) working in this repo.
 
-## In-flight investigation: Browse map bottom sheet (handoff 2026-05-28)
+## Closed investigation: Browse-map "frozen Here screen" on iOS (resolved 2026-05-29)
 
-Operator-reported bug on iOS Safari at `map.thegrandpipeline.com/browse`:
-tapping a feature on the map shows a small popup but the **bottom sheet does
-not update on subsequent taps** — it sticks on the first feature selected
-(e.g. "Camp Perry, Ohio"). Operator also reported the Filters FAB
-"acknowledges input but doesn't open."
+Root cause and fix documented here so the next session doesn't burn another
+ten PRs chasing the wrong theories.
 
-### What is shipped (in master)
+### The bug
 
-- **#45** — `DebugErrorOverlay.svelte` mounted from `+layout.svelte`,
-  gated by `?debug` URL param. Catches `window.error`,
-  `unhandledrejection`, `console.error`. Tap-logging added in #46.
-- **#46** — `BrowseSheet` `.sheet` raised from `z-index: 8` → `20` with
-  explicit `pointer-events: auto`. The map's "back to national" pill
-  (`Map.svelte` line 777, `position: absolute; z-index: 8`) had the same
-  z-index as the sheet and appears precisely on selection; equal-z with
-  later DOM order was letting that pill (and stuff behind it) eat taps in
-  the sheet region. **This fix is real and stays in master.**
-- **#48** — revert of **#47** (the big DebugErrorOverlay rewrite) because
-  it produced a blank screen in deployment. Root cause not pinned in
-  the local sandbox (see "Limits" below). Suspect was the combination of
-  `{#if enabled}` (always-render gate) + `bind:this={dbgEl}` to a `$state`
-  ref; #49 avoids both.
+On `map.thegrandpipeline.com/browse`, iOS Safari only: after tapping a
+locality polygon, the bottom sheet showed it correctly the first time but
+then **every subsequent mutation to `mapState` stopped propagating to the
+UI** — tapping a different locality did not update the sheet, the Filters
+FAB did not open, the sheet grabber could not toggle expanded/collapsed.
+Map panning kept working because that path goes through mapbox-gl
+imperatively and bypasses Svelte's reactive graph.
 
-### What is open but unmerged
+Going back to "national" (clearing `focusedArea`) restored everything.
 
-- **#49** — `DebugErrorOverlay` surgical fix (12-line diff vs master).
-  Two real bugs in the working overlay:
-  1. `add()` always set `open = true`, so every tap re-opened the log and
-     Hide was useless.
-  2. `.dbg` container had default `pointer-events: auto` — covered the
-     Filters FAB and the top of the expanded BrowseSheet.
-  Fix: `add(msg, autoOpen = true)`, tap handler passes `false`; container
-  is `pointer-events: none`, only `.bar button` and `.log` re-enable.
-  Template/state/structure unchanged from the #45/#46 working version.
-- **#50** — `BrowseSheet.expanded` height `70%` → `50%`. Originally shipped
-  on the belief that the 70% sheet was covering the map and blocking the
-  user from tapping new features. **Operator says this is wrong** — the
-  map is tappable and they CAN tap other features; the bug is that the
-  bottom panel doesn't update. PR can still ship for the UX benefit
-  (more map visible during selection) but it does not fix the stuck-panel
-  symptom.
-- **#51** — `Map.svelte` skip hover popup on touch devices
-  (`matchMedia('(hover: hover)')` gate around the `mousemove`/`mouseleave`
-  wiring) + `hoverPopup?.remove()` at the top of the click handler.
-  **Current best hypothesis** for the stuck panel: the `hoverPopup`
-  (`mapboxgl.Popup` constructed at `Map.svelte` line 117) is a DOM overlay
-  with `pointer-events: auto`. On touch, `mousemove` is synthesized from
-  taps but `mouseleave` never fires when the finger lifts — the popup
-  sticks to the last-tapped feature and absorbs the **next tap before
-  Mapbox can dispatch `click`** to the canvas. `queryRenderedFeatures`
-  doesn't run for the new tap, `openMarkerStack` isn't called,
-  `selectedFeature` stays on the first feature. The popup *itself* still
-  updates because `mousemove` fires from the new tap — which matches the
-  operator's "popup follows the tap, panel stays" report. This theory
-  fits all the symptoms but **has not been verified in a real browser**
-  (see Limits).
+### The root cause
 
-### What is NOT verified
+Svelte 5 `$effect` blocks that **read** state from a `$state` proxy and
+**write** back to the same proxy trip the runtime's `state_unsafe_mutation`
+guard. The guard's response is to **bail the effect graph out** — writes
+to that proxy stop notifying readers, and the entire reactive subtree
+freezes. The bailout is **silent in headless Chromium with iPhone-13
+touch emulation** (Chromium's scheduler is more lenient) but fires
+reliably on **real iOS Safari / WebKit**. That asymmetry is what made
+this so hard to repro from a sandbox.
 
-- That the popup-intercept theory in #51 is actually the cause. It is
-  consistent with everything the operator described and with the iOS
-  hover-on-touch model, but I never reproduced it.
-- That #47's blank screen was the bind:this. It might have been an SSR /
-  prerender issue with `pointer-events: none` + `{#if enabled}` at
-  initial mount under `adapter-static`. Avoided by keeping #49 minimal.
-- That the reactive chain (`Map.svelte` sets `mapState.selectedFeature` →
-  `BrowseSheet` `$derived(mapState.selectedFeature)` → `LocalityDetail`
-  re-renders from `properties` prop) actually re-renders on subsequent
-  selections. Code-reading says it does (all `$derived`, all reactive),
-  but if #51 ships and the stuck-panel symptom persists, this chain is
-  the next place to look — and it is now the actual signal, not a guess.
+There were four such effects in `public_map/`:
+
+1. `JobCard.svelte` `markViewed` effect (read `jobId`, write
+   `jobProfile.data.viewed[id]` — and `saveToStorage(this.data)` then
+   `JSON.stringify`'d the whole proxy, which counts as reading every
+   property on it).
+2. `Map.svelte` filter-reaction effect (read `mapState.selectedFeature`,
+   conditionally write `mapState.selectedFeature = null` / `jobStack = null`
+   when the selected marker had been filtered out).
+3. `Map.svelte` pending-viewport effect (read `mapState.pendingViewport`,
+   write `mapState.pendingViewport = null` after the easeTo lands).
+4. `BrowseSheet.svelte` auto-open effect (read `mapState.selectedFeature`
+   / `mapState.jobStack`, write `mapState.browseSheetPage` /
+   `mapState.browseSheetExpanded` on the same proxy). **This was the one
+   that fired on every locality tap and produced the operator-visible
+   freeze.**
+
+PR #54 patched (1). PR #55 patched (2), (3), (4) and resolved the freeze.
+
+### The correct fix
+
+Wrap every write back to the proxy inside the effect in
+`untrack(() => { ... })` so the effect no longer subscribes to the
+property it mutates. Mutation semantics are preserved; the reactive
+graph just stops self-referencing.
+
+```svelte
+import { untrack } from 'svelte';
+
+$effect(() => {
+    const sel = mapState.selectedFeature;
+    if (sel && ...) {
+        untrack(() => {
+            mapState.browseSheetPage = 'here';
+            mapState.browseSheetExpanded = true;
+        });
+    }
+});
+```
+
+### Detection rule for new code
+
+Any `$effect` block in `public_map/` that both reads from a `$state`
+proxy AND writes back to that **same proxy object** (any property,
+not just the same one) must wrap the writes in `untrack`. WebKit treats
+the entire proxy as one tracked entity for this guard; per-property
+tracking is a Chromium-only optimisation we cannot rely on. Grep for
+`$effect` and audit each one: if it reads `mapState.X` and writes
+`mapState.Y`, the writes go inside `untrack`. Same rule for any other
+`$state`-backed store object (`jobProfile`, `mapState`, future stores).
+
+`localStorage.setItem(KEY, JSON.stringify(this.data))` and similar
+"serialise the whole store" calls implicitly read every property on
+the proxy, so they count as reads for this rule even if they look like
+side-effecting writes.
+
+### Lessons from the ~10 PRs this took
+
+- **#46 (z-index 8 → 20 on `.sheet`)** was a real layering fix for a
+  different bug (the back-to-national pill eating taps inside the sheet
+  region). It stays in master and was correct in scope; it just wasn't
+  the freeze.
+- **#50 (sheet 70% → 50%)** shipped on a wrong premise (operator could
+  not tap other features through the sheet). The operator corrected me
+  in real time; the PR shipped anyway as a UX cosmetic. **Harmless but
+  was not a fix.** Future sessions should drop a PR the moment its
+  premise gets refuted, not "ship anyway for the UX benefit."
+- **#51 (skip Mapbox hover popup on touch)** shipped on the
+  popup-intercept theory. The theory turned out not to be the cause,
+  but the change is correct touch UX regardless (hover popups don't
+  belong on touch devices and would stick on `mouseleave`-less lifts).
+  **Harmless but was not the fix.**
+- **#47 was a rewrite** that mixed five DebugErrorOverlay changes and
+  shipped a blank screen. Reverted in #48. **Surgical patches >
+  rewrites when regression risk is high and the harness can't see the
+  target browser.**
+- **#53 (Playwright touch harness + dev-only `window.__ffMap`)** ran the
+  operator's exact gesture sequence and passed every step. That was
+  not a contradiction of the operator's report — it was Chromium not
+  tripping the WebKit-only bailout. **A passing harness against
+  headless Chromium does NOT mean a Svelte 5 reactivity bug is absent
+  on iOS.** Treat harness-pass as "Chromium-OK" only; for any
+  state_unsafe_mutation-shaped pattern, fix the pattern even if the
+  harness is green.
+- **Don't push to a branch the operator has already merged.** I did
+  this on `claude/map-browsing-review-XY3mJ` after #53 was merged. The
+  fix was to reset the branch back to its merged tip and open a new
+  PR. Always check `git ls-remote` or the PR state before pushing
+  follow-on commits.
 
 ### Limits of this sandbox
 
@@ -103,21 +147,22 @@ not update on subsequent taps** — it sticks on the first feature selected
   exclusively for the touch harness; the assignment is stripped from
   production by Vite. Do not rely on it in any shipped code path.
 
-### Process notes for the next session
+### Process notes that survived this investigation
 
-- **One bug → one PR.** PR #47 was a rewrite that mixed five changes and
-  caused a blank screen no one could repro. The operator was rightly
-  pissed. Surgical patches > rewrites when regression risk is high.
-- **Never push to a branch the operator has already merged.** PR #46
-  merged, then a second commit was pushed to the same branch instead of
-  a new PR — the operator called this out. Open a new PR for follow-ons.
-- The debug overlay is the only diagnostic available without leaving the
-  sandbox. Its tap-log was the signal that finally distinguished
-  "layering blocks taps" (taps go to `canvas.mapboxgl-canvas`) from
-  "taps reach controls but state doesn't update" (taps go to
-  `button.svelte-...`). Use it.
-- When the operator says a fix is wrong, they mean it. Don't argue the
-  diagnosis — re-read the code with their new signal as the premise.
+- **One bug → one PR.** PR #47 was a rewrite that mixed five
+  DebugErrorOverlay changes and shipped a blank screen. Reverted in #48.
+  Surgical patches > rewrites when regression risk is high.
+- **Never push to a branch the operator has already merged.** I did this
+  on `claude/map-browsing-review-XY3mJ` after #53 was merged. Open a new
+  branch + PR for follow-on commits; check `git ls-remote` or the PR
+  state before pushing.
+- The `?debug` overlay (`DebugErrorOverlay.svelte`) is the only mobile
+  diagnostic that does not require leaving the sandbox. Its tap-log
+  distinguishes "layering blocks taps" (target = `canvas.mapboxgl-canvas`)
+  from "taps reach controls but state doesn't update" (target =
+  `button.svelte-...`). Keep it; the next iOS-only bug will need it.
+- When the operator says a fix is wrong, they mean it. Drop the PR and
+  re-read the code with their new signal as the premise.
 
 ## Source of truth
 
