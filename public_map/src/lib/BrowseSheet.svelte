@@ -144,6 +144,10 @@
 	}
 
 	const sel = $derived(mapState.selectedFeature);
+	// Track listView via $derived so template interpolations and prop
+	// bindings see updates reliably (raw `mapState.listView` reads in
+	// the template stayed stale after the first tap in the harness).
+	const effectiveListView = $derived<ListView>(mapState.listView ?? DEFAULT_VIEWPORT_SCOPE);
 	const peekLabel = $derived.by(() => {
 		if (mapState.jobStack && !sel) return mapState.jobStack.label;
 		if (sel) {
@@ -250,14 +254,14 @@
 				</div>
 				<div class="panel">
 					<div class="scoped-head">
-						<p class="eyebrow">Postings in {mapState.listView?.label ?? 'this area'}</p>
+						<p class="eyebrow">Postings in {effectiveListView.label}</p>
 						{#if mapState.listView}
 							<button type="button" class="clear-scope" onclick={() => (mapState.listView = null)} aria-label="Clear scope">
 								× show this area
 							</button>
 						{/if}
 					</div>
-					<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} />
+					<JobList listView={effectiveListView} />
 				</div>
 			</div>
 		</div>

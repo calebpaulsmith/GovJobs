@@ -125,6 +125,18 @@ if (!stateTap) {
 	// new listView object should force JobList's `rows` derived to
 	// recompute. Then the {#if loading} should re-evaluate too.
 	const afterState = await snap('after state tap → Postings');
+	// Probe what totalCount the JobList actually sees.
+	const probe = await page.evaluate(() => {
+		const root = document.querySelector('.sheet .job-list');
+		if (!root) return { error: 'no .job-list root' };
+		return {
+			countText: root.querySelector('.toolbar .count')?.textContent ?? null,
+			liCount: root.querySelectorAll('ul li').length,
+			emptyMsg: root.querySelector('.note')?.textContent ?? null,
+			errorMsg: root.querySelector('.error')?.textContent ?? null
+		};
+	});
+	out('JobList probe:', JSON.stringify(probe));
 	const innerNote = await page.evaluate(() => document.querySelector('.sheet .job-list .note')?.outerHTML);
 	out('inner note html:', innerNote);
 	// Directly read JobList's allJobs via internal — can't easily, so
