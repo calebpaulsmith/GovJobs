@@ -13,7 +13,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { mapState, type ListView } from './store.svelte';
-	import { loadJobs, loadJobDetailsIndex, type Feature, type JobDetails } from './data';
+	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs, filterJobDetails } from './filters';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
@@ -27,8 +27,15 @@
 	// modes. Scoped rows carry the GeoJSON feature `props`; rich rows do not.
 	type Row = { id: string; detail: JobDetails | undefined; props: Record<string, unknown> };
 
-	let allJobs = $state<{ type: 'FeatureCollection'; features: Feature[] } | null>(null);
-	let details = $state<Record<string, JobDetails>>({});
+	// Read the shared cache populated by Map.svelte (see
+	// `mapState.allJobs` / `mapState.allJobDetails`). Previously each
+	// JobList instance owned its own fetch + Promise.then; that write
+	// didn't always propagate to template subscribers (Svelte 5
+	// reactivity glitch around onMount-resolved Promises). Reading from
+	// `mapState` makes downstream reactivity a single chain that Svelte
+	// refreshes cleanly.
+	const allJobs = $derived(mapState.allJobs);
+	const details = $derived(mapState.allJobDetails);
 	let detailsIndex = $state<Record<string, JobDetails>>({});
 	let error = $state<string | null>(null);
 
@@ -76,26 +83,15 @@
 		activeFacets = next;
 	}
 
-	// Rich mode loads only the deduplicated detail index — it must not pull the
-	// ~70k-feature jobs.geojson. Scoped mode needs both. Driven from onMount
-	// (not $effect) so the load fires exactly once per component instance.
-	// We removed the previous `loading: boolean` toggle — flipping a
-	// stand-alone $state false from inside the Promise's `.finally` set the
-	// value but did not always propagate to a top-level `{#if loading}`
-	// conditional (the template subscription failed under some Svelte 5
-	// reactivity paths). The empty-rows / error templates already handle the
-	// pre-resolution state cleanly, so the explicit loading branch is gone.
+	// Rich mode loads the deduplicated detail index into a local cache.
+	// Scoped mode just reads the shared `mapState.allJobs` /
+	// `mapState.allJobDetails` populated by Map.svelte's onMount — no
+	// separate fetch needed (and no Promise.then write-back path, which
+	// is what was breaking reactivity for the scoped/viewport list).
 	onMount(() => {
 		if (richMode) {
 			loadJobDetailsIndex()
 				.then((idx) => (detailsIndex = idx))
-				.catch((err) => (error = (err as Error).message));
-		} else {
-			Promise.all([loadJobs(), loadJobDetailsIndex()])
-				.then(([jobs, idx]) => {
-					allJobs = jobs;
-					details = idx;
-				})
 				.catch((err) => (error = (err as Error).message));
 		}
 	});

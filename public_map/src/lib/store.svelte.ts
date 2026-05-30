@@ -1,5 +1,6 @@
 import { DEFAULT_METRIC, type MetricKey } from './metrics';
 import { DEFAULT_FILTERS, type JobFilters } from './filters';
+import type { FeatureCollection, JobDetails } from './data';
 
 class MapState {
 	metric = $state<MetricKey>(DEFAULT_METRIC);
@@ -23,6 +24,18 @@ class MapState {
 	selectedFeature = $state<SelectedFeature | null>(null);
 	focusedArea = $state<FocusedArea | null>(null);
 	jobStack = $state<JobStackView | null>(null);
+	// Shared cache of the full jobs.geojson + jobs_detail index loaded once
+	// by `Map.svelte` and reused by every consumer (JobList, BrowseSheet,
+	// FeaturePanel). Previously each component fetched and parsed its own
+	// copy in its own onMount; the Promise.then write back into the local
+	// $state then sometimes failed to propagate to template subscribers
+	// (Svelte 5 reactivity glitch with onMount Promise resolution). Storing
+	// the loaded data here means consumers read it via `mapState.allJobs`
+	// — a regular `$state` read which Svelte does refresh — instead of
+	// owning their own load pipeline. `$state.raw` skips the deep proxy so
+	// we don't pay the cost of wrapping ~74k feature objects.
+	allJobs = $state.raw<FeatureCollection | null>(null);
+	allJobDetails = $state.raw<Record<string, JobDetails>>({});
 	// When set, the FeaturePanel renders a JobList for the matching scope
 	// (e.g. {scope: 'state', state: 'IL'}) instead of the current
 	// selectedFeature detail view. Set by clicking "View N postings" inside a
