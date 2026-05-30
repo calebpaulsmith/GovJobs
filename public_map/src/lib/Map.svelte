@@ -435,6 +435,7 @@
 				}
 				if (layerId === LAYER_IDS.markers || layerId === LAYER_IDS.markersStack) {
 					openMarkerStack(feature);
+					autoOpenBrowseSheet();
 					return;
 				}
 				if (layerId === LAYER_IDS.localitiesFill) {
@@ -448,6 +449,7 @@
 							label: labelFor(layerId),
 							properties: props
 						};
+						autoOpenBrowseSheet();
 						fitFocusedFeature(m, layerId, feature);
 						return;
 					}
@@ -461,6 +463,7 @@
 					label: labelFor(layerId),
 					properties: props
 				};
+				autoOpenBrowseSheet();
 				fitFocusedFeature(m, layerId, feature);
 				return;
 			}
@@ -600,6 +603,22 @@
 		}
 	}
 
+	// Force the BrowseSheet open and on the Here page imperatively from the
+	// click handler. Belt-and-suspenders alongside `BrowseSheet.svelte`'s
+	// auto-open $effect: on real iOS Safari we've seen the effect-driven
+	// re-open fail when the sheet was MANUALLY MINIMIZED before tapping a
+	// different feature (auto-open works on first selection, but a later
+	// tap from the collapsed state does not re-expand). Setting the state
+	// here makes the open happen in the same synchronous tick as the
+	// selection mutation, with no $effect graph between the click and the
+	// visible result. No-op when the component is mounted outside browse
+	// mode (the desktop /map page).
+	function autoOpenBrowseSheet(): void {
+		if (!browseMode) return;
+		mapState.browseSheetPage = 'here';
+		mapState.browseSheetExpanded = true;
+	}
+
 	function openMarkerStack(feature: MapboxGeoJSONFeature): void {
 		const features = markerFeaturesAtSamePoint(feature);
 		if (features.length <= 1) {
@@ -682,6 +701,7 @@
 				label: labelFor(LAYER_IDS.markers),
 				properties: item.properties
 			};
+			autoOpenBrowseSheet();
 			return;
 		}
 		mapState.selectedFeature = null;
@@ -691,6 +711,7 @@
 			selectedIndex: 0,
 			items
 		};
+		autoOpenBrowseSheet();
 	}
 
 	function fitFocusedFeature(m: MaplibreMap, layerId: string, feature: MapboxGeoJSONFeature): void {
