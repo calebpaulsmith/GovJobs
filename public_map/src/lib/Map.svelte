@@ -430,6 +430,28 @@
 				const feature = feats[0];
 				const props = feature.properties ?? {};
 				if (layerId === LAYER_IDS.clusters) {
+					// Open the sheet AND seed a placeholder `mapState.jobStack`
+					// synchronously from the click handler. This is the key to
+					// making the BrowseSheet template's
+					// `{#if mapState.jobStack && !sel}` switch into the
+					// PointJobList branch — writes from inside the async
+					// `getClusterLeaves` callback (which run inside mapbox-gl's
+					// worker actor message handler) reliably bump the $state
+					// proxy AND its $derived chain BUT do not trigger the
+					// template's if-block to re-render in Svelte 5. Seeding
+					// the placeholder here (sync, from the click handler tick)
+					// triggers the template switch up front; the async leaves
+					// callback then writes the real items into the already-
+					// mounted PointJobList via a prop change.
+					autoOpenBrowseSheet();
+					const pointCount = Number(feature.properties?.point_count ?? 0);
+					mapState.selectedFeature = null;
+					mapState.listView = null;
+					mapState.jobStack = {
+						label: pointCount > 0 ? `Loading ${pointCount.toLocaleString()} postings…` : 'Loading…',
+						selectedIndex: 0,
+						items: []
+					};
 					zoomIntoCluster(m, feature);
 					return;
 				}
@@ -706,11 +728,25 @@
 		}
 		mapState.selectedFeature = null;
 		mapState.listView = null;
-		mapState.jobStack = {
-			label,
-			selectedIndex: 0,
-			items
-		};
+		// If a placeholder jobStack was seeded by the cluster click handler
+		// (so the template could switch to PointJobList synchronously while
+		// the leaves were fetched), mutate its items array in place rather
+		// than replacing the whole jobStack object — Svelte 5's deep $state
+		// proxy notifies array-mutation subscribers via `.splice`, whereas
+		// replacing the outer jobStack object from inside a mapbox-gl actor
+		// message-port callback does not reliably propagate to the bound
+		// PointJobList component's `stack` prop.
+		if (mapState.jobStack && Array.isArray(mapState.jobStack.items)) {
+			mapState.jobStack.label = label;
+			mapState.jobStack.selectedIndex = 0;
+			mapState.jobStack.items.splice(0, mapState.jobStack.items.length, ...items);
+		} else {
+			mapState.jobStack = {
+				label,
+				selectedIndex: 0,
+				items
+			};
+		}
 		autoOpenBrowseSheet();
 	}
 

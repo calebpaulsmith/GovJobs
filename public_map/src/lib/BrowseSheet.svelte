@@ -189,7 +189,18 @@
 			>
 				<div class="panel">
 					{#if mapState.jobStack && !sel}
-						<PointJobList stack={mapState.jobStack} />
+						<!-- {#key} forces PointJobList to fully remount when the
+						     jobStack's items count changes. The cluster path
+						     seeds an empty stack synchronously from the click
+						     handler (so this branch is selected immediately) and
+						     then the async leaves callback fills in the items.
+						     Without the key, PointJobList's `stack` prop doesn't
+						     re-evaluate when mapState.jobStack is replaced from
+						     the actor callback. Keying on items.length triggers
+						     a clean remount once the leaves arrive. -->
+						{#key mapState.jobStack.items.length}
+							<PointJobList stack={mapState.jobStack} />
+						{/key}
 					{:else if sel}
 						{#if sel.source === LAYER_IDS.markers}
 							<JobCard properties={sel.properties} />
