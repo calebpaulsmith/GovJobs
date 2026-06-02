@@ -446,26 +446,18 @@
 				const feature = feats[0];
 				const props = feature.properties ?? {};
 				if (layerId === LAYER_IDS.clusters) {
-					// Cluster tap: zoom in until the cluster's points spread
-					// out, and route the BrowseSheet's Postings tab to show
-					// jobs in the resulting viewport. Previously the cluster
-					// path tried to populate `mapState.jobStack` from inside
-					// `getClusterLeaves`' callback so PointJobList could show
-					// those exact leaves; writes from inside mapbox-gl's
-					// worker actor message handler don't reliably propagate
-					// to Svelte 5 template subscribers (verified by
-					// `tests/cluster-tap.spec.mjs`), so we sidestep the
-					// problem entirely — every job visible after the zoom is
-					// inside the viewport, and the viewport-scoped JobList
-					// renders them reactively from `mapState.viewport.bounds`.
+					// Cluster tap: show the cluster's *exact* leaves in the
+					// Postings tab via `listView.scope = 'ids'`, and zoom the
+					// camera in so the user can see those points spread out
+					// on the map. The previous version used viewport scope,
+					// which depended on the camera landing AND
+					// `mapState.viewport.bounds` updating before the list
+					// rendered — operator reported "I have to tap multiple
+					// times before the postings show up." Routing via
+					// explicit IDs makes the list match what the user just
+					// tapped, no camera-timing dependency.
 					if (browseMode) {
-						mapState.selectedFeature = null;
-						mapState.jobStack = null;
-						mapState.listView = {
-							scope: 'viewport',
-							code: '',
-							label: 'this area'
-						};
+						applyClusterIdsListView(m, feature);
 						autoOpenBrowseSheet();
 						mapState.browseSheetPage = 'list';
 					}
@@ -473,6 +465,15 @@
 					return;
 				}
 				if (layerId === LAYER_IDS.markers || layerId === LAYER_IDS.markersStack) {
+					if (browseMode && layerId === LAYER_IDS.markersStack) {
+						// A "+N" stacked-marker tap: route to the same exact-
+						// IDs listView as a cluster tap, computed synchronously
+						// from the same-coord siblings.
+						applyMarkerStackIdsListView(feature);
+						autoOpenBrowseSheet();
+						mapState.browseSheetPage = 'list';
+						return;
+					}
 					openMarkerStack(feature);
 					autoOpenBrowseSheet();
 					return;
@@ -688,6 +689,71 @@
 			default:
 				return null;
 		}
+	}
+
+	// Set `mapState.listView` to an exact-IDs scope for a marker-stack tap.
+	// `+N` stacked markers carry the same coordinate as their siblings, so
+	// we look up the siblings synchronously via the existing in-memory
+	// `allJobs` and write the union of their IDs into the scope.
+	function applyMarkerStackIdsListView(feature: MapboxGeoJSONFeature): void {
+		const siblings = markerFeaturesAtSamePoint(feature);
+		const ids = new Set<string>();
+		for (const s of siblings) {
+			const id = String(s.properties?.id ?? '');
+			if (id) ids.add(id);
+		}
+		const label = `${ids.size.toLocaleString()} posting${ids.size === 1 ? '' : 's'} here`;
+		mapState.selectedFeature = null;
+		mapState.jobStack = null;
+		mapState.listView = { scope: 'ids', code: '', label, ids };
+	}
+
+	// Set `mapState.listView` to an exact-IDs scope for a cluster tap. The
+	// cluster leaves are fetched via mapbox-gl's `getClusterLeaves` (async,
+	// inside the worker actor's message-port callback context). We seed a
+	// synchronous placeholder with the cluster's point_count so the user
+	// sees a meaningful count immediately; the leaves callback then
+	// replaces it with the real IDs. Both writes go to `mapState.listView`
+	// (a single $state field), which Svelte 5 reactivity handles cleanly
+	// for downstream `JobList` subscribers — unlike the previous
+	// `mapState.jobStack` path that wrote a deeply-nested item array from
+	// inside the same callback.
+	function applyClusterIdsListView(m: MaplibreMap, feature: MapboxGeoJSONFeature): void {
+		const source = m.getSource(SOURCE_IDS.jobs);
+		const clusterId = feature.properties?.cluster_id;
+		const pointCount = Number(feature.properties?.point_count ?? 0);
+		const placeholderLabel =
+			pointCount > 0 ? `${pointCount.toLocaleString()} postings here` : 'Postings here';
+		mapState.selectedFeature = null;
+		mapState.jobStack = null;
+		mapState.listView = { scope: 'ids', code: '', label: placeholderLabel, ids: new Set() };
+		if (
+			!source ||
+			!('getClusterLeaves' in source) ||
+			clusterId === undefined
+		) {
+			return;
+		}
+		const leavesFn = (source as GeoJSONSource & {
+			getClusterLeaves?: (
+				clusterId: number,
+				limit: number,
+				offset: number,
+				callback: (err: Error | null, features?: GeoJSON.Feature[]) => void
+			) => void;
+		}).getClusterLeaves;
+		if (!leavesFn) return;
+		const limit = Math.max(pointCount, 100);
+		leavesFn.call(source, Number(clusterId), limit, 0, (err, leaves) => {
+			if (err || !leaves) return;
+			const ids = new Set<string>();
+			for (const leaf of leaves) {
+				const id = String(leaf.properties?.id ?? '');
+				if (id) ids.add(id);
+			}
+			const label = `${ids.size.toLocaleString()} posting${ids.size === 1 ? '' : 's'} here`;
+			mapState.listView = { scope: 'ids', code: '', label, ids };
+		});
 	}
 
 	function autoOpenBrowseSheet(): void {

@@ -123,6 +123,8 @@
 				return String(details[String(props.id ?? '')]?.locations?.[0]?.state ?? '') === listView.code;
 			case 'cbsa':
 				return false;
+			case 'ids':
+				return !!listView.ids && listView.ids.has(String(props.id ?? ''));
 			case 'viewport': {
 				const b = mapState.viewport.bounds;
 				if (!b) return true;

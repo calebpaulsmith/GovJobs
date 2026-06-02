@@ -90,14 +90,19 @@ export interface AddressTarget extends MapViewport {
 
 export interface ListView {
 	// `'viewport'` is the browse-mode default — list rows are filtered by
-	// `mapState.viewport.bounds`. The other scopes are polygon-membership
-	// based and use the `code` field (state postal, OPM locality code, etc.).
-	scope: 'state' | 'locality' | 'county' | 'cbsa' | 'viewport';
+	// `mapState.viewport.bounds`. The geography scopes use the `code` field
+	// (state postal, OPM locality code, etc.) and match against the job's
+	// pre-joined `state` / `locality_code` properties. `'ids'` is for an
+	// explicit set of job IDs (a tapped cluster's leaves, a marker stack's
+	// members) — exact, doesn't drift with the camera.
+	scope: 'state' | 'locality' | 'county' | 'cbsa' | 'viewport' | 'ids';
 	// 2-letter state postal, OPM locality code, 5-digit county FIPS, etc.
-	// Unused for `viewport` scope (use the empty string).
+	// Unused for `viewport` and `ids` scopes (use the empty string).
 	code: string;
 	// Display label for the panel header.
 	label: string;
+	// Used only when scope === 'ids'. Job IDs (stringified) to include.
+	ids?: Set<string>;
 }
 
 export interface FocusedArea {
