@@ -202,11 +202,25 @@
 		// when in viewport scope. The read is a no-op for other scopes.
 		if (listView?.scope === 'viewport') void mapState.viewport.bounds;
 		const filtered = filterJobs(allJobs, mapState.filters, details);
-		return filtered.features.filter(inScope).map((feature) => {
+		// A posting with multiple duty locations appears in jobs.geojson as
+		// several Point features sharing one `id`. inScope matches each of
+		// them, so without dedup the list carries duplicate rows — which
+		// collide on the keyed {#each} (`each_key_duplicate`) and blank the
+		// entire list. Collapse to one row per posting (first feature wins);
+		// this also makes the row count match the distinct-posting label.
+		const seen = new Set<string>();
+		const deduped: Row[] = [];
+		for (const feature of filtered.features) {
+			if (!inScope(feature)) continue;
 			const props = feature.properties ?? {};
 			const id = String(props.id ?? '');
-			return { id, detail: details[id], props };
-		});
+			if (id) {
+				if (seen.has(id)) continue;
+				seen.add(id);
+			}
+			deduped.push({ id, detail: details[id], props });
+		}
+		return deduped;
 	});
 
 	// Sort accessors read from row.detail first, falling back to row.props.

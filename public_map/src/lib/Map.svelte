@@ -722,8 +722,11 @@
 		const source = m.getSource(SOURCE_IDS.jobs);
 		const clusterId = feature.properties?.cluster_id;
 		const pointCount = Number(feature.properties?.point_count ?? 0);
-		const placeholderLabel =
-			pointCount > 0 ? `${pointCount.toLocaleString()} postings here` : 'Postings here';
+		// `point_count` counts location-features, not distinct postings — a
+		// multi-location posting inflates it (e.g. 1,162 points / 606 postings).
+		// Show a neutral placeholder until getClusterLeaves resolves the exact
+		// distinct-posting count, rather than flashing a wrong number.
+		const placeholderLabel = 'this area';
 		mapState.selectedFeature = null;
 		mapState.jobStack = null;
 		mapState.listView = { scope: 'ids', code: '', label: placeholderLabel, ids: new Set() };
