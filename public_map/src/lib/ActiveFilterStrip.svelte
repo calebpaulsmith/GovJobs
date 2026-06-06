@@ -8,6 +8,7 @@
 	import { onMount } from 'svelte';
 	import { mapState } from './store.svelte';
 	import { activeFilterCount, DEFAULT_FILTERS, type JobFilters } from './filters';
+	import { payPlanLabel, hiringPathLabel } from './filterFacets';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { loadAgencyOptions, type AgencyOption } from './data';
 
@@ -45,6 +46,9 @@
 		mapState.filters = {
 			...mapState.filters,
 			agencies: [...mapState.filters.agencies],
+			series: [...mapState.filters.series],
+			payPlans: [...mapState.filters.payPlans],
+			hiringPaths: [...mapState.filters.hiringPaths],
 			geographies: [...mapState.filters.geographies]
 		};
 	}
@@ -54,9 +58,14 @@
 		rebuildFilters();
 	}
 
-	function removeGeography(geo: string): void {
-		mapState.filters.geographies = mapState.filters.geographies.filter((g) => g !== geo);
+	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths' | 'geographies';
+	function removeValue(key: ListKey, value: string): void {
+		mapState.filters[key] = mapState.filters[key].filter((v) => v !== value);
 		rebuildFilters();
+	}
+
+	function removeGeography(geo: string): void {
+		removeValue('geographies', geo);
 	}
 
 	function clearKey<K extends keyof JobFilters>(key: K): void {
@@ -115,21 +124,21 @@
 				</button>
 			{/each}
 
-			{#if mapState.filters.series}
-				<button type="button" class="chip" onclick={() => clearKey('series')}>
+			{#each mapState.filters.series as code (code)}
+				<button type="button" class="chip" onclick={() => removeValue('series', code)}>
 					<span class="chip-tag">Series</span>
-					<span class="chip-label">{mapState.filters.series}</span>
+					<span class="chip-label">{code}</span>
 					<span class="x" aria-hidden="true">×</span>
 				</button>
-			{/if}
+			{/each}
 
-			{#if mapState.filters.payPlan}
-				<button type="button" class="chip" onclick={() => clearKey('payPlan')}>
+			{#each mapState.filters.payPlans as code (code)}
+				<button type="button" class="chip" onclick={() => removeValue('payPlans', code)}>
 					<span class="chip-tag">Plan</span>
-					<span class="chip-label">{mapState.filters.payPlan}</span>
+					<span class="chip-label">{payPlanLabel(code)}</span>
 					<span class="x" aria-hidden="true">×</span>
 				</button>
-			{/if}
+			{/each}
 
 			{#if mapState.filters.gradeMin || mapState.filters.gradeMax}
 				<button type="button" class="chip" onclick={clearGradeBand}>
@@ -157,13 +166,13 @@
 				</button>
 			{/if}
 
-			{#if mapState.filters.hiringPath}
-				<button type="button" class="chip" onclick={() => clearKey('hiringPath')}>
+			{#each mapState.filters.hiringPaths as code (code)}
+				<button type="button" class="chip" onclick={() => removeValue('hiringPaths', code)}>
 					<span class="chip-tag">Path</span>
-					<span class="chip-label">{mapState.filters.hiringPath}</span>
+					<span class="chip-label">{hiringPathLabel(code)}</span>
 					<span class="x" aria-hidden="true">×</span>
 				</button>
-			{/if}
+			{/each}
 		</div>
 
 		<button type="button" class="clear-all" onclick={clearAll} aria-label="Clear all filters">

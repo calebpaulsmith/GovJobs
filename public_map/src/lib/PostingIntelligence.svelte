@@ -42,7 +42,9 @@
 	function buildQuery(): PostingHistoryQuery {
 		const filters = mapState.filters;
 		const agencyFromFilter = filters.agencies[0];
-		const seriesFromFilter = filters.series.trim();
+		// HistoricJoa takes a single series; use the first selected as the query
+		// anchor (the host posting's own series is the fallback below).
+		const seriesFromFilter = (filters.series[0] ?? '').trim();
 		const gradeFromFilter = filters.gradeMin.trim();
 		const stateFromFilter = pickStateFromGeographies(filters.geographies);
 		return {

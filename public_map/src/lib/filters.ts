@@ -7,13 +7,19 @@ export type PostedWithin = '' | (typeof POSTED_WITHIN_VALUES)[number];
 export interface JobFilters {
 	keyword: string;
 	agencies: string[];
-	series: string;
+	// Series (e.g. "0301"), pay plans (e.g. "GS"), and hiring paths (e.g.
+	// "public") are all multi-select: multiple values within one facet are
+	// ORed, and each facet is ANDed with the rest — same contract as `agencies`
+	// and `geographies`. Migrated from single strings on 2026-06-06; see
+	// `normalizeFilters` for the backward-compatible upgrade of old single
+	// values from shared URLs and saved searches.
+	series: string[];
 	gradeMin: string;
 	gradeMax: string;
 	salaryMin: string;
 	remote: 'any' | 'remote' | 'hybrid' | 'onsite';
-	hiringPath: string;
-	payPlan: string;
+	hiringPaths: string[];
+	payPlans: string[];
 	// Geography chips: "state:IL", "locality:DC", etc. Multiple chips are ORed.
 	geographies: string[];
 	// '' (all time) | '1' | '3' | '7' | '30' days since the posting opened.
@@ -23,13 +29,13 @@ export interface JobFilters {
 export const DEFAULT_FILTERS: JobFilters = {
 	keyword: '',
 	agencies: [],
-	series: '',
+	series: [],
 	gradeMin: '',
 	gradeMax: '',
 	salaryMin: '',
 	remote: 'any',
-	hiringPath: '',
-	payPlan: '',
+	hiringPaths: [],
+	payPlans: [],
 	geographies: [],
 	postedWithin: ''
 };
@@ -60,13 +66,13 @@ export function activeFilterCount(filters: JobFilters): number {
 	let count = 0;
 	if (filters.keyword.trim()) count += 1;
 	if (filters.agencies.length > 0) count += 1;
-	if (filters.series.trim()) count += 1;
+	if (filters.series.length > 0) count += 1;
 	if (filters.gradeMin.trim()) count += 1;
 	if (filters.gradeMax.trim()) count += 1;
 	if (filters.salaryMin.trim()) count += 1;
 	if (filters.remote !== 'any') count += 1;
-	if (filters.hiringPath.trim()) count += 1;
-	if (filters.payPlan.trim()) count += 1;
+	if (filters.hiringPaths.length > 0) count += 1;
+	if (filters.payPlans.length > 0) count += 1;
 	if (filters.geographies.length > 0) count += 1;
 	if (filters.postedWithin) count += 1;
 	return count;
@@ -100,7 +106,68 @@ export function normalizeAgencyCodes(values: string[] | string | undefined | nul
 	return codes;
 }
 
-export function normalizeFilters(input: Partial<JobFilters> & { agency?: string | string[]; geo?: string | string[] }): JobFilters {
+// Normalize a multi-select facet (series / pay plans / hiring paths) into a
+// deduped string[]. Accepts both the new array form and the legacy single
+// string so old shared URLs and saved searches upgrade transparently.
+// `caseMode` keeps pay plans uppercase ("gs" -> "GS") and hiring paths
+// lowercase, while series codes are preserved as-is.
+export function normalizeCodeList(
+	values: string | string[] | undefined | null,
+	caseMode: 'upper' | 'lower' | 'none' = 'none'
+): string[] {
+	const rawValues = Array.isArray(values) ? values : values != null && values !== '' ? [values] : [];
+	const seen = new Set<string>();
+	const codes: string[] = [];
+	for (const value of rawValues) {
+		let code = clean(value);
+		if (!code) continue;
+		if (caseMode === 'upper') code = code.toUpperCase();
+		else if (caseMode === 'lower') code = code.toLowerCase();
+		if (seen.has(code)) continue;
+		seen.add(code);
+		codes.push(code);
+	}
+	return codes;
+}
+
+// A job's hiring_paths arrives as a JSON-array string (e.g. '["public","vet"]')
+// in the bundle, but may also show up as a real array or a delimited string
+// depending on the source. Parse all three into a lowercased code list.
+export function parseHiringPaths(raw: unknown): string[] {
+	if (Array.isArray(raw)) {
+		return raw.map((v) => String(v ?? '').trim().toLowerCase()).filter(Boolean);
+	}
+	const text = String(raw ?? '').trim();
+	if (!text) return [];
+	if (text.startsWith('[')) {
+		try {
+			const parsed = JSON.parse(text);
+			if (Array.isArray(parsed)) {
+				return parsed.map((v) => String(v ?? '').trim().toLowerCase()).filter(Boolean);
+			}
+		} catch {
+			// Fall through to delimiter splitting below.
+		}
+	}
+	return text
+		.split(/[;,]/)
+		.map((v) => v.trim().toLowerCase())
+		.filter(Boolean);
+}
+
+// Loose input shape: every multi-select facet accepts the new array form, the
+// legacy single string, or the URL-style alias key (`agency`/`geo`).
+type NormalizeInput = Partial<Omit<JobFilters, 'series' | 'hiringPaths' | 'payPlans'>> & {
+	agency?: string | string[];
+	geo?: string | string[];
+	series?: string | string[];
+	hiringPaths?: string | string[];
+	hiringPath?: string | string[];
+	payPlans?: string | string[];
+	payPlan?: string | string[];
+};
+
+export function normalizeFilters(input: NormalizeInput): JobFilters {
 	const remote = input.remote && ['any', 'remote', 'hybrid', 'onsite'].includes(input.remote)
 		? input.remote
 		: DEFAULT_FILTERS.remote;
@@ -112,13 +179,13 @@ export function normalizeFilters(input: Partial<JobFilters> & { agency?: string 
 	return {
 		keyword: clean(input.keyword),
 		agencies: normalizeAgencyCodes(input.agencies ?? input.agency),
-		series: clean(input.series),
+		series: normalizeCodeList(input.series, 'none'),
 		gradeMin: clean(input.gradeMin),
 		gradeMax: clean(input.gradeMax),
 		salaryMin: clean(input.salaryMin),
 		remote,
-		hiringPath: clean(input.hiringPath),
-		payPlan: clean(input.payPlan),
+		hiringPaths: normalizeCodeList(input.hiringPaths ?? input.hiringPath, 'lower'),
+		payPlans: normalizeCodeList(input.payPlans ?? input.payPlan, 'upper'),
 		geographies: rawGeos.filter((g) => g && g.includes(':')),
 		postedWithin
 	};
@@ -128,13 +195,13 @@ export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 	return normalizeFilters({
 		keyword: params.get('q') ?? '',
 		agencies: params.getAll('agency'),
-		series: params.get('series') ?? '',
+		series: params.getAll('series'),
 		gradeMin: params.get('gradeMin') ?? '',
 		gradeMax: params.get('gradeMax') ?? '',
 		salaryMin: params.get('salaryMin') ?? '',
 		remote: (params.get('remote') as JobFilters['remote'] | null) ?? 'any',
-		hiringPath: params.get('hiringPath') ?? '',
-		payPlan: params.get('payPlan') ?? '',
+		hiringPaths: params.getAll('hiringPath'),
+		payPlans: params.getAll('payPlan'),
 		geographies: params.getAll('geo'),
 		postedWithin: (params.get('posted') as PostedWithin | null) ?? ''
 	});
@@ -155,13 +222,13 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 
 	if (filters.keyword) params.set('q', filters.keyword);
 	for (const agency of filters.agencies) params.append('agency', agency);
-	if (filters.series) params.set('series', filters.series);
+	for (const series of filters.series) params.append('series', series);
 	if (filters.gradeMin) params.set('gradeMin', filters.gradeMin);
 	if (filters.gradeMax) params.set('gradeMax', filters.gradeMax);
 	if (filters.salaryMin) params.set('salaryMin', filters.salaryMin);
 	if (filters.remote !== 'any') params.set('remote', filters.remote);
-	if (filters.hiringPath) params.set('hiringPath', filters.hiringPath);
-	if (filters.payPlan) params.set('payPlan', filters.payPlan.toUpperCase());
+	for (const path of filters.hiringPaths) params.append('hiringPath', path);
+	for (const plan of filters.payPlans) params.append('payPlan', plan.toUpperCase());
 	for (const geo of filters.geographies) params.append('geo', geo);
 	if (filters.postedWithin) params.set('posted', filters.postedWithin);
 }
@@ -190,10 +257,10 @@ export function matchesJobFeature(
 	if (filters.keyword && !containsAnyText(combined, filters.keyword)) return false;
 	if (filters.agencies.length > 0 && !agencyMatches(combined, filters.agencies)) return false;
 	if (filters.geographies.length > 0 && !geographyMatches(combined, filters.geographies)) return false;
-	if (filters.series && !equalsNormalized(combined.series, filters.series)) return false;
-	if (filters.payPlan && !equalsNormalized(combined.pay_plan, filters.payPlan)) return false;
+	if (filters.series.length > 0 && !equalsAnyNormalized(combined.series, filters.series)) return false;
+	if (filters.payPlans.length > 0 && !equalsAnyNormalized(combined.pay_plan, filters.payPlans)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(combined.remote_status, filters.remote)) return false;
-	if (filters.hiringPath && !containsText(combined.hiring_paths, filters.hiringPath)) return false;
+	if (filters.hiringPaths.length > 0 && !hiringPathMatches(combined.hiring_paths, filters.hiringPaths)) return false;
 	if (filters.salaryMin && !meetsSalaryMinimum(combined.salary_min, filters.salaryMin)) return false;
 	if (!gradeRangeOverlaps(combined.grade_low, combined.grade_high, filters.gradeMin, filters.gradeMax)) return false;
 	if (!isPostedWithin(combined.open_date, filters.postedWithin)) return false;
@@ -247,12 +314,21 @@ function geographyMatches(props: FilterableProps, geographies: string[]): boolea
 	return false;
 }
 
-function containsText(value: unknown, needle: string): boolean {
-	return String(value ?? '').toLowerCase().includes(needle.toLowerCase().trim());
-}
-
 function equalsNormalized(value: unknown, expected: string): boolean {
 	return String(value ?? '').trim().toLowerCase() === expected.trim().toLowerCase();
+}
+
+// OR-match a single job value (series code, pay plan) against any selected
+// option. An empty `expected` list is handled by the call site (no constraint).
+function equalsAnyNormalized(value: unknown, expected: string[]): boolean {
+	return expected.some((e) => equalsNormalized(value, e));
+}
+
+// A job matches the hiring-path filter if it advertises ANY of the selected
+// paths. The job's hiring_paths is a JSON-array string in the bundle.
+function hiringPathMatches(raw: unknown, expected: string[]): boolean {
+	const have = new Set(parseHiringPaths(raw));
+	return expected.some((e) => have.has(e.trim().toLowerCase()));
 }
 
 function remoteMatches(value: unknown, expected: JobFilters['remote']): boolean {
@@ -318,10 +394,10 @@ export function matchesJobDetail(job: JobDetails, filters: JobFilters): boolean 
 		if (!filters.agencies.includes(code)) return false;
 	}
 	if (filters.geographies.length > 0 && !jobDetailGeographyMatches(job, filters.geographies)) return false;
-	if (filters.series && !equalsNormalized(job.series, filters.series)) return false;
-	if (filters.payPlan && !equalsNormalized(job.pay_plan, filters.payPlan)) return false;
+	if (filters.series.length > 0 && !equalsAnyNormalized(job.series, filters.series)) return false;
+	if (filters.payPlans.length > 0 && !equalsAnyNormalized(job.pay_plan, filters.payPlans)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(job.remote_status, filters.remote)) return false;
-	if (filters.hiringPath && !containsText(job.hiring_paths, filters.hiringPath)) return false;
+	if (filters.hiringPaths.length > 0 && !hiringPathMatches(job.hiring_paths, filters.hiringPaths)) return false;
 	if (filters.salaryMin && !meetsSalaryMinimum(job.salary_min, filters.salaryMin)) return false;
 	if (!gradeRangeOverlaps(job.grade_low, job.grade_high, filters.gradeMin, filters.gradeMax)) return false;
 	if (!isPostedWithin(job.open_date, filters.postedWithin)) return false;
