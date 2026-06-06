@@ -4,89 +4,117 @@
 	surfaces present the EXACT same fields and write the one mapState.filters
 	store — there is no second filter implementation to drift. Positioning,
 	open/close chrome, and URL round-trip live in the wrappers, not here.
+
+	Agency, pay plan, hiring path, and series are all code-backed multi-selects
+	(MultiSelect.svelte). Agency offers the full catalog (with alias search so
+	"FEMA" finds HSCB); pay plan, hiring path, and series offer only the values
+	present in the CURRENTLY FILTERED results — see filterFacets.ts.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { mapState } from './store.svelte';
 	import { DEFAULT_FILTERS, activeFilterCount, type JobFilters } from './filters';
-	import { loadAgencyOptions, type AgencyOption } from './data';
+	import { loadAgencyOptions, loadSeriesOptions, type AgencyOption } from './data';
+	import {
+		payPlanFacet,
+		hiringPathFacet,
+		seriesFacet,
+		payPlanLabel,
+		hiringPathLabel,
+		type FacetOption
+	} from './filterFacets';
+	import MultiSelect from './MultiSelect.svelte';
 
 	let agencyOptions = $state<AgencyOption[]>([]);
-	let agencySearch = $state('');
-	let agencyValidation = $state('');
+	let seriesLabels = $state<Record<string, string>>({});
 
 	onMount(() => {
 		void loadAgencyOptions().then((options) => {
 			agencyOptions = options.filter((option) => option.code);
 		});
+		void loadSeriesOptions().then((options) => {
+			const labels: Record<string, string> = {};
+			for (const option of options) labels[option.code] = option.label;
+			seriesLabels = labels;
+		});
 	});
 
-	function setFilter<K extends keyof JobFilters>(key: K, value: JobFilters[K]) {
-		// Mutate the field on the proxy AND reassign the parent so every
-		// consumer that captured the prior mapState.filters reference re-runs.
-		(mapState.filters as JobFilters)[key] = value;
+	// All loaded postings (deduped, one per job) — the corpus the facet
+	// narrowing tallies. Empty until Map.svelte finishes loading the bundle.
+	const jobs = $derived(Object.values(mapState.allJobDetails));
+
+	// Agency uses the full catalog (so alias search keeps working regardless of
+	// the current results); the other three narrow to what's reachable.
+	const agencyFacetOptions = $derived<FacetOption[]>(
+		agencyOptions
+			.filter((o) => o.code)
+			.map((o) => ({
+				value: o.code as string,
+				label: o.name,
+				sub: [o.code, o.department_name].filter(Boolean).join(' · '),
+				count: o.postings,
+				keywords: [o.code, o.department_name, ...(o.aliases ?? [])].join(' ')
+			}))
+			.sort((a, b) => b.count - a.count)
+	);
+
+	const payPlanOptions = $derived(payPlanFacet(jobs, mapState.filters));
+	const hiringPathOptions = $derived(hiringPathFacet(jobs, mapState.filters));
+	const seriesOptions = $derived(seriesFacet(jobs, mapState.filters, seriesLabels));
+
+	function agencyLabel(code: string): string {
+		const upper = code.toUpperCase();
+		const opt = agencyOptions.find((o) => (o.code ?? '').toUpperCase() === upper);
+		return opt?.name ?? code;
+	}
+	function seriesLabel(code: string): string {
+		const title = seriesLabels[code];
+		return title && title !== code ? `${code} — ${title}` : code;
+	}
+
+	// Single writer: reassign the whole filters object (with fresh array copies)
+	// so every consumer that captured the prior mapState.filters reference — and
+	// every $derived — re-runs. Mirrors the pattern proven in ActiveFilterStrip.
+	function patchFilters(patch: Partial<JobFilters>) {
 		mapState.filters = {
 			...mapState.filters,
-			agencies: [...mapState.filters.agencies],
-			geographies: [...mapState.filters.geographies]
+			...patch,
+			agencies: [...(patch.agencies ?? mapState.filters.agencies)],
+			series: [...(patch.series ?? mapState.filters.series)],
+			payPlans: [...(patch.payPlans ?? mapState.filters.payPlans)],
+			hiringPaths: [...(patch.hiringPaths ?? mapState.filters.hiringPaths)],
+			geographies: [...(patch.geographies ?? mapState.filters.geographies)]
 		};
 	}
 
-	function selectedAgencyOptions(): AgencyOption[] {
-		const selected = new Set(mapState.filters.agencies);
-		return agencyOptions.filter((option) => option.code && selected.has(option.code));
+	function setFilter<K extends keyof JobFilters>(key: K, value: JobFilters[K]) {
+		patchFilters({ [key]: value } as Partial<JobFilters>);
 	}
 
-	function filteredAgencyOptions(): AgencyOption[] {
-		const selected = new Set(mapState.filters.agencies);
-		const query = agencySearch.trim().toLowerCase();
-		return agencyOptions
-			.filter((option) => option.code && !selected.has(option.code))
-			.filter((option) => !query || agencySearchText(option).includes(query))
-			.slice(0, 8);
+	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths';
+	function addValue(key: ListKey, value: string) {
+		const current = mapState.filters[key];
+		if (!value || current.includes(value)) return;
+		patchFilters({ [key]: [...current, value] } as Partial<JobFilters>);
 	}
-
-	function agencySearchText(option: AgencyOption): string {
-		return [option.code, option.name, option.label, option.department_name, ...(option.aliases ?? [])]
-			.map((value) => String(value ?? '').toLowerCase())
-			.join(' ');
-	}
-
-	function addAgency(option: AgencyOption) {
-		if (!option.code || mapState.filters.agencies.includes(option.code)) return;
-		setFilter('agencies', [...mapState.filters.agencies, option.code]);
-		agencySearch = '';
-		agencyValidation = '';
-	}
-
-	function removeAgency(code: string) {
-		setFilter('agencies', mapState.filters.agencies.filter((agency) => agency !== code));
-	}
-
-	function selectAgencyFromSearch() {
-		const query = agencySearch.trim();
-		if (!query) return;
-		const normalized = query.toLowerCase();
-		const match = agencyOptions.find((option) => {
-			const aliases = option.aliases ?? [];
-			return (
-				String(option.code ?? '').toLowerCase() === normalized ||
-				option.name.toLowerCase() === normalized ||
-				aliases.some((alias) => alias.toLowerCase() === normalized)
-			);
-		}) ?? filteredAgencyOptions()[0];
-		if (match) addAgency(match);
-		else agencyValidation = 'Choose a listed agency or known alias; free-text agencies do not change results.';
+	function removeValue(key: ListKey, value: string) {
+		patchFilters({ [key]: mapState.filters[key].filter((v) => v !== value) } as Partial<JobFilters>);
 	}
 
 	function resetFilters() {
-		mapState.filters = { ...DEFAULT_FILTERS, agencies: [], geographies: [] };
+		mapState.filters = {
+			...DEFAULT_FILTERS,
+			agencies: [],
+			series: [],
+			payPlans: [],
+			hiringPaths: [],
+			geographies: []
+		};
 	}
 
 	function removeGeo(geo: string) {
 		setFilter('geographies', mapState.filters.geographies.filter((g) => g !== geo));
 	}
-
 	function geoLabel(geo: string): string {
 		const sep = geo.indexOf(':');
 		if (sep === -1) return geo;
@@ -121,38 +149,17 @@
 		</select>
 	</label>
 
-	<div class="agency-picker">
-		<span>Agencies</span>
-		<div class="chips" aria-label="Selected agencies">
-			{#each selectedAgencyOptions() as option (option.code)}
-				<button type="button" class="chip" onclick={() => removeAgency(option.code ?? '')}>
-					{option.code} · {option.name}
-					<strong aria-hidden="true">×</strong>
-				</button>
-			{/each}
-		</div>
-		<div class="agency-search">
-			<input
-				type="search"
-				placeholder="Search FEMA, HSCB, DHS…"
-				value={agencySearch}
-				oninput={(e) => { agencySearch = e.currentTarget.value; agencyValidation = ''; }}
-				onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); selectAgencyFromSearch(); } }}
-			/>
-			<button type="button" onclick={selectAgencyFromSearch}>Add</button>
-		</div>
-		{#if agencySearch.trim()}
-			<div class="agency-results">
-				{#each filteredAgencyOptions() as option (option.code)}
-					<button type="button" onclick={() => addAgency(option)}>
-						<strong>{option.code}</strong>
-						<span>{option.name}</span>
-						<small>{option.postings.toLocaleString()} postings{option.aliases?.length ? ` · aliases: ${option.aliases.join(', ')}` : ''}</small>
-					</button>
-				{/each}
-			</div>
-		{/if}
-		{#if agencyValidation}<p class="validation">{agencyValidation}</p>{/if}
+	<div class="facet">
+		<MultiSelect
+			label="Agencies"
+			selected={mapState.filters.agencies}
+			options={agencyFacetOptions}
+			chipLabel={agencyLabel}
+			placeholder="Search FEMA, HSCB, Homeland Security…"
+			emptyHint="Type an agency name, code, or known alias."
+			onAdd={(v) => addValue('agencies', v)}
+			onRemove={(v) => removeValue('agencies', v)}
+		/>
 	</div>
 
 	{#if mapState.filters.geographies.length > 0}
@@ -170,20 +177,20 @@
 		</div>
 	{/if}
 
-	<div class="row">
-		<label>
-			<span>Series</span>
-			<input
-				type="text"
-				inputmode="numeric"
-				placeholder="0301"
-				value={mapState.filters.series}
-				oninput={(e) => setFilter('series', e.currentTarget.value)}
-			/>
-		</label>
+	<div class="facet">
+		<MultiSelect
+			label="Series"
+			selected={mapState.filters.series}
+			options={seriesOptions}
+			chipLabel={seriesLabel}
+			placeholder="Search series — 0301, IT, nurse…"
+			emptyHint="Series appear once postings load; the list narrows to your other filters."
+			onAdd={(v) => addValue('series', v)}
+			onRemove={(v) => removeValue('series', v)}
+		/>
 	</div>
 
-	<div class="row three">
+	<div class="row">
 		<label>
 			<span>Grade min</span>
 			<input type="number" min="1" max="15" value={mapState.filters.gradeMin} oninput={(e) => setFilter('gradeMin', e.currentTarget.value)} />
@@ -192,10 +199,19 @@
 			<span>Grade max</span>
 			<input type="number" min="1" max="15" value={mapState.filters.gradeMax} oninput={(e) => setFilter('gradeMax', e.currentTarget.value)} />
 		</label>
-		<label>
-			<span>Pay plan</span>
-			<input type="text" placeholder="GS" value={mapState.filters.payPlan} oninput={(e) => setFilter('payPlan', e.currentTarget.value.toUpperCase())} />
-		</label>
+	</div>
+
+	<div class="facet">
+		<MultiSelect
+			label="Pay plan"
+			selected={mapState.filters.payPlans}
+			options={payPlanOptions}
+			chipLabel={payPlanLabel}
+			placeholder="Search GS, Wage Grade, VA Nurse…"
+			emptyHint="Pay plans appear once postings load; the list narrows to your other filters."
+			onAdd={(v) => addValue('payPlans', v)}
+			onRemove={(v) => removeValue('payPlans', v)}
+		/>
 	</div>
 
 	<div class="row">
@@ -214,15 +230,18 @@
 		</label>
 	</div>
 
-	<label>
-		<span>Hiring path</span>
-		<input
-			type="text"
-			placeholder="public, vet, fed-competitive…"
-			value={mapState.filters.hiringPath}
-			oninput={(e) => setFilter('hiringPath', e.currentTarget.value)}
+	<div class="facet">
+		<MultiSelect
+			label="Hiring path"
+			selected={mapState.filters.hiringPaths}
+			options={hiringPathOptions}
+			chipLabel={hiringPathLabel}
+			placeholder="Search public, veterans, military spouse…"
+			emptyHint="Hiring paths appear once postings load; the list narrows to your other filters."
+			onAdd={(v) => addValue('hiringPaths', v)}
+			onRemove={(v) => removeValue('hiringPaths', v)}
 		/>
-	</label>
+	</div>
 
 	<div class="summary" aria-live="polite">
 		<span>{mapState.filteredJobCount.toLocaleString()} of {mapState.totalJobCount.toLocaleString()} mapped posting locations shown</span>
@@ -242,17 +261,14 @@
 		gap: 0.35rem;
 	}
 	.fields > label,
-	.agency-picker,
+	.facet,
 	.geo-chips,
 	.row {
 		margin-bottom: 0.7rem;
 	}
 	.row {
-		grid-template-columns: 1fr 0.7fr;
+		grid-template-columns: 1fr 1fr;
 		gap: 0.65rem;
-	}
-	.row.three {
-		grid-template-columns: repeat(3, 1fr);
 	}
 	span {
 		color: var(--c-muted, #94a3b8);
@@ -271,14 +287,11 @@
 	}
 	input:focus,
 	select:focus,
-	.agency-search button:focus-visible,
-	.agency-results button:focus-visible,
 	.chip:focus-visible,
 	.summary button:focus-visible {
 		outline: 2px solid var(--c-accent, #7bd0f2);
 		outline-offset: 2px;
 	}
-	.agency-picker,
 	.geo-chips {
 		display: grid;
 		gap: 0.45rem;
@@ -314,51 +327,6 @@
 		margin-left: 0.35rem;
 		color: var(--c-text, #fff);
 	}
-	.agency-search {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 0.35rem;
-	}
-	.agency-search button,
-	.agency-results button {
-		appearance: none;
-		border: 1px solid var(--c-border-input, #2c4870);
-		border-radius: 6px;
-		background: var(--c-row-hover, rgba(28, 42, 64, 0.85));
-		color: var(--c-text-2, #d8e6f3);
-		cursor: pointer;
-		font: inherit;
-	}
-	.agency-search button {
-		padding: 0 0.7rem;
-	}
-	.agency-results {
-		display: grid;
-		gap: 0.25rem;
-		max-height: 10rem;
-		overflow: auto;
-	}
-	.agency-results button {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.1rem 0.45rem;
-		text-align: left;
-		padding: 0.45rem 0.55rem;
-	}
-	.agency-results button strong {
-		color: var(--c-text, #fff);
-	}
-	.agency-results button span {
-		color: var(--c-text-2, #d8e6f3);
-	}
-	.agency-results button small {
-		grid-column: 2;
-		color: var(--c-muted, #94a3b8);
-	}
-	.validation {
-		margin: 0;
-		color: #fbbf24;
-	}
 	.summary {
 		display: flex;
 		align-items: center;
@@ -381,8 +349,7 @@
 		opacity: 0.45;
 	}
 	@media (max-width: 719px) {
-		.row,
-		.row.three {
+		.row {
 			grid-template-columns: 1fr;
 		}
 	}

@@ -34,6 +34,12 @@ export interface AgencyOption {
 	postings: number;
 }
 
+export interface SeriesOption {
+	code: string;
+	label: string;
+	postings: number;
+}
+
 export interface ZipCentroid {
 	zip: string;
 	lat: number;
@@ -110,6 +116,7 @@ export interface CostOfLiving {
 
 let jobDetailsCache: Record<string, JobDetails> | null = null;
 let agencyOptionsCache: AgencyOption[] | null = null;
+let seriesOptionsCache: SeriesOption[] | null = null;
 let payTablesCache: PayTables | null = null;
 let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
 let zipCentroidsCache: ZipCentroid[] | null = null;
@@ -238,6 +245,19 @@ export async function loadAgencyOptions(): Promise<AgencyOption[]> {
 		aliases: option.aliases ?? []
 	}));
 	return agencyOptionsCache;
+}
+
+// Occupational series catalog (code + OPM title + global posting count),
+// emitted by scripts/export_public_map.py as series.json. Used purely to label
+// the series multi-select; which series are actually *offered* in the dropdown
+// is derived live from the loaded jobs, narrowed by the other active filters.
+export async function loadSeriesOptions(): Promise<SeriesOption[]> {
+	seriesOptionsCache ??= (await fetchJson<SeriesOption[]>('series.json', [])).map((option) => ({
+		code: String(option.code ?? ''),
+		label: option.label ?? String(option.code ?? ''),
+		postings: Number(option.postings ?? 0)
+	}));
+	return seriesOptionsCache;
 }
 
 export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {

@@ -23,13 +23,13 @@
 			case 'agency':
 				return f.agencies.includes(value.toUpperCase());
 			case 'series':
-				return f.series.trim().toLowerCase() === value.trim().toLowerCase();
+				return f.series.some((s) => s.trim().toLowerCase() === value.trim().toLowerCase());
 			case 'grade':
 				return f.gradeMin === value;
 			case 'payPlan':
-				return f.payPlan.trim().toUpperCase() === value.trim().toUpperCase();
+				return f.payPlans.some((p) => p.trim().toUpperCase() === value.trim().toUpperCase());
 			case 'hiringPath':
-				return f.hiringPath.toLowerCase().includes(value.toLowerCase());
+				return f.hiringPaths.some((h) => h.trim().toLowerCase() === value.trim().toLowerCase());
 			case 'geography':
 				return f.geographies.includes(value);
 			default:
@@ -48,18 +48,24 @@
 				}
 				break;
 			}
-			case 'series':
-				mapState.filters = { ...f, series: value };
+			case 'series': {
+				const s = value.trim();
+				if (s && !f.series.includes(s)) mapState.filters = { ...f, series: [...f.series, s] };
 				break;
+			}
 			case 'grade':
 				if (!f.gradeMin) mapState.filters = { ...f, gradeMin: value };
 				break;
-			case 'payPlan':
-				mapState.filters = { ...f, payPlan: value.toUpperCase() };
+			case 'payPlan': {
+				const plan = value.trim().toUpperCase();
+				if (plan && !f.payPlans.includes(plan)) mapState.filters = { ...f, payPlans: [...f.payPlans, plan] };
 				break;
-			case 'hiringPath':
-				mapState.filters = { ...f, hiringPath: value };
+			}
+			case 'hiringPath': {
+				const path = value.trim().toLowerCase();
+				if (path && !f.hiringPaths.includes(path)) mapState.filters = { ...f, hiringPaths: [...f.hiringPaths, path] };
 				break;
+			}
 			case 'geography':
 				if (!f.geographies.includes(value)) {
 					mapState.filters = { ...f, geographies: [...f.geographies, value] };

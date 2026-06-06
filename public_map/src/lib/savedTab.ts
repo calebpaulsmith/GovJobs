@@ -62,13 +62,13 @@ function countChips(filters: JobFilters): number {
 	let n = 0;
 	if (filters.keyword?.trim()) n += 1;
 	if (filters.agencies?.length) n += filters.agencies.length;
-	if (filters.series?.trim()) n += 1;
+	if (filters.series?.length) n += filters.series.length;
 	if (filters.gradeMin?.trim()) n += 1;
 	if (filters.gradeMax?.trim()) n += 1;
 	if (filters.salaryMin?.trim()) n += 1;
 	if (filters.remote && filters.remote !== 'any') n += 1;
-	if (filters.hiringPath?.trim()) n += 1;
-	if (filters.payPlan?.trim()) n += 1;
+	if (filters.hiringPaths?.length) n += filters.hiringPaths.length;
+	if (filters.payPlans?.length) n += filters.payPlans.length;
 	if (filters.geographies?.length) n += filters.geographies.length;
 	return n;
 }

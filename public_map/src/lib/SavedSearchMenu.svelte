@@ -30,7 +30,7 @@
 	function defaultName(): string {
 		const bits = [
 			mapState.filters.agencies.join('+'),
-			mapState.filters.series && `series ${mapState.filters.series}`,
+			mapState.filters.series.length > 0 && `series ${mapState.filters.series.join(', ')}`,
 			mapState.filters.gradeMin && `GS ${mapState.filters.gradeMin}+`,
 			mapState.filters.remote !== 'any' && mapState.filters.remote,
 			mapState.metric !== 'postings' && mapState.metric.replace('_', ' ')

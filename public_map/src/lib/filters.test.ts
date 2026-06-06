@@ -4,6 +4,10 @@ import {
 	matchesJobDetail,
 	filterJobDetails,
 	isPostedWithin,
+	normalizeFilters,
+	filtersFromSearchParams,
+	writeFiltersToSearchParams,
+	parseHiringPaths,
 	type JobFilters
 } from './filters';
 import type { JobDetails } from './data';
@@ -47,9 +51,27 @@ describe('matchesJobDetail', () => {
 		expect(matchesJobDetail(job({ agency_code: 'hscb' }), filters({ agencies: ['HSCB'] }))).toBe(true);
 	});
 
-	it('matches pay plan exactly', () => {
-		expect(matchesJobDetail(job(), filters({ payPlan: 'GS' }))).toBe(true);
-		expect(matchesJobDetail(job({ pay_plan: 'WG' }), filters({ payPlan: 'GS' }))).toBe(false);
+	it('matches any selected pay plan (OR within the facet)', () => {
+		expect(matchesJobDetail(job(), filters({ payPlans: ['GS'] }))).toBe(true);
+		expect(matchesJobDetail(job({ pay_plan: 'WG' }), filters({ payPlans: ['GS'] }))).toBe(false);
+		// Multiple selected pay plans are ORed.
+		expect(matchesJobDetail(job({ pay_plan: 'WG' }), filters({ payPlans: ['GS', 'WG'] }))).toBe(true);
+	});
+
+	it('matches any selected series (OR within the facet)', () => {
+		expect(matchesJobDetail(job(), filters({ series: ['0089'] }))).toBe(true);
+		expect(matchesJobDetail(job(), filters({ series: ['0301'] }))).toBe(false);
+		expect(matchesJobDetail(job(), filters({ series: ['0301', '0089'] }))).toBe(true);
+	});
+
+	it('matches hiring paths parsed from a JSON-array string', () => {
+		const j = job({ hiring_paths: '["fed-transition", "public"]' });
+		expect(matchesJobDetail(j, filters({ hiringPaths: ['public'] }))).toBe(true);
+		expect(matchesJobDetail(j, filters({ hiringPaths: ['vet'] }))).toBe(false);
+		// OR across selected paths: matches because the job advertises "public".
+		expect(matchesJobDetail(j, filters({ hiringPaths: ['vet', 'public'] }))).toBe(true);
+		// Plain-string hiring_paths still works.
+		expect(matchesJobDetail(job({ hiring_paths: 'public' }), filters({ hiringPaths: ['public'] }))).toBe(true);
 	});
 
 	it('matches remote status', () => {
@@ -129,6 +151,64 @@ describe('isPostedWithin', () => {
 	it('treats a non-positive or invalid window as no constraint', () => {
 		expect(isPostedWithin(null, '0', now)).toBe(true);
 		expect(isPostedWithin('not-a-date', 'abc', now)).toBe(true);
+	});
+});
+
+describe('parseHiringPaths', () => {
+	it('parses a JSON-array string into lowercased codes', () => {
+		expect(parseHiringPaths('["fed-transition", "PUBLIC"]')).toEqual(['fed-transition', 'public']);
+	});
+	it('accepts a real array and a delimited string', () => {
+		expect(parseHiringPaths(['public', 'vet'])).toEqual(['public', 'vet']);
+		expect(parseHiringPaths('public, vet')).toEqual(['public', 'vet']);
+	});
+	it('returns an empty array for blank/garbage input', () => {
+		expect(parseHiringPaths(null)).toEqual([]);
+		expect(parseHiringPaths('')).toEqual([]);
+		expect(parseHiringPaths('[not json')).toEqual(['[not json']);
+	});
+});
+
+describe('normalizeFilters migration', () => {
+	it('upgrades legacy single-string series/payPlan/hiringPath to arrays', () => {
+		const f = normalizeFilters({ series: '0301', payPlan: 'gs', hiringPath: 'Public' });
+		expect(f.series).toEqual(['0301']);
+		expect(f.payPlans).toEqual(['GS']); // pay plans are uppercased
+		expect(f.hiringPaths).toEqual(['public']); // hiring paths are lowercased
+	});
+	it('accepts the new array form and dedupes', () => {
+		const f = normalizeFilters({ payPlans: ['GS', 'gs', 'WG'], series: ['0301', '0301'] });
+		expect(f.payPlans).toEqual(['GS', 'WG']);
+		expect(f.series).toEqual(['0301']);
+	});
+	it('defaults missing multi-select facets to empty arrays', () => {
+		const f = normalizeFilters({});
+		expect(f.series).toEqual([]);
+		expect(f.payPlans).toEqual([]);
+		expect(f.hiringPaths).toEqual([]);
+	});
+});
+
+describe('URL round-trip', () => {
+	it('reads repeated keys and a legacy single value the same way', () => {
+		const fromRepeated = filtersFromSearchParams(
+			new URLSearchParams('series=0301&series=0610&payPlan=GS&hiringPath=public')
+		);
+		expect(fromRepeated.series).toEqual(['0301', '0610']);
+		expect(fromRepeated.payPlans).toEqual(['GS']);
+		expect(fromRepeated.hiringPaths).toEqual(['public']);
+	});
+	it('writes each selected value as a repeated key', () => {
+		const params = new URLSearchParams();
+		writeFiltersToSearchParams(params, {
+			...DEFAULT_FILTERS,
+			series: ['0301', '0610'],
+			payPlans: ['GS', 'WG'],
+			hiringPaths: ['public']
+		});
+		expect(params.getAll('series')).toEqual(['0301', '0610']);
+		expect(params.getAll('payPlan')).toEqual(['GS', 'WG']);
+		expect(params.getAll('hiringPath')).toEqual(['public']);
 	});
 });
 
