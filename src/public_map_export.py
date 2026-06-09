@@ -1827,14 +1827,54 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 def _series_labels(conn: sqlite3.Connection, codes: list[str]) -> dict[str, str]:
+    """Resolve a human title for each occupational series code.
+
+    Source priority:
+      1. ``job_categories.name`` — the official USAJOBS ``JobCategory.Name`` the
+         importer already stores per posting. Taking the most frequently seen
+         non-empty name per series gives an accurate title for every series the
+         corpus actually contains (i.e. everything the filter offers), with no
+         external dependency or network call.
+      2. ``code_lists`` (``priority_series``) — any operator-curated label, used
+         only for series the postings didn't supply a name for.
+    Series with neither fall back to the bare code at the call site.
+    """
     if not codes:
         return {}
+    labels: dict[str, str] = {}
+
     placeholders = ",".join("?" for _ in codes)
-    rows = conn.execute(
-        f"""
-        SELECT code, label FROM code_lists
-        WHERE list_name='priority_series' AND code IN ({placeholders})
-        """,
-        codes,
-    ).fetchall()
-    return {row["code"]: row["label"] for row in rows if row["label"]}
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT series, name, COUNT(*) AS n
+            FROM job_categories
+            WHERE name IS NOT NULL AND TRIM(name) <> ''
+              AND series IN ({placeholders})
+            GROUP BY series, name
+            ORDER BY series, n DESC, name
+            """,
+            codes,
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Older DBs may predate the job_categories child table; fall through to
+        # the curated code_lists labels below.
+        rows = []
+    for row in rows:
+        # ORDER BY n DESC means the first row seen per series is the modal name.
+        labels.setdefault(row["series"], row["name"].strip())
+
+    missing = [code for code in codes if code not in labels]
+    if missing:
+        ph_missing = ",".join("?" for _ in missing)
+        curated = conn.execute(
+            f"""
+            SELECT code, label FROM code_lists
+            WHERE list_name='priority_series' AND code IN ({ph_missing})
+            """,
+            missing,
+        ).fetchall()
+        for row in curated:
+            if row["label"]:
+                labels[row["code"]] = row["label"]
+    return labels

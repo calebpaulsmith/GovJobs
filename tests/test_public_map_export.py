@@ -8,6 +8,7 @@ from src.database import (
     connect,
     init_schema,
     record_geocoding_miss,
+    replace_job_categories,
     upsert_geocoded_location,
     upsert_job,
     upsert_job_text,
@@ -400,6 +401,39 @@ def test_agency_and_series_options_sorted_by_postings(conn):
     series = series_options(conn)
     assert series[0]["code"] == "0089"
     assert series[0]["postings"] == 2
+
+
+def test_series_options_labels_from_job_categories(conn):
+    _seed_chicago(conn)
+    # Two postings for series 2210 carry the official JobCategory.Name; the
+    # series label should come from that name, not the bare code.
+    for pid in ("IT-001", "IT-002"):
+        job_id = upsert_job(
+            conn,
+            _job(
+                position_id=pid,
+                announcement_number=pid,
+                usajobs_control_number=f"2000000{pid[-1]}",
+                series="2210",
+            ),
+        )
+        replace_job_categories(
+            conn, job_id, [{"series": "2210", "name": "Information Technology Management"}]
+        )
+    # A series with no JobCategory name and no curated label falls back to code.
+    upsert_job(
+        conn,
+        _job(
+            position_id="NN-001",
+            announcement_number="NN-001",
+            usajobs_control_number="20000009",
+            series="9999",
+        ),
+    )
+
+    by_code = {row["code"]: row["label"] for row in series_options(conn)}
+    assert by_code["2210"] == "Information Technology Management"
+    assert by_code["9999"] == "9999"
 
 
 def test_manifest_records_geocoding_summary_and_opm_label(conn):

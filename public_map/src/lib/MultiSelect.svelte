@@ -52,6 +52,9 @@
 	});
 
 	function choose(value: string) {
+		// A pending blur-close (from the input losing focus to this option) must
+		// not fire after we re-open, or the dropdown would snap shut mid-select.
+		if (blurTimer) clearTimeout(blurTimer);
 		onAdd(value);
 		query = '';
 		open = true;
@@ -108,8 +111,20 @@
 		<div class="dropdown" role="listbox">
 			{#if visible.length > 0}
 				{#each visible as o (o.value)}
-					<!-- pointerdown fires before the input's blur so the option commits. -->
-					<button type="button" class="option" onpointerdown={(e) => { e.preventDefault(); choose(o.value); }}>
+					<!--
+						Select on click, NOT pointerdown: a tap fires click, but a scroll
+						(finger drags) does not, so scrolling the list never selects a row.
+						mousedown.preventDefault keeps the search input focused (so the
+						dropdown doesn't blur-close before the click lands) without
+						blocking touch scrolling — the synthetic mousedown on touch fires
+						after the gesture, not during it.
+					-->
+					<button
+						type="button"
+						class="option"
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => choose(o.value)}
+					>
 						<span class="o-label">{o.label}</span>
 						<span class="o-meta">
 							{#if o.sub && o.sub !== o.label}<span class="o-sub">{o.sub}</span>{/if}
