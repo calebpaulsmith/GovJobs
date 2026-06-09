@@ -106,8 +106,14 @@
 	let grabMoved = false;
 
 	function detents() {
-		const vh = browser ? window.innerHeight : 800;
-		return { collapsed: 3.6 * 16, half: vh * 0.5, full: vh * 0.92 };
+		// The sheet is position:absolute, so its CSS `%` heights resolve
+		// against its offsetParent — not the window. Measure that same box so
+		// the drag math lines up exactly with the resting CSS detents (50% /
+		// 92%). Falling back to the window only matters before first layout.
+		const parentH =
+			sheetEl?.offsetParent?.getBoundingClientRect().height ??
+			(browser ? window.innerHeight : 800);
+		return { collapsed: 3.6 * 16, half: parentH * 0.5, full: parentH * 0.92 };
 	}
 
 	function onGrabPointerDown(e: PointerEvent) {
@@ -128,14 +134,18 @@
 		if (!grabbing) return;
 		grabbing = false;
 		(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-		if (!grabMoved) {
-			// A tap: let the button's onclick handle the collapsed↔open toggle.
-			dragH = null;
+		const moved = grabMoved;
+		const h = dragH ?? grabStartH;
+		dragH = null;
+		if (!moved) {
+			// A tap (no drag): toggle collapsed↔open. We handle this here in
+			// pointerup rather than via the button's click, because on WebKit
+			// the synthetic click still fires after a drag and would undo the
+			// snap below — so the grabber has no onclick at all.
+			toggleExpanded();
 			return;
 		}
-		e.preventDefault();
 		const d = detents();
-		const h = dragH ?? grabStartH;
 		const opts: [string, number][] = [
 			['collapsed', d.collapsed],
 			['half', d.half],
@@ -145,7 +155,6 @@
 		for (const o of opts) {
 			if (Math.abs(o[1] - h) < Math.abs(best[1] - h)) best = o;
 		}
-		dragH = null;
 		if (best[0] === 'collapsed') {
 			mapState.browseSheetExpanded = false;
 			mapState.browseSheetFull = false;
@@ -160,6 +169,14 @@
 	function onGrabPointerCancel() {
 		grabbing = false;
 		dragH = null;
+	}
+	// Keyboard a11y: the grabber has no onclick (see onGrabPointerUp), so wire
+	// Enter/Space to the same collapsed↔open toggle.
+	function onGrabKey(e: KeyboardEvent) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			toggleExpanded();
+		}
 	}
 
 	// Render the panels while open OR mid-drag (so dragging up from collapsed
@@ -247,11 +264,11 @@
 	<button
 		type="button"
 		class="grabber"
-		onclick={toggleExpanded}
 		onpointerdown={onGrabPointerDown}
 		onpointermove={onGrabPointerMove}
 		onpointerup={onGrabPointerUp}
 		onpointercancel={onGrabPointerCancel}
+		onkeydown={onGrabKey}
 		aria-expanded={mapState.browseSheetExpanded}
 		aria-label={mapState.browseSheetExpanded ? 'Collapse panel' : 'Expand panel'}
 	>
