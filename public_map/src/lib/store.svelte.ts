@@ -66,7 +66,11 @@ class MapState {
 	// Browse map: left-edge filter sheet (shares FilterFields with /map).
 	filterSheetOpen = $state<boolean>(false);
 	// Browse map: bottom sheet (Here area card ↔ Postings list).
+	// `browseSheetExpanded` is the collapsed↔open toggle; `browseSheetFull`
+	// is the second detent — open-half (partway, taps still reach the map)
+	// vs. open-full (near-full height for scrolling through the whole list).
 	browseSheetExpanded = $state<boolean>(false);
+	browseSheetFull = $state<boolean>(false);
 	browseSheetPage = $state<'here' | 'list'>('list');
 	// Browse map: Saved drawer (job lists + saved/hidden/viewed jobs).
 	savedDrawerOpen = $state<boolean>(false);

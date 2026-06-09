@@ -122,27 +122,44 @@ side-effecting writes.
 
 ### Limits of this sandbox
 
+**Re-verified 2026-06-09 — several earlier "limits" are now stale.** The
+environment's network policy and tooling changed; the bullets below were
+re-tested empirically that day (curl probes + a live WebKit launch) and
+corrected. When in doubt, re-probe rather than trust a months-old note.
+
 - The public map is `ssr: false` + `adapter-static` SPA mode. JSDOM
   cannot drive its dynamic-import bundle (`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`).
+  Still true.
 - **Chromium IS available.** A pre-installed Playwright Chromium lives
   at `/opt/pw-browsers/chromium-1194/`. Pinning `playwright@1.56.1`
-  matches it. The earlier "no Chromium" claim was wrong. The local
-  touch-event harness at `public_map/tests/browse-touch.spec.mjs` boots
-  the Vite dev server with iPhone 13 emulation and drives real
-  `page.touchscreen.tap` calls.
-- The egress proxy intercepts TLS and blocks `tile.openstreetmap.org`
-  with CORS-stripped 403s, which stalls mapbox-gl's `load` event and
-  thus the whole data-hydration chain. The harness routes blank PNGs in
-  place of OSM tiles so the test rig can exercise the app independently.
-  This is sandbox-only — production tiles work fine.
-- Cannot drive `map.thegrandpipeline.com` from the sandbox (same proxy
-  rejects Cloudflare Pages requests with 403 / bot challenge). Use
-  `npm run dev` locally for any repro.
-- WebKit (real iOS Safari) is still not available here; Chromium with
-  iPhone touch emulation matches the event model (synthesized
-  `mousemove` on tap, no `mouseleave` on lift) but not WebKit-specific
-  rendering quirks. Bugs that only repro on real iOS still require the
-  operator to drive a device.
+  matches it. The local touch-event harness at
+  `public_map/tests/browse-touch.spec.mjs` boots the Vite dev server with
+  iPhone 13 emulation and drives real `page.touchscreen.tap` calls.
+- **WebKit (real iOS Safari engine) IS now available** — this reverses the
+  prior "still not available" claim. `npx playwright install webkit` then
+  `npx playwright install-deps webkit` (the container has passwordless
+  sudo / root) downloads `webkit-2215` and its system libs; it launches
+  and reports `AppleWebKit/605.1.15 … Safari` — the same engine as iOS
+  Safari. `public_map/tests/sheet-detent-webkit.spec.mjs` drives the
+  bottom sheet under iPhone 13 + WebKit emulation. **This is the engine
+  the "frozen Here screen" bug needed.** A WebKit harness run found and
+  let me fix two bugs (offsetParent-relative sizing, and WebKit firing a
+  synthetic `click` after a pointer drag) that headless Chromium would
+  not have surfaced. Note `playwright` is now a `devDependency` in
+  `public_map/package.json`. WebKit emulation still isn't a *physical*
+  iPhone — momentum-scroll feel and a few render quirks differ — but the
+  reactivity/event model now matches. Prefer a WebKit harness run over a
+  Chromium-only one for any `state_unsafe_mutation`-shaped change.
+- **Outbound network now works for the map's dependencies.** As of
+  2026-06-09, `https://tile.openstreetmap.org/0/0/0.png`,
+  `https://map.thegrandpipeline.com/browse`, and `https://api.mapbox.com`
+  all return `200` from the sandbox. The earlier "egress proxy blocks OSM
+  tiles / rejects Cloudflare Pages with 403" notes no longer hold. The
+  test harnesses still route OSM tiles to a blank PNG defensively (so a
+  future policy change or a flaky tile server can't stall mapbox-gl's
+  `load`), but that routing is now belt-and-suspenders, not a hard
+  requirement. Re-probe with `curl` if a network step fails before
+  assuming the proxy is the cause.
 - `Map.svelte` exposes `window.__ffMap` under `import.meta.env.DEV`
   exclusively for the touch harness; the assignment is stripped from
   production by Vite. Do not rely on it in any shipped code path.

@@ -76,13 +76,112 @@
 	});
 
 	function toggleExpanded() {
-		mapState.browseSheetExpanded = !mapState.browseSheetExpanded;
+		if (mapState.browseSheetExpanded) {
+			// Collapsing also drops the full detent so the next open starts
+			// partway again.
+			mapState.browseSheetExpanded = false;
+			mapState.browseSheetFull = false;
+		} else {
+			mapState.browseSheetExpanded = true;
+		}
 	}
 
 	function setPage(page: 'here' | 'list') {
 		mapState.browseSheetPage = page;
 		mapState.browseSheetExpanded = true;
 	}
+
+	// --- vertical drag-to-resize on the grabber ---
+	// Three detents: collapsed (peek), half (partway — taps still reach the
+	// map), and full (near-full height so the user can scroll the whole list).
+	// Tap (no movement) keeps toggling collapsed↔open via the button's onclick;
+	// a drag snaps to the nearest detent. Live height drives an inline style so
+	// the sheet follows the finger; on release we clear it and let the CSS class
+	// transition to the snapped detent.
+	let sheetEl = $state<HTMLElement | null>(null);
+	let dragH = $state<number | null>(null);
+	let grabbing = false;
+	let grabStartY = 0;
+	let grabStartH = 0;
+	let grabMoved = false;
+
+	function detents() {
+		// The sheet is position:absolute, so its CSS `%` heights resolve
+		// against its offsetParent — not the window. Measure that same box so
+		// the drag math lines up exactly with the resting CSS detents (50% /
+		// 92%). Falling back to the window only matters before first layout.
+		const parentH =
+			sheetEl?.offsetParent?.getBoundingClientRect().height ??
+			(browser ? window.innerHeight : 800);
+		return { collapsed: 3.6 * 16, half: parentH * 0.5, full: parentH * 0.92 };
+	}
+
+	function onGrabPointerDown(e: PointerEvent) {
+		grabbing = true;
+		grabMoved = false;
+		grabStartY = e.clientY;
+		grabStartH = sheetEl?.getBoundingClientRect().height ?? detents().collapsed;
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+	}
+	function onGrabPointerMove(e: PointerEvent) {
+		if (!grabbing) return;
+		const dy = grabStartY - e.clientY; // drag up → taller
+		if (Math.abs(dy) > 4) grabMoved = true;
+		const d = detents();
+		dragH = Math.max(d.collapsed, Math.min(d.full, grabStartH + dy));
+	}
+	function onGrabPointerUp(e: PointerEvent) {
+		if (!grabbing) return;
+		grabbing = false;
+		(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+		const moved = grabMoved;
+		const h = dragH ?? grabStartH;
+		dragH = null;
+		if (!moved) {
+			// A tap (no drag): toggle collapsed↔open. We handle this here in
+			// pointerup rather than via the button's click, because on WebKit
+			// the synthetic click still fires after a drag and would undo the
+			// snap below — so the grabber has no onclick at all.
+			toggleExpanded();
+			return;
+		}
+		const d = detents();
+		const opts: [string, number][] = [
+			['collapsed', d.collapsed],
+			['half', d.half],
+			['full', d.full]
+		];
+		let best = opts[0];
+		for (const o of opts) {
+			if (Math.abs(o[1] - h) < Math.abs(best[1] - h)) best = o;
+		}
+		if (best[0] === 'collapsed') {
+			mapState.browseSheetExpanded = false;
+			mapState.browseSheetFull = false;
+		} else if (best[0] === 'half') {
+			mapState.browseSheetExpanded = true;
+			mapState.browseSheetFull = false;
+		} else {
+			mapState.browseSheetExpanded = true;
+			mapState.browseSheetFull = true;
+		}
+	}
+	function onGrabPointerCancel() {
+		grabbing = false;
+		dragH = null;
+	}
+	// Keyboard a11y: the grabber has no onclick (see onGrabPointerUp), so wire
+	// Enter/Space to the same collapsed↔open toggle.
+	function onGrabKey(e: KeyboardEvent) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			toggleExpanded();
+		}
+	}
+
+	// Render the panels while open OR mid-drag (so dragging up from collapsed
+	// reveals content immediately instead of an empty growing box).
+	const showContent = $derived(mapState.browseSheetExpanded || dragH !== null);
 
 	// Explicit, opt-in geography add. Mirrors the chip format ScopedAreaActions
 	// uses on /map so the two paths produce identical, deduped chips.
@@ -154,18 +253,29 @@
 	});
 </script>
 
-<aside class="sheet" class:expanded={mapState.browseSheetExpanded} aria-label="Area and postings">
+<aside
+	class="sheet"
+	class:expanded={mapState.browseSheetExpanded}
+	class:full={mapState.browseSheetFull}
+	style={dragH !== null ? `height: ${dragH}px; transition: none;` : undefined}
+	bind:this={sheetEl}
+	aria-label="Area and postings"
+>
 	<button
 		type="button"
 		class="grabber"
-		onclick={toggleExpanded}
+		onpointerdown={onGrabPointerDown}
+		onpointermove={onGrabPointerMove}
+		onpointerup={onGrabPointerUp}
+		onpointercancel={onGrabPointerCancel}
+		onkeydown={onGrabKey}
 		aria-expanded={mapState.browseSheetExpanded}
 		aria-label={mapState.browseSheetExpanded ? 'Collapse panel' : 'Expand panel'}
 	>
 		<span class="grip" aria-hidden="true"></span>
 	</button>
 
-	{#if mapState.browseSheetExpanded}
+	{#if showContent}
 		<div class="pager-head">
 			<div class="seg" role="tablist" aria-label="Panel view">
 				<button type="button" role="tab" aria-selected={mapState.browseSheetPage === 'here'} class:active={mapState.browseSheetPage === 'here'} onclick={() => setPage('here')}>
@@ -302,6 +412,12 @@
 		   of the page is map, so 50% is fine. */
 		height: 50%;
 	}
+	.sheet.expanded.full {
+		/* Second detent: drag the grabber all the way up to scroll through the
+		   whole list. Stops short of the very top so the masthead/controls and
+		   a sliver of map stay reachable. */
+		height: 92%;
+	}
 	.grabber {
 		appearance: none;
 		flex-shrink: 0;
@@ -309,7 +425,13 @@
 		background: transparent;
 		border: none;
 		padding: 0.5rem 0 0.3rem;
-		cursor: pointer;
+		cursor: grab;
+		/* Own vertical gestures so dragging the grabber resizes the sheet
+		   instead of scrolling the page/panel underneath. */
+		touch-action: none;
+	}
+	.grabber:active {
+		cursor: grabbing;
 	}
 	.grip {
 		display: block;
