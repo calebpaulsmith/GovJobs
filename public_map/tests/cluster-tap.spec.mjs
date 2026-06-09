@@ -24,7 +24,7 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 const allLogs = [];
 page.on('console', (m) => {
 	if (m.type() === 'error') errors.push(m.text());
-	if (m.text().includes('ff-stack')) allLogs.push(m.text());
+	if (m.text().includes('ff-stack') || m.text().includes('ff-event') || m.text().includes('ff-active') || m.text().includes('ff-pjl') || m.text().includes('[pjl]')) allLogs.push(m.text());
 });
 
 await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
@@ -76,6 +76,9 @@ out(`tapping cluster id=${target.cluster_id} count=${target.point_count} @ (${ta
 await page.touchscreen.tap(target.x + (canvasBox?.x ?? 0), target.y + (canvasBox?.y ?? 0));
 await page.waitForTimeout(2000);
 
+const dbgH2 = await page.evaluate(() => document.querySelector('.point-list h2')?.textContent);
+out('DBG h2 text:', dbgH2);
+
 const result = await page.evaluate((m) => ({
 	stateJobStackItems: m.jobStack?.items?.length ?? 0,
 	stateSheetExpanded: m.browseSheetExpanded,
@@ -112,6 +115,37 @@ const force = await page.evaluate(async (m) => {
 	return { before, after };
 }, handle);
 out('force-write same stack:', JSON.stringify(force));
+
+// Extra diagnostic: replace jobStack with a totally fresh object from
+// page.evaluate AFTER the cluster path. {#key items.length} should fire
+// the remount. Then check if items render.
+const replaceTest = await page.evaluate(async (m) => {
+	const before = { items: m.jobStack?.items?.length, li: document.querySelectorAll('.point-list li').length };
+	const fresh = {
+		label: 'Fresh replacement',
+		selectedIndex: 0,
+		items: Array.from({ length: 7 }, (_, i) => ({ properties: { id: `r-${i}`, title: `Job ${i}`, city: 'A', state: 'B' } }))
+	};
+	m.jobStack = fresh;
+	await new Promise((r) => setTimeout(r, 200));
+	const after = { items: m.jobStack?.items?.length, li: document.querySelectorAll('.point-list li').length };
+	return { before, after };
+}, handle);
+out('replace test:', JSON.stringify(replaceTest));
+
+// Now test direct SPLICE from page.evaluate. If this updates the DOM,
+// splice DOES propagate via $state — meaning the cluster path's splice
+// SHOULD work but something in the actor-callback context is suppressing
+// the notification.
+const spliceTest = await page.evaluate(async (m) => {
+	const before = { items: m.jobStack?.items?.length, li: document.querySelectorAll('.point-list li').length };
+	const replacement = Array.from({ length: 12 }, (_, i) => ({ properties: { id: `s-${i}`, title: `S ${i}`, city: 'A', state: 'B' } }));
+	m.jobStack.items.splice(0, m.jobStack.items.length, ...replacement);
+	await new Promise((r) => setTimeout(r, 200));
+	const after = { items: m.jobStack?.items?.length, li: document.querySelectorAll('.point-list li').length };
+	return { before, after };
+}, handle);
+out('splice test:', JSON.stringify(spliceTest));
 
 out('stack logs:', JSON.stringify(allLogs));
 if (errors.length) out('errors:', errors.slice(0, 3));
