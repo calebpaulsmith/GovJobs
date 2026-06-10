@@ -453,11 +453,11 @@ User review on 2026-05-07 found eleven concrete defects: agency filter is a free
 
 Operator review 2026-06-10: the mobile experience is not cohesive because `/browse` (the default screen) lacks the capabilities that only `/map` mounts, and the core job-seeker loop is spread across disconnected surfaces. Browse is now the canonical product surface; capabilities are ported by reuse (`docked` prop), never duplicated. The "Applied" mark on JobCard was proposed and **declined** by the operator — do not resurrect it without a new decision.
 
-- [ ] D.6.1 — Postings panel becomes the task spine: docked `ActiveFilterStrip` + Edit (opens FilterSheet) + Save search (inline name → `createSavedSearch`) in the BrowseSheet header.
-- [ ] D.6.2 — Address/ZIP search on Browse: "Go to" pill next to the Filters FAB toggles docked `AddressSearch`.
-- [ ] D.6.3 — Pay Compare from JobCard: mount `CompensationComparator` on `/browse`; "Compare pay" action seeds grade + locality via `mapState.compareSeed`.
-- [ ] D.6.4 — First-run welcome card in the Here panel (dismiss flag `fedfinder.public_map.browse_welcome.v1`).
-- [ ] D.6.5 — SavedTab Apply restores viewport/address target like SavedSearchMenu does, so a saved search recalls the whole view, not just filters.
+- [x] D.6.1 — Postings panel becomes the task spine: docked `ActiveFilterStrip` + Edit (opens FilterSheet) + Save search (inline name → `createSavedSearch`) in the BrowseSheet header.
+- [x] D.6.2 — Address/ZIP search on Browse: "Go to" pill next to the Filters FAB toggles docked `AddressSearch`.
+- [x] D.6.3 — Pay Compare from JobCard: mount `CompensationComparator` on `/browse`; "Compare pay" action seeds grade + locality via `mapState.compareSeed`.
+- [x] D.6.4 — First-run welcome card in the Here panel (dismiss flag `fedfinder.public_map.browse_welcome.v1`).
+- [x] D.6.5 — SavedTab Apply restores viewport/address target like SavedSearchMenu does, so a saved search recalls the whole view, not just filters.
 
 **Exit:** from `/browse` alone a user can geocode a location, set and see filters next to the results they produce, save and recall a named search (with viewport), compare a posting's pay against where they live, and a first-time visitor gets a starting point. WebKit harness still green.
 

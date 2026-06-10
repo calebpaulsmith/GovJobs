@@ -91,9 +91,11 @@ const s0 = await readState();
 const r0 = await sheetRect();
 out('state:', JSON.stringify(s0), 'rect:', JSON.stringify(r0));
 
-// 1) Tap the grabber → expand to the half (partway) detent.
+// 1) Tap the grabber → expand to the half (partway) detent. The 220ms CSS
+// height transition starts only after the panel content mounts (the first-run
+// welcome card adds DOM on first expand), so give it a comfortable margin.
 await page.locator('.grabber').click();
-await page.waitForTimeout(400);
+await page.waitForTimeout(900);
 let s = await readState();
 let r = await sheetRect();
 out('after tap-to-expand:', JSON.stringify(s), JSON.stringify(r));
