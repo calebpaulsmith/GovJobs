@@ -3,6 +3,12 @@
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { mapState } from './store.svelte';
 
+	// `docked` renders in normal flow inside a parent surface (Browse top-left
+	// column or the welcome card) instead of the /map 'search' layout slot.
+	// `onChoose` lets the parent react to a committed result (per ADR-0035).
+	let { docked = false, onChoose }: { docked?: boolean; onChoose?: (result: GeocodeResult) => void } =
+		$props();
+
 	let query = $state('');
 	let results = $state<GeocodeResult[]>([]);
 	let loading = $state(false);
@@ -34,6 +40,7 @@
 		message = '';
 		query = result.label;
 		mapState.addressSearchOpen = false;
+		onChoose?.(result);
 	}
 
 	function clear() {
@@ -44,7 +51,12 @@
 	}
 </script>
 
-<section class="address-search" data-layout-slot={slotAttr(LAYOUT_SLOTS.search)} aria-label="Address and ZIP search">
+<section
+	class="address-search"
+	class:docked
+	data-layout-slot={docked ? undefined : slotAttr(LAYOUT_SLOTS.search)}
+	aria-label="Address and ZIP search"
+>
 	<div class="search-row">
 		<input
 			type="search"
@@ -87,6 +99,11 @@
 		z-index: 8;
 		color: #cfd9e6;
 		font-size: 12px;
+	}
+	.address-search.docked {
+		/* In-flow inside a parent surface; the parent owns position/width. */
+		position: static;
+		width: auto;
 	}
 	.search-row,
 	.results,

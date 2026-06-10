@@ -22,6 +22,12 @@
 	import BrowseSheet from '$lib/BrowseSheet.svelte';
 	import SavedDrawer from '$lib/SavedDrawer.svelte';
 	import BuildStamp from '$lib/BuildStamp.svelte';
+	import AddressSearch from '$lib/AddressSearch.svelte';
+	import CompensationComparator from '$lib/CompensationComparator.svelte';
+
+	// D.6.2: "Go to" panel visibility. Local to this page — distinct from
+	// mapState.addressSearchOpen, which means "the results dropdown is open".
+	let goToOpen = $state(false);
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 
@@ -72,24 +78,45 @@
 	<main class="content">
 		<div class="map-frame">
 			<Map browseMode />
-			<button
-				type="button"
-				class="filters-fab"
-				onclick={() => (mapState.filterSheetOpen = true)}
-				aria-label="Open filters"
-			>
-				<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
-				Filters
-				{#if activeFilterCount(mapState.filters) > 0}
-					<span class="fab-count">{activeFilterCount(mapState.filters)}</span>
-				{/if}
-			</button>
+			<div class="fab-row">
+				<button
+					type="button"
+					class="filters-fab"
+					onclick={() => (mapState.filterSheetOpen = true)}
+					aria-label="Open filters"
+				>
+					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
+					Filters
+					{#if activeFilterCount(mapState.filters) > 0}
+						<span class="fab-count">{activeFilterCount(mapState.filters)}</span>
+					{/if}
+				</button>
+				<button
+					type="button"
+					class="filters-fab"
+					class:open={goToOpen}
+					onclick={() => (goToOpen = !goToOpen)}
+					aria-expanded={goToOpen}
+					aria-label="Go to an address, city, or ZIP"
+				>
+					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" /></svg>
+					Go to
+				</button>
+			</div>
+			{#if goToOpen}
+				<div class="goto-panel">
+					<AddressSearch docked onChoose={() => (goToOpen = false)} />
+				</div>
+			{/if}
 			<FilterSheet />
 			<BrowseSheet />
 		</div>
 	</main>
 
 	<SavedDrawer />
+	<!-- D.6.3: comparator drawer (z 50/51, above the sheet) opened from a
+	     JobCard's "Compare pay" action. -->
+	<CompensationComparator />
 </div>
 
 <style>
@@ -211,11 +238,24 @@
 		position: absolute;
 		inset: 0;
 	}
-	.filters-fab {
+	.fab-row {
 		position: absolute;
 		top: 0.75rem;
 		left: 0.75rem;
 		z-index: 6;
+		display: flex;
+		gap: 0.5rem;
+	}
+	.goto-panel {
+		/* Directly below the FAB row in the same top-left column (single
+		   column per invariant #12 — no overlap by construction). */
+		position: absolute;
+		top: 3.2rem;
+		left: 0.75rem;
+		width: min(22rem, calc(100% - 1.5rem));
+		z-index: 7;
+	}
+	.filters-fab {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
@@ -234,6 +274,10 @@
 	}
 	.filters-fab:hover {
 		border-color: var(--c-accent, #7bd0f2);
+	}
+	.filters-fab.open {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
 	}
 	.filters-fab svg {
 		color: var(--c-accent, #7bd0f2);

@@ -106,6 +106,15 @@
 		// (JobList, AgencyPicker, FilterPanel) see one updated reference.
 		mapState.filters = cloneFilters(item.filters);
 		if (item.metric) mapState.metric = item.metric;
+		// D.6.5: recall the whole view, not just the filters — same restore
+		// order as SavedSearchMenu.applySearch (address target wins, else
+		// the saved camera).
+		if (item.addressTarget) {
+			mapState.lastAddressTarget = item.addressTarget;
+			mapState.addressTarget = item.addressTarget;
+		} else if (item.viewport) {
+			mapState.pendingViewport = item.viewport;
+		}
 		// Refresh "now" so the relative-time copy stays current after Apply.
 		now = Date.now();
 		onViewList?.();
@@ -231,7 +240,7 @@
 	<!-- ===================== Job Lists ===================== -->
 	{#if sub === 'lists'}
 		{#if listsCount === 0}
-			<p class="empty-note">No saved Job Lists yet. Save a filter from the List tab.</p>
+			<p class="empty-note">No saved Job Lists yet. Use <strong>Save</strong> in the Postings panel to keep the current search.</p>
 		{:else}
 			{#each searches as item (item.id)}
 				<article class="saved-row">

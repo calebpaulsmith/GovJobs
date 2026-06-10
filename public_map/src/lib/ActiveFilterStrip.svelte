@@ -12,6 +12,11 @@
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { loadAgencyOptions, type AgencyOption } from './data';
 
+	// `docked` renders the strip in normal flow (inside a parent surface like
+	// the BrowseSheet header) instead of the /map chip-strip layout slot.
+	// Per ADR-0035 this is how /map components are reused on /browse.
+	let { docked = false }: { docked?: boolean } = $props();
+
 	let agencyOptions = $state<AgencyOption[]>([]);
 
 	onMount(() => {
@@ -89,7 +94,8 @@
 <div
 	class="strip"
 	class:empty={!hasFilters}
-	data-layout-slot={slotAttr(LAYOUT_SLOTS['chip-strip'])}
+	class:docked
+	data-layout-slot={docked ? undefined : slotAttr(LAYOUT_SLOTS['chip-strip'])}
 	role="region"
 	aria-label="Active filters"
 >
@@ -205,6 +211,20 @@
 	}
 	.strip.empty {
 		opacity: 0.65;
+	}
+	.strip.docked {
+		/* In-flow inside a parent surface (BrowseSheet header): no slot
+		   positioning, no floating-panel chrome of its own. */
+		position: static;
+		max-width: none;
+		border-radius: 10px;
+		box-shadow: none;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+	}
+	.strip.docked .chips {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 	.label {
 		flex-shrink: 0;

@@ -4,6 +4,7 @@
 	no persistence beyond the open drawer.
 -->
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { mapState } from './store.svelte';
 	import { loadPayTables, loadLocalities, loadCostOfLiving } from './data';
 	import {
@@ -46,6 +47,28 @@
 				if (!localityCode && localities.length > 0) localityCode = localities[0].code;
 			}
 		);
+	});
+
+	// D.6.3 (ADR-0035): consume a one-shot seed from a JobCard "Compare pay"
+	// action. Reads compareOpen/compareSeed from the mapState proxy and writes
+	// compareSeed back to it, so the clear MUST be untracked (CLAUDE.md
+	// state_unsafe_mutation rule); the grade/step/localityCode writes are
+	// local $state and safe.
+	$effect(() => {
+		if (!mapState.compareOpen) return;
+		const seed = mapState.compareSeed;
+		if (!seed) return;
+		// Postings carry zero-padded grades ('07'); the picker uses '7'.
+		const seedGrade = seed.grade ? String(parseInt(seed.grade, 10)) : '';
+		if (seedGrade && grades.includes(seedGrade)) {
+			mode = 'gs';
+			grade = seedGrade;
+			step = '1';
+		}
+		if (seed.localityCode) localityCode = seed.localityCode;
+		untrack(() => {
+			mapState.compareSeed = null;
+		});
 	});
 
 	const grades = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15'];

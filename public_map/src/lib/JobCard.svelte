@@ -49,6 +49,20 @@
 		mapState.savedJobIds = jobProfile.savedJobs.reduce((s, j) => { s.add(j.id); return s; }, new Set<string>());
 	}
 
+	// D.6.3 (ADR-0035): open the comparator seeded from this posting so
+	// "what is this pay worth where I live?" is one tap from the card.
+	function openPayCompare() {
+		const grade = String(detail?.grade_low ?? properties.grade_low ?? '');
+		const locality = String(
+			detail?.pay_grid?.locality?.code ?? detail?.locality_code ?? properties.locality_code ?? ''
+		);
+		mapState.compareSeed = {
+			grade: grade || undefined,
+			localityCode: locality && locality !== 'BASE' ? locality : undefined
+		};
+		mapState.compareOpen = true;
+	}
+
 	function toggleHide() {
 		if (!jobId) return;
 		if (hidden) {
@@ -160,6 +174,9 @@
 		</button>
 		<button type="button" class="profile-btn danger" onclick={toggleHide}>
 			{hidden ? 'Unhide' : 'Hide'}
+		</button>
+		<button type="button" class="profile-btn" onclick={openPayCompare}>
+			$ Compare pay
 		</button>
 	</div>
 	{#if !isClosed && (detail?.url ?? properties.url)}
