@@ -31,6 +31,9 @@
 	};
 	import { LAYER_IDS } from './layers';
 	import { propString, countValue } from './format';
+	import { createSavedSearch, loadSavedSearches, saveSavedSearches } from './savedSearches';
+	import ActiveFilterStrip from './ActiveFilterStrip.svelte';
+	import AddressSearch from './AddressSearch.svelte';
 	import StateRoundup from './StateRoundup.svelte';
 	import LocalityDetail from './LocalityDetail.svelte';
 	import CountyDetail from './CountyDetail.svelte';
@@ -40,10 +43,21 @@
 	import PointJobList from './PointJobList.svelte';
 
 	const PAGE_KEY = 'fedfinder.public_map.browse_sheet_page.v1';
+	const WELCOME_KEY = 'fedfinder.public_map.browse_welcome.v1';
+
+	// D.6.4 (ADR-0035): first-run welcome card in the Here panel. Defaults to
+	// dismissed so it never flashes before onMount reads the flag.
+	let welcomeDismissed = $state(true);
+
+	function dismissWelcome() {
+		welcomeDismissed = true;
+		if (browser) localStorage.setItem(WELCOME_KEY, '1');
+	}
 
 	// Restore the last page (Postings by default), then persist on change.
 	onMount(() => {
 		if (!browser) return;
+		welcomeDismissed = localStorage.getItem(WELCOME_KEY) === '1';
 		const stored = localStorage.getItem(PAGE_KEY);
 		if (stored === 'here' || stored === 'list') mapState.browseSheetPage = stored;
 	});
@@ -182,6 +196,40 @@
 	// Render the panels while open OR mid-drag (so dragging up from collapsed
 	// reveals content immediately instead of an empty growing box).
 	const showContent = $derived(mapState.browseSheetExpanded || dragH !== null);
+
+	// --- Save current search (D.6.1) -------------------------------------
+	// Inline name input → createSavedSearch; lands in SavedTab's Job Lists.
+	let savingSearch = $state(false);
+	let saveName = $state('');
+	let saveConfirmed = $state(false);
+	let saveConfirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function startSaveSearch() {
+		savingSearch = true;
+		saveConfirmed = false;
+		saveName = `Search ${new Date().toLocaleDateString()}`;
+	}
+
+	function commitSaveSearch() {
+		const item = createSavedSearch({
+			name: saveName,
+			filters: mapState.filters,
+			metric: mapState.metric,
+			viewport: mapState.viewport,
+			addressTarget: mapState.lastAddressTarget
+		});
+		saveSavedSearches([...loadSavedSearches(), item]);
+		savingSearch = false;
+		saveName = '';
+		saveConfirmed = true;
+		if (saveConfirmTimer) clearTimeout(saveConfirmTimer);
+		saveConfirmTimer = setTimeout(() => (saveConfirmed = false), 2500);
+	}
+
+	function cancelSaveSearch() {
+		savingSearch = false;
+		saveName = '';
+	}
 
 	// Explicit, opt-in geography add. Mirrors the chip format ScopedAreaActions
 	// uses on /map so the two paths produce identical, deduped chips.
@@ -355,6 +403,39 @@
 							</section>
 						{/if}
 					{:else}
+						{#if !welcomeDismissed}
+							<div class="welcome" role="region" aria-label="Getting started">
+								<div class="welcome-head">
+									<h2>Find your federal job</h2>
+									<button type="button" class="welcome-close" onclick={dismissWelcome} aria-label="Dismiss welcome">✕</button>
+								</div>
+								<p class="welcome-sub">Jump to where you'd work, or browse everything that's open.</p>
+								<AddressSearch docked onChoose={dismissWelcome} />
+								<div class="welcome-actions">
+									<button
+										type="button"
+										class="welcome-btn"
+										onclick={() => {
+											dismissWelcome();
+											setPage('list');
+										}}
+									>
+										See postings list
+									</button>
+									<button
+										type="button"
+										class="welcome-btn"
+										onclick={() => {
+											dismissWelcome();
+											mapState.browseSheetExpanded = false;
+											mapState.browseSheetFull = false;
+										}}
+									>
+										Explore the map
+									</button>
+								</div>
+							</div>
+						{/if}
 						<SmallestAreaCard onViewList={() => setPage('list')} />
 					{/if}
 				</div>
@@ -367,6 +448,35 @@
 							</button>
 						{/if}
 					</div>
+					<!-- D.6.1 task spine: criteria live on the same surface as the
+					     results they produce. Same chip component as /map (docked). -->
+					<div class="filters-row">
+						<div class="strip-wrap"><ActiveFilterStrip docked /></div>
+						<button type="button" class="head-btn" onclick={() => (mapState.filterSheetOpen = true)}>
+							Edit
+						</button>
+						{#if saveConfirmed}
+							<span class="save-ok" role="status">✓ Saved</span>
+						{:else}
+							<button type="button" class="head-btn" onclick={startSaveSearch}>Save</button>
+						{/if}
+					</div>
+					{#if savingSearch}
+						<div class="save-row">
+							<input
+								type="text"
+								value={saveName}
+								oninput={(e) => (saveName = e.currentTarget.value)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') commitSaveSearch();
+									else if (e.key === 'Escape') cancelSaveSearch();
+								}}
+								aria-label="Name this search"
+							/>
+							<button type="button" class="head-btn primary" onclick={commitSaveSearch}>Save</button>
+							<button type="button" class="head-btn" onclick={cancelSaveSearch}>Cancel</button>
+						</div>
+					{/if}
 					<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} />
 				</div>
 			</div>
@@ -572,6 +682,66 @@
 		border-color: var(--c-accent, #7bd0f2);
 		color: var(--c-accent, #7bd0f2);
 	}
+	.filters-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0 0.75rem 0.4rem;
+	}
+	.strip-wrap {
+		flex: 1;
+		min-width: 0;
+	}
+	.save-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0 0.75rem 0.4rem;
+	}
+	.save-row input {
+		flex: 1;
+		min-width: 0;
+		box-sizing: border-box;
+		background: var(--c-bg, #06111f);
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-text, #e5edf5);
+		border-radius: 6px;
+		padding: 0.35rem 0.5rem;
+		font: inherit;
+		font-size: 12px;
+	}
+	.save-row input:focus {
+		outline: none;
+		border-color: var(--c-accent, #7bd0f2);
+	}
+	.head-btn {
+		appearance: none;
+		flex-shrink: 0;
+		border: 1px solid var(--c-border-input, #2c4870);
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text-2, #cfd9e6);
+		font: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 0.3rem 0.6rem;
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.head-btn:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.head-btn.primary {
+		border-color: var(--c-accent-dim, #4979b3);
+		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
+		color: var(--c-accent, #7bd0f2);
+	}
+	.save-ok {
+		flex-shrink: 0;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--c-success, #9be0b4);
+	}
 	.add-area {
 		appearance: none;
 		width: 100%;
@@ -595,6 +765,66 @@
 		opacity: 0.7;
 		border-color: #5e9a4a;
 		background: rgba(94, 154, 74, 0.15);
+	}
+	.welcome {
+		margin-bottom: 0.7rem;
+		padding: 0.7rem 0.75rem 0.8rem;
+		border: 1px solid var(--c-accent-dim, #4979b3);
+		border-radius: 10px;
+		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.1));
+	}
+	.welcome-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+	.welcome-head h2 {
+		margin: 0;
+		font-size: 16px;
+		color: var(--c-text, #e5edf5);
+	}
+	.welcome-close {
+		appearance: none;
+		border: none;
+		background: none;
+		color: var(--c-muted, #94a3b8);
+		font-size: 14px;
+		cursor: pointer;
+		padding: 0.15rem 0.35rem;
+		border-radius: 4px;
+	}
+	.welcome-close:hover {
+		color: var(--c-text, #e5edf5);
+		background: rgba(255, 255, 255, 0.07);
+	}
+	.welcome-sub {
+		margin: 0.25rem 0 0.6rem;
+		font-size: 12px;
+		color: var(--c-text-2, #cfd9e6);
+		line-height: 1.45;
+	}
+	.welcome-actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.6rem;
+	}
+	.welcome-btn {
+		appearance: none;
+		flex: 1;
+		border: 1px solid var(--c-border-input, #2c4870);
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text-2, #cfd9e6);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		padding: 0.45rem;
+		border-radius: 8px;
+		cursor: pointer;
+	}
+	.welcome-btn:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
 	}
 	.generic h2 {
 		margin: 0 0 0.6rem;

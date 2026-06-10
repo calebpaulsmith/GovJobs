@@ -63,6 +63,10 @@ class MapState {
 	theme = $state<'light' | 'dark'>('dark');
 	// D.5.17: compensation/COL comparator drawer.
 	compareOpen = $state<boolean>(false);
+	// D.6.3 (ADR-0035): one-shot seed for the comparator when opened from a
+	// JobCard ("Compare pay" action). Consumed and cleared by the comparator;
+	// its inputs stay user-editable afterwards.
+	compareSeed = $state<{ grade?: string; localityCode?: string } | null>(null);
 	// Browse map: left-edge filter sheet (shares FilterFields with /map).
 	filterSheetOpen = $state<boolean>(false);
 	// Browse map: bottom sheet (Here area card ↔ Postings list).

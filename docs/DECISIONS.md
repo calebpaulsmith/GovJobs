@@ -632,3 +632,23 @@ The previous behavior — universal table lookup against `pay_scales` keyed by `
 6. Is the Phase 13 / Phase 14 sequencing (FWS, then Title 38) still right, or does the data argue for Title 38 first given VM is the 4th-largest plan in the live audit?
 
 **Consequences (revised).** Recording this ADR has three effects today and zero implementation effects until the operator schedules work. (1) The no-widen rule in item 4 is a code-review guard that prevents the most likely regression — someone "just adding a few rows" to `pay_scales` for FWS or Title 38. (2) Future work on pay rendering, locality scoping, and the Locality-Pinned View shares a single taxonomy, so we don't end up with three slightly-different implementations. (3) The audit query (`SELECT pay_plan, COUNT(*) FROM jobs GROUP BY pay_plan`) becomes a recurring admin-page sanity check and a freshness signal for the Open Questions above — as USAJOBS coverage broadens, the distribution will shift and the prioritization may change. No code, schema, or UI changes from this ADR; rule 10 in CLAUDE.md is reframed in parallel to clarify that the per-plan rendering is target direction, not current behavior, while the no-widen guard binds today.
+
+## ADR-0035 — Mobile cohesion: Browse is the single product surface
+Date: 2026-06-10
+Status: Accepted
+Amends: ADR-0033 (Browse-first mosaic) — extends, does not contradict.
+
+**Context.** Operator review (2026-06-10): "the overall experience on mobile just isn't super cohesive." Diagnosis confirmed against the mounted component sets: `/browse` (the default screen) mounts only Map + FilterSheet + BrowseSheet + SavedDrawer, while address/ZIP search, the save-current-search entry point, Pay Compare, the metric switcher, and the profile drawer exist only on `/map`. A mobile user on the default screen cannot type a ZIP, save a search, or compare pay. The core loop (set criteria → see results → open a job → save → return) is spread across three disconnected surfaces with no on-screen link between active filters and the results they produce, and a first-time visitor gets a map of dots with no starting point.
+
+**Decision.**
+
+1. **Browse is the canonical product surface.** New job-seeker-facing capabilities land on `/browse` first. `/map` ("Map only") remains as the desktop/analyst surface; nothing is removed from it. Capabilities are **ported by reuse, not duplicated** — the same component renders in both modes wherever possible (a `docked` prop switches off the `/map` layout-slot positioning so a component can live inside a Browse surface).
+2. **The bottom sheet is the task spine.** The Postings panel header carries the active-filter chip strip (docked `ActiveFilterStrip`), an **Edit** button opening the FilterSheet, and a **Save search** button (inline name input → `createSavedSearch`, appears in SavedTab's Job Lists). Criteria and results are visible on the same surface; the chip strip is the same component `/map` uses, so chip semantics never fork.
+3. **Address/ZIP search is reachable from Browse.** A "Go to" pill next to the Filters FAB toggles the existing `AddressSearch` (docked) in the top-left column. Same geocode chain (Mapbox → Nominatim → offline ZIP centroids); result stays a transient pin per invariant #3.
+4. **Pay Compare is contextual.** `CompensationComparator` mounts on `/browse`; JobCard gains a "Compare pay" action that opens it seeded from the posting (grade + locality) via `mapState.compareSeed`. The comparator's own inputs remain editable after seeding; the seed is consumed once (cleared under `untrack` per the Svelte 5 reactivity rule).
+5. **First-run welcome card.** When nothing is selected and the flag `fedfinder.public_map.browse_welcome.v1` is unset, the Here panel leads with a dismissible card: address/ZIP input (reused docked `AddressSearch`), "See postings list", "Explore the map". Engaging with any action dismisses it.
+6. **Analyst tooling stays on `/map`.** The metric switcher, choropleth legend, and freshness panel are not ported; they answer "where is hiring happening" (analysis), not "find me a job" (the Browse loop).
+
+**Explicitly deferred** (operator declined or out of scope): an "Applied" mark on JobCard (declined 2026-06-10); renaming "Job Lists"; richer comparator prefill (current city memory); any account/sync surface.
+
+**Consequences.** Browse reaches feature parity for the job-seeker loop without forked components; `/map`-only duplication (SavedSearchMenu vs SavedTab overlap) stops growing because new entry points target the shared stores. Every new `$effect` introduced by this work must follow the CLAUDE.md `untrack` rule (reads + writes on the same `$state` proxy). Roadmap tracking: Phase D.6 in `docs/ROADMAP.md`.
