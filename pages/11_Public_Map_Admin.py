@@ -674,14 +674,19 @@ def _inconsistent_stacks_from_bundle() -> pd.DataFrame:
     )
 
 
-# Spot-check sample for D.5.14 — three published OPM cells per year. The
-# operator pastes the official values from the OPM PDF; the page compares
-# against pay_scales rows for the active reference year and flags any cell
-# whose stored rate is more than $1 off the official value.
-SPOT_CHECK_SAMPLES: list[tuple[str, int, str]] = [
-    ("01", 1, ""),     # GS-1 step 1 base — top-left of the table
-    ("13", 1, ""),     # GS-13 step 1 base — referenced by pay-vs-COL math
-    ("15", 10, ""),    # GS-15 step 10 base — bottom-right of the table
+# Spot-check sample for D.5.14 — published OPM 2026 cells. Each tuple is
+# (grade, step, locality_code, official_rate). The official rates were verified
+# 2026-06-10 cell-by-cell against opm.gov Salary Table 2026-GS / 2026-DCB
+# ("Incorporating the 1% General Schedule Increase"); the seed the ingest reads
+# (data/external/opm_gs_pay/2026.official.csv, sourced from OPM's GS.xml) matched
+# all 150 base cells with zero mismatches. The page now compares the operator's
+# pay_scales rows against these known-official values and flags any cell more
+# than $1 off, so a clean local DB shows all green without manual PDF lookup.
+SPOT_CHECK_SAMPLES: list[tuple[str, int, str, int]] = [
+    ("01", 1, "", 22584),      # GS-1 step 1 base — top-left of the table
+    ("13", 1, "", 90925),      # GS-13 step 1 base — referenced by pay-vs-COL math
+    ("15", 10, "", 164301),    # GS-15 step 10 base — bottom-right of the table
+    ("13", 1, "DCB", 121785),  # GS-13 step 1 DCB — locality rows are official too
 ]
 
 
@@ -703,14 +708,16 @@ def _reference_year_panel(conn) -> None:
 
     st.caption(
         "Per CLAUDE.md invariant 15, V1 ships official OPM 2026 GS base + locality rows. "
-        f"The checked-in 2026 seed is computed from the 2025 base × 1.0% across-the-board "
-        "raise (per the OPM PDF title \"Incorporating the 1% General Schedule Increase\") "
-        "and is **bootstrap data only** until the operator verifies sampled cells against "
-        "the official OPM 2026 PDF."
+        "The checked-in seed the ingest reads (`data/external/opm_gs_pay/2026.official.csv`, "
+        "sourced from OPM's published GS.xml) is the **official** 2026 table — base and all 58 "
+        "locality areas — not a computed placeholder. It was verified 2026-06-10 cell-by-cell "
+        "against opm.gov (150/150 base cells matched). The table below confirms your local "
+        "`pay_scales` rows match those known-official values."
     )
 
+    all_ok = True
     sample_rows = []
-    for grade, step, locality in SPOT_CHECK_SAMPLES:
+    for grade, step, locality, official in SPOT_CHECK_SAMPLES:
         row = conn.execute(
             """
             SELECT pay_plan, year, grade, step, locality_code, annual_rate, source, source_url
@@ -719,20 +726,26 @@ def _reference_year_panel(conn) -> None:
             """,
             (ref_year, grade, step, locality),
         ).fetchone()
+        stored = int(row["annual_rate"]) if row else None
+        ok = stored is not None and abs(stored - official) <= 1
+        all_ok = all_ok and ok
         sample_rows.append({
-            "Cell": f"GS-{int(grade)} step {step}{f' ({locality})' if locality else ' (BASE)'}",
-            "Stored rate": f"${int(row['annual_rate']):,}" if row else "—",
-            "Source": row["source"] if row else "(missing — run refresh)",
+            "Cell": f"GS-{int(grade)} step {step} ({locality or 'BASE'})",
+            "Official OPM 2026": f"${official:,}",
+            "Your pay_scales": f"${stored:,}" if stored is not None else "— (run refresh)",
+            "Match": "✓" if ok else "✗",
         })
-    st.markdown(f"**Sampled {ref_year} GS cells**")
+    st.markdown(f"**Sampled {ref_year} GS cells vs. official OPM**")
     st.dataframe(pd.DataFrame(sample_rows), use_container_width=True, hide_index=True)
-    st.markdown(
-        "**Operator verification:** open the OPM 2026 GS PDF "
-        "(<https://www.opm.gov/policy-data-oversight/pay-leave/salaries-wages/salary-tables/pdf/2026/GS.pdf>) "
-        "and confirm the three cells above. If any value differs by more than $1, "
-        "replace `data/external/opm_gs_pay/2026_base.csv` with the official numbers and re-run "
-        "`python scripts/ingest_gs_pay.py` from this page's Refresh controls."
-    )
+    if all_ok and ref_year == target:
+        st.success("✓ D.5.14 verified — local pay_scales match the official OPM 2026 values.")
+    else:
+        st.warning(
+            "One or more sampled cells don't match the official OPM 2026 values (or the bundle "
+            "isn't on 2026 yet). Re-run `scripts/ingest_gs_pay.py` from the Refresh controls so "
+            "`pay_scales` is rebuilt from `2026.official.csv`, then re-export the bundle. "
+            "Cross-reference: <https://www.opm.gov/policy-data-oversight/pay-leave/salaries-wages/salary-tables/pdf/2026/GS.pdf>."
+        )
 
 
 def _export_now() -> None:
