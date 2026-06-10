@@ -19,12 +19,15 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { mapState } from './store.svelte';
-	import { ungeocodedJobIds } from './geo';
+	import { ungeocodedFilteredDetails } from './filters';
 	import JobList from './JobList.svelte';
 
-	// Live count for the header. Derived from the same two bundle sources the
-	// list itself uses, so the number and the rows can never disagree.
-	const count = $derived(ungeocodedJobIds(mapState.allJobDetails, mapState.allJobs).length);
+	// Live count for the header — ungeocoded postings matching the active filters
+	// (geography/radius dropped). Same helper the list and the launch button use,
+	// so the number and the rows can never disagree.
+	const count = $derived(
+		ungeocodedFilteredDetails(mapState.allJobDetails, mapState.allJobs, mapState.filters).length
+	);
 
 	let sheetEl = $state<HTMLElement | null>(null);
 
@@ -135,7 +138,7 @@
 		</div>
 		<div class="body">
 			{#if count === 0}
-				<p class="empty">Every open posting has a map location right now. Nothing to show here.</p>
+				<p class="empty">No off-map postings match your current filters. Clear a filter to widen the list.</p>
 			{:else}
 				<JobList richMode ungeocodedOnly />
 			{/if}

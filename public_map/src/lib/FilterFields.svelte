@@ -23,15 +23,16 @@
 		hiringPathLabel,
 		type FacetOption
 	} from './filterFacets';
-	import { ungeocodedJobIds } from './geo';
+	import { ungeocodedFilteredDetails } from './filters';
 	import MultiSelect from './MultiSelect.svelte';
 
-	// Open postings the map could not place (no geocodable duty station). Surfaced
-	// at the bottom of the filters as an escape hatch to the swipe-away list, so
-	// the map's blind spot stays reachable. Derived from the same two bundle
-	// sources the list reads, so the count and the rows always agree.
+	// Open postings the map could not place (no geocodable duty station), narrowed
+	// by the active filters (geography/radius dropped — they can't apply to a job
+	// with no location). Surfaced at the bottom of the filters as an escape hatch
+	// to the swipe-away list. Uses the same helper the list reads, so the count
+	// and the rows always agree.
 	const ungeocodedCount = $derived(
-		ungeocodedJobIds(mapState.allJobDetails, mapState.allJobs).length
+		ungeocodedFilteredDetails(mapState.allJobDetails, mapState.allJobs, mapState.filters).length
 	);
 
 	let agencyOptions = $state<AgencyOption[]>([]);

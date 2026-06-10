@@ -14,7 +14,7 @@
 	import { onMount } from 'svelte';
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
-	import { filterJobs, filterJobDetails } from './filters';
+	import { filterJobs, filterJobDetails, ungeocodedFilteredDetails } from './filters';
 	import { coordsByJobId, haversineMiles } from './geo';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
@@ -180,12 +180,13 @@
 	const richBase = $derived.by<Row[]>(() => {
 		if (!richMode) return [];
 		const all = Object.values(detailsIndex);
-		// Ungeocoded view: just the postings with no map marker (no coordinate
-		// in jobs.geojson, hence absent from coordsById). This is a fixed
-		// bucket — the *absence* of a mappable location is the filter — so the
-		// global filter chips and radius constraints don't apply here.
+		// Ungeocoded view: the postings with no map marker (no coordinate in
+		// jobs.geojson, hence absent from coordsById), narrowed by the active
+		// filters. Geography/radius chips are dropped inside
+		// ungeocodedFilteredDetails (a job with no mappable location can't
+		// satisfy them), but every other filter still applies.
 		const base = ungeocodedOnly
-			? all.filter((job) => !coordsById.has(String(job.id)))
+			? ungeocodedFilteredDetails(detailsIndex, allJobs, mapState.filters)
 			: filterJobDetails(all, mapState.filters, coordsById);
 		return base
 			.filter((job) => !jobProfile.isHidden(String(job.id)))

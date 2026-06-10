@@ -67,6 +67,22 @@ check(await ungeoBtn.isVisible().catch(() => false), 'filter fields show the "N 
 const btnText = (await ungeoBtn.innerText().catch(() => '')) || '';
 check(btnText.includes(String(expectedCount)), `button shows the count ${expectedCount} (saw "${btnText.replace(/\s+/g, ' ').trim()}")`);
 
+// 1b) Filters are respected: a keyword that matches nothing zeroes the count
+// (the button hides), and clearing it brings the full set back.
+await page.locator('.sheet[aria-label="Filters"] input[type="search"]').first().fill('zzqqxnomatch_filtercheck');
+await page.waitForTimeout(400);
+check(
+	(await page.locator('.sheet[aria-label="Filters"] .ungeo').count()) === 0,
+	'a no-match keyword filter narrows the ungeocoded count to 0 (button hidden)'
+);
+await page.locator('.sheet[aria-label="Filters"] input[type="search"]').first().fill('');
+await page.waitForTimeout(400);
+check(
+	await page.locator('.sheet[aria-label="Filters"] .ungeo').isVisible().catch(() => false),
+	'clearing the keyword restores the ungeocoded button'
+);
+await ungeoBtn.scrollIntoViewIfNeeded();
+
 // 2) Click it → the swipe-away sheet opens and lists the ungeocoded postings.
 await ungeoBtn.click();
 await page.waitForTimeout(400);

@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, JobDetails } from './data';
-import { normalizeRadii, radiusFromParam, radiusToParam, radiusMatch, type RadiusChip } from './geo';
+import { normalizeRadii, radiusFromParam, radiusToParam, radiusMatch, ungeocodedJobIds, type RadiusChip } from './geo';
 
 // "Posted in the last N days" choices. '' = all time (no constraint).
 export const POSTED_WITHIN_VALUES = ['1', '3', '7', '30'] as const;
@@ -479,6 +479,32 @@ export function filterJobDetails(
 ): JobDetails[] {
 	if (!hasActiveFilters(filters)) return jobs;
 	return jobs.filter((job) => matchesJobDetail(job, filters, coordsById));
+}
+
+/**
+ * The ungeocoded postings (no map marker) that match the active filters.
+ *
+ * Geography chips and radius chips are dropped: a posting with no mappable
+ * location can't satisfy a "within X of here" or "in state Y" constraint, and
+ * we genuinely don't know where it is — so location filters are meaningless
+ * here. Every other filter (keyword, agency, series, grade, pay plan, salary,
+ * remote, posted-within, hiring path) still applies, so "FEMA" narrows this
+ * list to FEMA's unmappable postings.
+ *
+ * Shared by the "N postings not on the map" button count (FilterFields) and the
+ * UngeocodedSheet's list so the number and the rows always agree.
+ */
+export function ungeocodedFilteredDetails(
+	details: Record<string, JobDetails> | null | undefined,
+	jobs: FeatureCollection | null,
+	filters: JobFilters
+): JobDetails[] {
+	if (!details) return [];
+	const ids = new Set(ungeocodedJobIds(details, jobs));
+	if (ids.size === 0) return [];
+	const ungeo = Object.values(details).filter((job) => ids.has(String(job.id)));
+	const nonGeoFilters: JobFilters = { ...filters, geographies: [], radii: [] };
+	return filterJobDetails(ungeo, nonGeoFilters);
 }
 
 function jobDetailContainsText(job: JobDetails, needle: string): boolean {
