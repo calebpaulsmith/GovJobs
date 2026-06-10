@@ -27,6 +27,7 @@ from src.public_map_export import (
     jobs_geojson,
     manifest,
     opm_state_aggregates,
+    unmatched_locations,
     posting_coverage_summary,
     series_options,
     zip_centroids_payload,
@@ -148,6 +149,51 @@ def test_geocoding_summary_counts_source_coords_separately(conn):
     assert summary["source_coords"] == 1
     assert summary["city_matches"] == 1
     assert summary["state_matches"] == 0
+
+
+def test_unmatched_locations_lists_only_ungeocodable_open_postings(conn):
+    _seed_chicago(conn)
+    # Job 1: city geocode resolves → NOT unmatched.
+    upsert_job(conn, _job(locations=[{"city": "Chicago", "state": "IL"}]))
+    # Job 2 + 3: an overseas station with no geocode and no source coords →
+    # unmatched, and they share a location string so they group with count 2.
+    for n in ("2", "3"):
+        upsert_job(
+            conn,
+            _job(
+                position_id=f"OVERSEAS-{n}",
+                announcement_number=f"OVERSEAS-{n}",
+                usajobs_control_number=f"20000000{n}",
+                location_text="Ramstein, Germany",
+                city="Ramstein",
+                state="",
+                locations=[{"city": "Ramstein", "state": "", "location_text": "Ramstein, Germany"}],
+            ),
+        )
+    # Job 4: closed posting at an ungeocodable station → excluded (open only).
+    upsert_job(
+        conn,
+        _job(
+            position_id="CLOSED-1",
+            announcement_number="CLOSED-1",
+            usajobs_control_number="200000004",
+            close_date="2000-01-01",
+            location_text="Atlantis, XX",
+            city="Atlantis",
+            state="",
+            locations=[{"city": "Atlantis", "state": "", "location_text": "Atlantis, XX"}],
+        ),
+    )
+
+    rows = unmatched_locations(conn)
+    locations = {r["location"]: r for r in rows}
+    assert "Ramstein, Germany" in locations
+    assert locations["Ramstein, Germany"]["posting_count"] == 2
+    # The geocoded Chicago job and the closed posting are not listed.
+    assert all("Chicago" not in r["location"] for r in rows)
+    assert all("Atlantis" not in r["location"] for r in rows)
+    # Sample context is populated for operator triage.
+    assert locations["Ramstein, Germany"]["sample_control_number"]
 
 
 def test_jobs_geojson_uses_city_match_when_available(conn):

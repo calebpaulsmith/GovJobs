@@ -830,6 +830,63 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def unmatched_locations(
+    conn: sqlite3.Connection, *, limit: int = 1000
+) -> list[dict[str, Any]]:
+    """List the open-posting duty stations that could not be placed on the map.
+
+    These are the ``unmatched`` rows counted by :func:`geocoding_summary`: a
+    ``job_locations`` row with no source latitude/longitude AND no city-level or
+    state-level fallback in ``locations_geocoded``. Each row carries the posting
+    title / agency / control number so the operator can see *which* postings are
+    invisible on the map and why (usually an overseas or non-standard location
+    string). Ordered by how often the same (city, state, location_text) recurs,
+    so the highest-impact fixes float to the top.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            COALESCE(NULLIF(TRIM(jl.location_text), ''),
+                     TRIM(COALESCE(jl.city, '') || ', ' || COALESCE(jl.state, ''))) AS location,
+            UPPER(TRIM(COALESCE(jl.state, ''))) AS norm_state,
+            LOWER(TRIM(COALESCE(jl.city, ''))) AS norm_city,
+            COUNT(*) AS posting_count,
+            MIN(j.title) AS sample_title,
+            MIN(j.agency) AS sample_agency,
+            MIN(j.usajobs_control_number) AS sample_control_number
+        FROM jobs j
+        JOIN job_locations jl ON jl.job_id = j.id
+        LEFT JOIN locations_geocoded city_lookup
+            ON city_lookup.city = LOWER(TRIM(COALESCE(jl.city, '')))
+            AND city_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN locations_geocoded state_lookup
+            ON state_lookup.city = ''
+            AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        WHERE j.source LIKE 'usajobs%'
+          AND (j.close_date IS NULL OR j.close_date >= date('now'))
+          AND jl.latitude IS NULL
+          AND city_lookup.lat IS NULL
+          AND state_lookup.lat IS NULL
+        GROUP BY location, norm_state, norm_city
+        ORDER BY posting_count DESC, location
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+    return [
+        {
+            "location": (row["location"] or "").strip(", ") or "(blank)",
+            "state": row["norm_state"] or "",
+            "city": row["norm_city"] or "",
+            "posting_count": int(row["posting_count"] or 0),
+            "sample_title": row["sample_title"] or "",
+            "sample_agency": row["sample_agency"] or "",
+            "sample_control_number": row["sample_control_number"] or "",
+        }
+        for row in rows
+    ]
+
+
 def data_sources_freshness(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Per-source freshness map for the public site footer.
 

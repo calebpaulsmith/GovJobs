@@ -2,12 +2,44 @@
 	import { geocodeAddress, type GeocodeResult } from './geocode';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { mapState } from './store.svelte';
+	import { DEFAULT_RADIUS_MILES, type RadiusChip } from './geo';
 
 	// `docked` renders in normal flow inside a parent surface (Browse top-left
 	// column or the welcome card) instead of the /map 'search' layout slot.
 	// `onChoose` lets the parent react to a committed result (per ADR-0035).
-	let { docked = false, onChoose }: { docked?: boolean; onChoose?: (result: GeocodeResult) => void } =
-		$props();
+	// `commitRadius` (D.5.30) makes choosing a result drop a radius chip that
+	// filters the list/map to nearby postings; off by default so /map's "just
+	// zoom there" usage is unchanged.
+	let {
+		docked = false,
+		onChoose,
+		commitRadius = false
+	}: {
+		docked?: boolean;
+		onChoose?: (result: GeocodeResult) => void;
+		commitRadius?: boolean;
+	} = $props();
+
+	function shortLabel(label: string): string {
+		return label.split(',').slice(0, 2).join(',').trim() || label;
+	}
+
+	function addRadiusChip(result: GeocodeResult): void {
+		const chip: RadiusChip = {
+			center: [result.center[0], result.center[1]],
+			miles: DEFAULT_RADIUS_MILES,
+			label: shortLabel(result.label),
+			includeRemote: true
+		};
+		const dup = mapState.filters.radii.some(
+			(c) => c.center[0] === chip.center[0] && c.center[1] === chip.center[1]
+		);
+		if (dup) return;
+		// Reassign the whole filters object so Map.svelte's filter effect and the
+		// chip strip both see one updated reference (same pattern the chip
+		// removers use).
+		mapState.filters = { ...mapState.filters, radii: [...mapState.filters.radii, chip] };
+	}
 
 	let query = $state('');
 	let results = $state<GeocodeResult[]>([]);
@@ -36,6 +68,7 @@
 	function choose(result: GeocodeResult) {
 		mapState.addressTarget = result;
 		mapState.lastAddressTarget = result;
+		if (commitRadius) addRadiusChip(result);
 		results = [];
 		message = '';
 		query = result.label;

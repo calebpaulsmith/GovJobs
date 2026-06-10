@@ -748,6 +748,67 @@ def _reference_year_panel(conn) -> None:
         )
 
 
+def _unmatched_locations_panel(conn) -> None:
+    """List open-posting duty stations the geocoder could not place on the map.
+
+    These are the manifest's ``geocoding.unmatched`` rows — postings that are
+    invisible on the public map because they have no source lat/lon and no
+    city/state fallback. Surfacing them lets the operator add the recurring ones
+    to ``locations_geocoded`` (or accept that overseas / "negotiable" stations
+    have no US coordinate).
+    """
+    from src.public_map_export import geocoding_summary, unmatched_locations
+
+    summary = geocoding_summary(conn)
+    unmatched = int(summary.get("unmatched", 0))
+    total = int(summary.get("total", 0))
+    pct = (unmatched / total * 100) if total else 0.0
+    st.caption(
+        f"{unmatched:,} of {total:,} open-posting duty-station rows "
+        f"({pct:.2f}%) have no mappable coordinate — no source lat/lon and no "
+        "city/state fallback in `locations_geocoded` — so these postings do not "
+        "appear on the public map. Grouped by location string, most postings first."
+    )
+    rows = unmatched_locations(conn, limit=2000)
+    if not rows:
+        st.success(
+            "Every open posting's duty station resolves to a coordinate. "
+            "Nothing ungeocoded."
+        )
+        return
+    df = pd.DataFrame(rows)[
+        [
+            "location",
+            "state",
+            "posting_count",
+            "sample_title",
+            "sample_agency",
+            "sample_control_number",
+        ]
+    ].rename(
+        columns={
+            "location": "Location",
+            "state": "State",
+            "posting_count": "Open postings",
+            "sample_title": "Example title",
+            "sample_agency": "Example agency",
+            "sample_control_number": "Example control #",
+        }
+    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Download ungeocoded locations (CSV)",
+        df.to_csv(index=False).encode("utf-8"),
+        file_name="ungeocoded_locations.csv",
+        mime="text/csv",
+    )
+    st.caption(
+        "To fix a recurring one, add a centroid for its (city, state) via "
+        "`scripts/geocode_locations.py`, then re-export. Overseas, shipboard, and "
+        "'location negotiable' stations legitimately have no US coordinate."
+    )
+
+
 def _export_now() -> None:
     if st.button("Export public map bundle now"):
         with st.spinner("Running scripts/export_public_map.py"):
@@ -837,6 +898,9 @@ def main() -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+
+    st.subheader("Ungeocoded duty stations")
+    _unmatched_locations_panel(conn)
 
     st.subheader("Export")
     _export_now()
