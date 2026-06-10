@@ -15,6 +15,7 @@
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs, filterJobDetails } from './filters';
+	import { coordsByJobId, haversineMiles } from './geo';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
 	import { jobProfile } from './jobProfile.svelte';
@@ -39,6 +40,27 @@
 	let detailsIndex = $state<Record<string, JobDetails>>({});
 	let error = $state<string | null>(null);
 
+	// Posting-id → duty-station coords, for radius filtering + distance display.
+	// jobs_detail.json carries no coordinates, so the rich list joins against
+	// the per-location jobs.geojson features (D.5.30).
+	const coordsById = $derived(coordsByJobId(allJobs));
+	const radii = $derived(mapState.filters.radii);
+	// Distance (mi) from a posting's nearest duty station to its nearest active
+	// radius-chip center. null when there are no coords or no radius chips.
+	function distanceForId(id: string): number | null {
+		if (radii.length === 0) return null;
+		const coords = coordsById.get(id);
+		if (!coords || coords.length === 0) return null;
+		let best: number | null = null;
+		for (const coord of coords) {
+			for (const chip of radii) {
+				const d = haversineMiles(coord, chip.center);
+				if (best === null || d < best) best = d;
+			}
+		}
+		return best;
+	}
+
 	// `newest` (by open_date desc) is rich-mode only — the scoped `<select>`
 	// below does not expose it. Both modes share this union so a single
 	// sort()-switch handles every value, but the scoped UI only renders the
@@ -50,7 +72,8 @@
 		| 'salary_low'
 		| 'title'
 		| 'agency'
-		| 'newest';
+		| 'newest'
+		| 'distance';
 	let sortKey = $state<SortKey>('closing_soon');
 
 	// Scoped pager (prev/next, 20/page).
@@ -152,7 +175,7 @@
 	// size of each bucket.
 	const richBase = $derived.by<Row[]>(() => {
 		if (!richMode) return [];
-		const list = filterJobDetails(Object.values(detailsIndex), mapState.filters);
+		const list = filterJobDetails(Object.values(detailsIndex), mapState.filters, coordsById);
 		return list
 			.filter((job) => !jobProfile.isHidden(String(job.id)))
 			.map((job) => ({ id: String(job.id), detail: job, props: {} }));
@@ -264,10 +287,42 @@
 				return list.sort((a, b) => agencyOf(a).localeCompare(agencyOf(b)));
 			case 'newest':
 				return list.sort((a, b) => openDateOf(b) - openDateOf(a));
+			case 'distance':
+				return list.sort(
+					(a, b) =>
+						(distanceForId(a.id) ?? Number.POSITIVE_INFINITY) -
+						(distanceForId(b.id) ?? Number.POSITIVE_INFINITY)
+				);
 			default:
 				return list;
 		}
 	});
+
+	// Header counter when radius chips are active (both modes): how many of the
+	// matched postings are within the radius vs. included as anywhere-remote.
+	const radiusSummary = $derived.by(() => {
+		if (radii.length === 0) return null;
+		let within = 0;
+		let remoteOnly = 0;
+		for (const row of rows) {
+			const inRadius = distanceForId(row.id) !== null;
+			if (inRadius) within += 1;
+			else if (String(row.detail?.remote_status ?? row.props.remote_status ?? '').toLowerCase().includes('remote'))
+				remoteOnly += 1;
+		}
+		// One chip → "within 50 mi of Chicago"; multiple → "within range".
+		const where = radii.length === 1 ? `${radii[0].miles} mi of ${radii[0].label}` : 'range';
+		const anyRemoteIncluded = radii.some((c) => c.includeRemote);
+		return { within, remoteOnly, where, anyRemoteIncluded };
+	});
+
+	// Show a per-row distance only when exactly one radius chip is active.
+	const showRowDistance = $derived(radii.length === 1);
+	function rowDistanceLabel(id: string): string | null {
+		if (!showRowDistance) return null;
+		const d = distanceForId(id);
+		return d === null ? null : `${Math.round(d)} mi`;
+	}
 
 	const totalCount = $derived(sorted.length);
 
@@ -380,6 +435,7 @@
 								<option value="title">Title A–Z</option>
 								<option value="agency">Agency A–Z</option>
 								<option value="newest">Newest</option>
+								{#if radii.length >= 1}<option value="distance">Nearest</option>{/if}
 							</select>
 						</label>
 					</div>
@@ -427,6 +483,7 @@
 								<option value="title">Title A–Z</option>
 								<option value="agency">Agency A–Z</option>
 								<option value="newest">Newest</option>
+								{#if radii.length >= 1}<option value="distance">Nearest</option>{/if}
 							</select>
 						</label>
 					</div>
@@ -448,6 +505,12 @@
 						<span class="count">
 							<strong>{totalCount.toLocaleString()}</strong> of {Object.keys(detailsIndex).length.toLocaleString()} postings
 						</span>
+						{#if radiusSummary}
+							<span class="radius-summary">
+								{radiusSummary.within.toLocaleString()} within {radiusSummary.where}{#if radiusSummary.anyRemoteIncluded && radiusSummary.remoteOnly > 0}
+									+ {radiusSummary.remoteOnly.toLocaleString()} remote-anywhere{/if}
+							</span>
+						{/if}
 					</div>
 				</div>
 			{:else}
@@ -457,6 +520,9 @@
 							{pageStart + 1}–{pageEnd} of {totalCount.toLocaleString()}
 						{:else}
 							{totalCount.toLocaleString()} posting{totalCount === 1 ? '' : 's'}
+						{/if}
+						{#if radiusSummary}
+							<span class="radius-summary">· {radiusSummary.within.toLocaleString()} within {radiusSummary.where}{#if radiusSummary.anyRemoteIncluded && radiusSummary.remoteOnly > 0} + {radiusSummary.remoteOnly.toLocaleString()} remote{/if}</span>
 						{/if}
 					</span>
 					<label class="sort">
@@ -505,6 +571,7 @@
 								<div class="row-meta-rich">
 									<strong>{job.agency ?? job.agency_code ?? 'Agency unknown'}</strong>
 									<span>{locationLabel(job)}</span>
+									{#if rowDistanceLabel(row.id)}<span class="row-distance">{rowDistanceLabel(row.id)}</span>{/if}
 									<span>{gradeRange(job.pay_plan, job.grade_low, job.grade_high)}</span>
 									{#if job.series}<span>Series {job.series}</span>{/if}
 								</div>
@@ -557,6 +624,7 @@
 								<div class="row-meta">
 									<span>Closes {String(detail?.close_date ?? props.close_date ?? '-')}</span>
 									<span>{propString(props, 'city')}, {propString(props, 'state', '')}</span>
+									{#if rowDistanceLabel(row.id)}<span class="row-distance">{rowDistanceLabel(row.id)}</span>{/if}
 									<span>Locality {propString(props, 'locality_code')}</span>
 								</div>
 							</button>
@@ -885,6 +953,14 @@
 	}
 	.rich-toolbar .count strong {
 		color: var(--c-text, #e5edf5);
+	}
+	.radius-summary {
+		color: var(--c-accent, #7bd0f2);
+		font-weight: 600;
+	}
+	.row-distance {
+		color: var(--c-accent, #7bd0f2);
+		font-weight: 600;
 	}
 	.rich-rows {
 		padding: 0.6rem 0.75rem;

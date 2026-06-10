@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, JobDetails } from './data';
+import { normalizeRadii, radiusFromParam, radiusToParam, radiusMatch, type RadiusChip } from './geo';
 
 // "Posted in the last N days" choices. '' = all time (no constraint).
 export const POSTED_WITHIN_VALUES = ['1', '3', '7', '30'] as const;
@@ -22,6 +23,10 @@ export interface JobFilters {
 	payPlans: string[];
 	// Geography chips: "state:IL", "locality:DC", etc. Multiple chips are ORed.
 	geographies: string[];
+	// Radius chips (D.5.30): "within N mi of (lng,lat)". Per CLAUDE.md invariant
+	// #17 radius chips are geography chips — they OR with the `geographies`
+	// chips above and with each other, and the whole group ANDs with the rest.
+	radii: RadiusChip[];
 	// '' (all time) | '1' | '3' | '7' | '30' days since the posting opened.
 	postedWithin: PostedWithin;
 }
@@ -37,6 +42,7 @@ export const DEFAULT_FILTERS: JobFilters = {
 	hiringPaths: [],
 	payPlans: [],
 	geographies: [],
+	radii: [],
 	postedWithin: ''
 };
 
@@ -51,6 +57,7 @@ export const FILTER_PARAM_KEYS = [
 	'hiringPath',
 	'payPlan',
 	'geo',
+	'radius',
 	'posted'
 ] as const;
 
@@ -74,6 +81,7 @@ export function activeFilterCount(filters: JobFilters): number {
 	if (filters.hiringPaths.length > 0) count += 1;
 	if (filters.payPlans.length > 0) count += 1;
 	if (filters.geographies.length > 0) count += 1;
+	if (filters.radii.length > 0) count += 1;
 	if (filters.postedWithin) count += 1;
 	return count;
 }
@@ -157,7 +165,7 @@ export function parseHiringPaths(raw: unknown): string[] {
 
 // Loose input shape: every multi-select facet accepts the new array form, the
 // legacy single string, or the URL-style alias key (`agency`/`geo`).
-type NormalizeInput = Partial<Omit<JobFilters, 'series' | 'hiringPaths' | 'payPlans'>> & {
+type NormalizeInput = Partial<Omit<JobFilters, 'series' | 'hiringPaths' | 'payPlans' | 'radii'>> & {
 	agency?: string | string[];
 	geo?: string | string[];
 	series?: string | string[];
@@ -165,6 +173,10 @@ type NormalizeInput = Partial<Omit<JobFilters, 'series' | 'hiringPaths' | 'payPl
 	hiringPath?: string | string[];
 	payPlans?: string | string[];
 	payPlan?: string | string[];
+	// Radii accept the structured object form (saved searches) or the URL
+	// string form (`lng,lat,miles[,xr]`), or a mix.
+	radii?: unknown;
+	radius?: string | string[];
 };
 
 export function normalizeFilters(input: NormalizeInput): JobFilters {
@@ -187,8 +199,17 @@ export function normalizeFilters(input: NormalizeInput): JobFilters {
 		hiringPaths: normalizeCodeList(input.hiringPaths ?? input.hiringPath, 'lower'),
 		payPlans: normalizeCodeList(input.payPlans ?? input.payPlan, 'upper'),
 		geographies: rawGeos.filter((g) => g && g.includes(':')),
+		radii: normalizeRadiiInput(input.radii, input.radius),
 		postedWithin
 	};
+}
+
+// Radii arrive either as structured objects (saved searches, in-app state) or
+// as URL strings `lng,lat,miles[,xr]`. Coalesce both into RadiusChip[].
+function normalizeRadiiInput(structured: unknown, urlForm: string | string[] | undefined): RadiusChip[] {
+	if (Array.isArray(structured) && structured.length > 0) return normalizeRadii(structured);
+	const raw = Array.isArray(urlForm) ? urlForm : urlForm ? [urlForm] : [];
+	return normalizeRadii(raw.map(radiusFromParam).filter((c): c is RadiusChip => c !== null));
 }
 
 export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
@@ -203,6 +224,7 @@ export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 		hiringPaths: params.getAll('hiringPath'),
 		payPlans: params.getAll('payPlan'),
 		geographies: params.getAll('geo'),
+		radius: params.getAll('radius'),
 		postedWithin: (params.get('posted') as PostedWithin | null) ?? ''
 	});
 }
@@ -218,6 +240,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	params.delete('hiringPath');
 	params.delete('payPlan');
 	params.delete('geo');
+	params.delete('radius');
 	params.delete('posted');
 
 	if (filters.keyword) params.set('q', filters.keyword);
@@ -230,6 +253,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	for (const path of filters.hiringPaths) params.append('hiringPath', path);
 	for (const plan of filters.payPlans) params.append('payPlan', plan.toUpperCase());
 	for (const geo of filters.geographies) params.append('geo', geo);
+	for (const chip of filters.radii) params.append('radius', radiusToParam(chip));
 	if (filters.postedWithin) params.set('posted', filters.postedWithin);
 }
 
@@ -256,7 +280,12 @@ export function matchesJobFeature(
 
 	if (filters.keyword && !containsAnyText(combined, filters.keyword)) return false;
 	if (filters.agencies.length > 0 && !agencyMatches(combined, filters.agencies)) return false;
-	if (filters.geographies.length > 0 && !geographyMatches(combined, filters.geographies)) return false;
+	// Geography chips + radius chips are one OR group (invariant #17).
+	{
+		const geoOk = filters.geographies.length > 0 && geographyMatches(combined, filters.geographies);
+		const isRemote = String(combined.remote_status ?? '').toLowerCase().includes('remote');
+		if (!locationConstraintMet(filters, geoOk, featurePointCoords(feature), isRemote)) return false;
+	}
 	if (filters.series.length > 0 && !equalsAnyNormalized(combined.series, filters.series)) return false;
 	if (filters.payPlans.length > 0 && !equalsAnyNormalized(combined.pay_plan, filters.payPlans)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(combined.remote_status, filters.remote)) return false;
@@ -298,6 +327,33 @@ function containsAnyText(props: FilterableProps, needle: string): boolean {
 function agencyMatches(props: FilterableProps, agencies: string[]): boolean {
 	const agencyCode = String(props.agency_code ?? '').toUpperCase().trim();
 	return agencies.includes(agencyCode);
+}
+
+// The combined location constraint: when geography chips and/or radius chips
+// are present, the posting must satisfy at least one of them (OR). `geoOk` is
+// the precomputed geography result (false when there are no geography chips);
+// `coords` are the posting's duty-station coordinates; `isRemote` flags
+// anywhere-remote postings (included by any remote-including radius chip).
+function locationConstraintMet(
+	filters: JobFilters,
+	geoOk: boolean,
+	coords: Array<[number, number]>,
+	isRemote: boolean
+): boolean {
+	const hasGeo = filters.geographies.length > 0;
+	const hasRadius = filters.radii.length > 0;
+	if (!hasGeo && !hasRadius) return true;
+	if (hasGeo && geoOk) return true;
+	if (hasRadius && radiusMatch(coords, isRemote, filters.radii)) return true;
+	return false;
+}
+
+function featurePointCoords(feature: Feature): Array<[number, number]> {
+	const g = feature.geometry;
+	if (!g || g.type !== 'Point') return [];
+	const lng = Number(g.coordinates?.[0]);
+	const lat = Number(g.coordinates?.[1]);
+	return Number.isFinite(lng) && Number.isFinite(lat) ? [[lng, lat]] : [];
 }
 
 // Geography chips have the form "state:IL" or "locality:DC".
@@ -387,13 +443,25 @@ function blankToNaN(value: string): number {
 // the agency display name + the real remote_status, which the per-location
 // feature properties do not. Both paths honor the same JobFilters state.
 
-export function matchesJobDetail(job: JobDetails, filters: JobFilters): boolean {
+export function matchesJobDetail(
+	job: JobDetails,
+	filters: JobFilters,
+	coordsById?: Map<string, Array<[number, number]>>
+): boolean {
 	if (filters.keyword && !jobDetailContainsText(job, filters.keyword)) return false;
 	if (filters.agencies.length > 0) {
 		const code = String(job.agency_code ?? '').toUpperCase().trim();
 		if (!filters.agencies.includes(code)) return false;
 	}
-	if (filters.geographies.length > 0 && !jobDetailGeographyMatches(job, filters.geographies)) return false;
+	// Geography chips + radius chips are one OR group (invariant #17). The
+	// deduplicated jobs_detail.json has no coordinates, so the caller passes a
+	// posting-id → coords index built from jobs.geojson (see geo.coordsByJobId).
+	{
+		const geoOk = filters.geographies.length > 0 && jobDetailGeographyMatches(job, filters.geographies);
+		const coords = coordsById?.get(String(job.id)) ?? [];
+		const isRemote = String(job.remote_status ?? '').toLowerCase().includes('remote');
+		if (!locationConstraintMet(filters, geoOk, coords, isRemote)) return false;
+	}
 	if (filters.series.length > 0 && !equalsAnyNormalized(job.series, filters.series)) return false;
 	if (filters.payPlans.length > 0 && !equalsAnyNormalized(job.pay_plan, filters.payPlans)) return false;
 	if (filters.remote !== 'any' && !remoteMatches(job.remote_status, filters.remote)) return false;
@@ -404,9 +472,13 @@ export function matchesJobDetail(job: JobDetails, filters: JobFilters): boolean 
 	return true;
 }
 
-export function filterJobDetails(jobs: JobDetails[], filters: JobFilters): JobDetails[] {
+export function filterJobDetails(
+	jobs: JobDetails[],
+	filters: JobFilters,
+	coordsById?: Map<string, Array<[number, number]>>
+): JobDetails[] {
 	if (!hasActiveFilters(filters)) return jobs;
-	return jobs.filter((job) => matchesJobDetail(job, filters));
+	return jobs.filter((job) => matchesJobDetail(job, filters, coordsById));
 }
 
 function jobDetailContainsText(job: JobDetails, needle: string): boolean {

@@ -105,7 +105,7 @@
 			</div>
 			{#if goToOpen}
 				<div class="goto-panel">
-					<AddressSearch docked onChoose={() => (goToOpen = false)} />
+					<AddressSearch docked commitRadius onChoose={() => (goToOpen = false)} />
 				</div>
 			{/if}
 			<FilterSheet />

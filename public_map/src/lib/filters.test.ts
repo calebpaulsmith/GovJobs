@@ -228,3 +228,68 @@ describe('filterJobDetails', () => {
 		expect(result.map((j) => j.id)).toEqual([1, 3]);
 	});
 });
+
+describe('radius filtering (D.5.30)', () => {
+	// [lng, lat]
+	const NYC: [number, number] = [-74.006, 40.7128];
+	const NEAR_NYC: [number, number] = [-74.17, 40.73]; // ~9 mi from NYC
+	const LA: [number, number] = [-118.2437, 34.0522];
+
+	function coords(map: Record<string, Array<[number, number]>>): Map<string, Array<[number, number]>> {
+		return new Map(Object.entries(map));
+	}
+	function radius(center: [number, number], miles = 50, includeRemote = true) {
+		return { center, miles, label: 'Test', includeRemote };
+	}
+
+	it('keeps a posting whose duty station is in range, drops one that is not', () => {
+		const coordsById = coords({ '1': [NEAR_NYC], '2': [LA] });
+		const f = filters({ radii: [radius(NYC)] });
+		expect(matchesJobDetail(job({ id: 1, remote_status: 'onsite' }), f, coordsById)).toBe(true);
+		expect(matchesJobDetail(job({ id: 2, remote_status: 'onsite' }), f, coordsById)).toBe(false);
+	});
+
+	it('includes anywhere-remote postings by default, excludes them when the chip opts out', () => {
+		const coordsById = coords({});
+		const remoteJob = job({ id: 9, remote_status: 'remote' });
+		expect(matchesJobDetail(remoteJob, filters({ radii: [radius(NYC, 50, true)] }), coordsById)).toBe(true);
+		expect(matchesJobDetail(remoteJob, filters({ radii: [radius(NYC, 50, false)] }), coordsById)).toBe(false);
+	});
+
+	it('ORs radius with geography chips (invariant #17)', () => {
+		const coordsById = coords({ '1': [LA] });
+		// Job is in IL by state but its only coord is in LA. A radius near NYC
+		// plus a state:IL chip should still match via the geography side.
+		const inIllinois = job({ id: 1, remote_status: 'onsite', locations: [{ state: 'IL' }] });
+		const f = filters({ radii: [radius(NYC)], geographies: ['state:IL'] });
+		expect(matchesJobDetail(inIllinois, f, coordsById)).toBe(true);
+		// With only the radius chip (no geo), the LA coord is out of range → drop.
+		expect(matchesJobDetail(inIllinois, filters({ radii: [radius(NYC)] }), coordsById)).toBe(false);
+	});
+
+	it('multi-location posting matches if any duty station is in range', () => {
+		const coordsById = coords({ '1': [LA, NEAR_NYC] });
+		expect(matchesJobDetail(job({ id: 1, remote_status: 'onsite' }), filters({ radii: [radius(NYC)] }), coordsById)).toBe(true);
+	});
+
+	it('round-trips radius chips through URL params (lng,lat,miles[,xr])', () => {
+		const f = filters({ radii: [radius(NYC, 50, true), radius(LA, 25, false)] });
+		const params = new URLSearchParams();
+		writeFiltersToSearchParams(params, f);
+		expect(params.getAll('radius')).toEqual(['-74.006,40.7128,50', '-118.2437,34.0522,25,xr']);
+		const restored = filtersFromSearchParams(params);
+		expect(restored.radii).toHaveLength(2);
+		expect(restored.radii[0].center).toEqual(NYC);
+		expect(restored.radii[0].includeRemote).toBe(true);
+		expect(restored.radii[1].miles).toBe(25);
+		expect(restored.radii[1].includeRemote).toBe(false);
+	});
+
+	it('counts radii in activeFilterCount', () => {
+		const f = filters({ radii: [radius(NYC)] });
+		const params = new URLSearchParams();
+		writeFiltersToSearchParams(params, f);
+		// Sanity: a radius-only filter set is "active".
+		expect(filterJobDetails([job({ id: 1 })], f, coords({ '1': [LA] }))).toEqual([]);
+	});
+});

@@ -11,6 +11,7 @@
 	import { payPlanLabel, hiringPathLabel } from './filterFacets';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
 	import { loadAgencyOptions, type AgencyOption } from './data';
+	import { RADIUS_OPTIONS } from './geo';
 
 	// `docked` renders the strip in normal flow (inside a parent surface like
 	// the BrowseSheet header) instead of the /map chip-strip layout slot.
@@ -54,8 +55,32 @@
 			series: [...mapState.filters.series],
 			payPlans: [...mapState.filters.payPlans],
 			hiringPaths: [...mapState.filters.hiringPaths],
-			geographies: [...mapState.filters.geographies]
+			geographies: [...mapState.filters.geographies],
+			radii: [...mapState.filters.radii]
 		};
+	}
+
+	// --- radius chips (D.5.30) ---
+	// Which radius chip's distance popover is open (by index, or null).
+	let openRadius = $state<number | null>(null);
+
+	function removeRadius(index: number): void {
+		mapState.filters.radii = mapState.filters.radii.filter((_, i) => i !== index);
+		openRadius = null;
+		rebuildFilters();
+	}
+	function setRadiusMiles(index: number, miles: number): void {
+		mapState.filters.radii = mapState.filters.radii.map((chip, i) =>
+			i === index ? { ...chip, miles } : chip
+		);
+		openRadius = null;
+		rebuildFilters();
+	}
+	function toggleRadiusRemote(index: number): void {
+		mapState.filters.radii = mapState.filters.radii.map((chip, i) =>
+			i === index ? { ...chip, includeRemote: !chip.includeRemote } : chip
+		);
+		rebuildFilters();
 	}
 
 	function removeAgency(code: string): void {
@@ -85,7 +110,7 @@
 	}
 
 	function clearAll(): void {
-		mapState.filters = { ...DEFAULT_FILTERS, agencies: [], geographies: [] };
+		mapState.filters = { ...DEFAULT_FILTERS, agencies: [], geographies: [], radii: [] };
 	}
 
 	const hasFilters = $derived(activeFilterCount(mapState.filters) > 0);
@@ -128,6 +153,48 @@
 					<span class="x" aria-hidden="true">×</span>
 					<span class="sr">Remove {geographyLabel(geo)}</span>
 				</button>
+			{/each}
+
+			{#each mapState.filters.radii as chip, i (chip.center[0] + ',' + chip.center[1] + ',' + i)}
+				<span class="chip radius" class:remote-off={!chip.includeRemote}>
+					<span class="chip-tag">Within</span>
+					<button
+						type="button"
+						class="radius-dist"
+						aria-haspopup="listbox"
+						aria-expanded={openRadius === i}
+						onclick={() => (openRadius = openRadius === i ? null : i)}
+						title="Change radius"
+					>
+						{chip.miles} mi ▾
+					</button>
+					<span class="chip-label">of {chip.label}</span>
+					<button
+						type="button"
+						class="radius-remote"
+						class:on={chip.includeRemote}
+						onclick={() => toggleRadiusRemote(i)}
+						title={chip.includeRemote ? 'Anywhere-remote postings included — click to exclude' : 'Anywhere-remote postings excluded — click to include'}
+					>
+						{chip.includeRemote ? '+ remote' : 'no remote'}
+					</button>
+					<button type="button" class="radius-x" onclick={() => removeRadius(i)} aria-label="Remove radius near {chip.label}">×</button>
+					{#if openRadius === i}
+						<span class="radius-pop" role="listbox" aria-label="Radius in miles">
+							{#each RADIUS_OPTIONS as opt (opt)}
+								<button
+									type="button"
+									role="option"
+									aria-selected={chip.miles === opt}
+									class:sel={chip.miles === opt}
+									onclick={() => setRadiusMiles(i, opt)}
+								>
+									{opt} mi
+								</button>
+							{/each}
+						</span>
+					{/if}
+				</span>
 			{/each}
 
 			{#each mapState.filters.series as code (code)}
@@ -286,6 +353,94 @@
 	.chip.geo {
 		border-color: rgba(255, 184, 107, 0.5);
 		background: rgba(80, 50, 20, 0.6);
+	}
+	.chip.radius {
+		position: relative;
+		gap: 0.25rem;
+		border-color: rgba(255, 184, 107, 0.5);
+		background: rgba(80, 50, 20, 0.6);
+		cursor: default;
+	}
+	.chip.radius:hover {
+		/* The chip itself isn't the remove target (the × is), so don't flip
+		   it to the danger color the way single-action chips do. */
+		border-color: rgba(255, 184, 107, 0.5);
+		background: rgba(80, 50, 20, 0.6);
+	}
+	.radius-dist,
+	.radius-remote,
+	.radius-x {
+		appearance: none;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+		padding: 0;
+	}
+	.radius-dist {
+		font-weight: 700;
+		color: var(--c-accent, #7bd0f2);
+	}
+	.radius-remote {
+		font-size: 9.5px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		padding: 0.05rem 0.35rem;
+		border-radius: 999px;
+		border: 1px solid var(--c-border-input, #2c4870);
+		color: var(--c-muted, #94a3b8);
+	}
+	.radius-remote.on {
+		border-color: rgba(123, 208, 242, 0.55);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.radius-x {
+		width: 0.95rem;
+		height: 0.95rem;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--c-muted, #94a3b8);
+		border-radius: 999px;
+	}
+	.radius-x:hover {
+		color: var(--c-danger, #f7a0a0);
+	}
+	.radius-pop {
+		position: absolute;
+		top: calc(100% + 0.3rem);
+		left: 0;
+		z-index: 12;
+		display: flex;
+		gap: 0.2rem;
+		padding: 0.3rem;
+		border-radius: 8px;
+		background: var(--c-panel, rgba(14, 23, 38, 0.98));
+		border: 1px solid var(--c-border, #2a3a52);
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+	}
+	.radius-pop button {
+		appearance: none;
+		border: 1px solid var(--c-border-input, #2c4870);
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text-2, #cfd9e6);
+		font: inherit;
+		font-size: 10.5px;
+		font-weight: 600;
+		padding: 0.2rem 0.45rem;
+		border-radius: 999px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.radius-pop button:hover {
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
+	}
+	.radius-pop button.sel {
+		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
+		border-color: var(--c-accent, #7bd0f2);
+		color: var(--c-accent, #7bd0f2);
 	}
 	.chip-tag {
 		font-size: 9.5px;

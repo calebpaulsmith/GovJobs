@@ -3,7 +3,11 @@ import { DEFAULT_FILTERS, normalizeFilters, type JobFilters } from './filters';
 import type { AddressTarget, MapViewport } from './store.svelte';
 
 export const SAVED_SEARCHES_KEY = 'fedfinder.public_map.saved_searches.v1';
-export const SAVED_SEARCHES_SCHEMA_VERSION = 1;
+// v2 (D.5.30) adds radius chips to each saved search's filters. v1 stores are
+// still readable — they simply have no radii, and `cloneFilters` →
+// `normalizeFilters` defaults the field to []. The migration is non-destructive.
+export const SAVED_SEARCHES_SCHEMA_VERSION = 2;
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2]);
 
 export interface SavedSearch {
 	id: string;
@@ -27,7 +31,7 @@ export function loadSavedSearches(): SavedSearch[] {
 	if (!raw) return [];
 	try {
 		const parsed = JSON.parse(raw) as Partial<SavedSearchStore>;
-		if (parsed.schemaVersion !== SAVED_SEARCHES_SCHEMA_VERSION || !Array.isArray(parsed.items)) {
+		if (!SUPPORTED_SCHEMA_VERSIONS.has(Number(parsed.schemaVersion)) || !Array.isArray(parsed.items)) {
 			console.warn('[public_map] dropping incompatible saved-search storage');
 			localStorage.removeItem(SAVED_SEARCHES_KEY);
 			return [];
