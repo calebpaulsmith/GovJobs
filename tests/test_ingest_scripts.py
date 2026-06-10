@@ -718,3 +718,41 @@ def test_federal_properties_seed_csv_loads_and_has_required_columns():
     assert len(rows) >= 10, "seed should ship a representative national set"
     states = {row["state"].upper() for row in rows if row.get("state")}
     assert len(states) >= 10, "seed should span multiple states"
+
+
+def test_gs_pay_seed_is_official_opm_2026_not_placeholder():
+    """D.5.14 verification, codified.
+
+    The seed the ingest actually reads (`SEED_CSV` = 2026.official.csv) must be
+    OPM's published 2026 General Schedule, not the `2025 × 1.01` placeholder that
+    once lived in the orphan `2026_base.csv`. These four checkpoints were verified
+    2026-06-10 cell-by-cell against opm.gov Salary Table 2026-GS / 2026-DCB
+    ("Incorporating the 1% General Schedule Increase"). If a future change
+    recomputes the seed from a prior year, this fails loudly.
+    """
+    from scripts.ingest_gs_pay import SEED_CSV
+
+    assert SEED_CSV.exists(), f"missing GS pay seed at {SEED_CSV}"
+    base: dict[tuple[str, str], int] = {}
+    loc: dict[tuple[str, str, str], int] = {}
+    with SEED_CSV.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("year") != "2026":
+                continue
+            g = (row["grade"] or "").zfill(2)
+            s = (row["step"] or "").zfill(2)
+            code = (row.get("locality_code") or "").strip().upper()
+            rate = int(float(row["annual_rate"]))
+            if code:
+                loc[(g, s, code)] = rate
+            else:
+                base[(g, s)] = rate
+
+    # Official OPM 2026 base values (NOT the 23,115 / 93,138 / 168,306 placeholders).
+    assert base[("01", "01")] == 22584
+    assert base[("13", "01")] == 90925
+    assert base[("15", "10")] == 164301
+    # Locality rows are official too (DCB carries the 33.94% 2026 adjustment).
+    assert loc[("13", "01", "DCB")] == 121785
+    # Full base table present.
+    assert len([k for k in base]) == 150
