@@ -22,7 +22,11 @@
 	import QuickAdd from './QuickAdd.svelte';
 	import { FACETS, rowMatchesSearch, type FacetKey } from './jobListFacets';
 
-	let { listView, richMode = false }: { listView?: ListView; richMode?: boolean } = $props();
+	let {
+		listView,
+		richMode = false,
+		ungeocodedOnly = false
+	}: { listView?: ListView; richMode?: boolean; ungeocodedOnly?: boolean } = $props();
 
 	// Normalized row model so sort/paging/templates work the same way in both
 	// modes. Scoped rows carry the GeoJSON feature `props`; rich rows do not.
@@ -175,8 +179,15 @@
 	// size of each bucket.
 	const richBase = $derived.by<Row[]>(() => {
 		if (!richMode) return [];
-		const list = filterJobDetails(Object.values(detailsIndex), mapState.filters, coordsById);
-		return list
+		const all = Object.values(detailsIndex);
+		// Ungeocoded view: just the postings with no map marker (no coordinate
+		// in jobs.geojson, hence absent from coordsById). This is a fixed
+		// bucket — the *absence* of a mappable location is the filter — so the
+		// global filter chips and radius constraints don't apply here.
+		const base = ungeocodedOnly
+			? all.filter((job) => !coordsById.has(String(job.id)))
+			: filterJobDetails(all, mapState.filters, coordsById);
+		return base
 			.filter((job) => !jobProfile.isHidden(String(job.id)))
 			.map((job) => ({ id: String(job.id), detail: job, props: {} }));
 	});

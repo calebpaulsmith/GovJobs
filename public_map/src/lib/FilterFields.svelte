@@ -23,7 +23,16 @@
 		hiringPathLabel,
 		type FacetOption
 	} from './filterFacets';
+	import { ungeocodedJobIds } from './geo';
 	import MultiSelect from './MultiSelect.svelte';
+
+	// Open postings the map could not place (no geocodable duty station). Surfaced
+	// at the bottom of the filters as an escape hatch to the swipe-away list, so
+	// the map's blind spot stays reachable. Derived from the same two bundle
+	// sources the list reads, so the count and the rows always agree.
+	const ungeocodedCount = $derived(
+		ungeocodedJobIds(mapState.allJobDetails, mapState.allJobs).length
+	);
 
 	let agencyOptions = $state<AgencyOption[]>([]);
 	let seriesLabels = $state<Record<string, string>>({});
@@ -249,6 +258,14 @@
 			Reset
 		</button>
 	</div>
+
+	{#if ungeocodedCount > 0}
+		<button type="button" class="ungeo" onclick={() => (mapState.ungeocodedOpen = true)}>
+			<span class="ungeo-count">{ungeocodedCount.toLocaleString()}</span>
+			posting{ungeocodedCount === 1 ? '' : 's'} not on the map
+			<span class="ungeo-hint">View list →</span>
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -347,6 +364,45 @@
 	.summary button:disabled {
 		cursor: not-allowed;
 		opacity: 0.45;
+	}
+	.ungeo {
+		appearance: none;
+		width: 100%;
+		box-sizing: border-box;
+		margin-top: 0.6rem;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		border: 1px dashed var(--c-border-input, #2c4870);
+		border-radius: 8px;
+		background: var(--c-row-bg, rgba(8, 13, 22, 0.85));
+		color: var(--c-text-2, #cfd9e6);
+		padding: 0.5rem 0.65rem;
+		cursor: pointer;
+		font: inherit;
+		font-size: 12px;
+		text-align: left;
+	}
+	.ungeo:hover {
+		border-color: var(--c-accent, #7bd0f2);
+	}
+	.ungeo:focus-visible {
+		outline: 2px solid var(--c-accent, #7bd0f2);
+		outline-offset: 2px;
+	}
+	.ungeo-count {
+		background: var(--c-accent-dim, #4979b3);
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		padding: 0.05rem 0.45rem;
+		border-radius: 999px;
+	}
+	.ungeo-hint {
+		margin-left: auto;
+		color: var(--c-muted, #94a3b8);
+		font-size: 11px;
+		white-space: nowrap;
 	}
 	@media (max-width: 719px) {
 		.row {

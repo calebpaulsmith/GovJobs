@@ -78,6 +78,11 @@ class MapState {
 	browseSheetPage = $state<'here' | 'list'>('list');
 	// Browse map: Saved drawer (job lists + saved/hidden/viewed jobs).
 	savedDrawerOpen = $state<boolean>(false);
+	// Ungeocoded sheet: a swipe-away bottom sheet listing the open postings
+	// that have no map marker (no geocodable duty station). Opened from the
+	// button at the bottom of the filter fields; surfaces the map's blind
+	// spot so unmappable jobs are still reachable on the public site.
+	ungeocodedOpen = $state<boolean>(false);
 }
 
 export interface MapViewport {

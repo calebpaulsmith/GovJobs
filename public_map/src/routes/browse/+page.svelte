@@ -24,6 +24,7 @@
 	import BuildStamp from '$lib/BuildStamp.svelte';
 	import AddressSearch from '$lib/AddressSearch.svelte';
 	import CompensationComparator from '$lib/CompensationComparator.svelte';
+	import UngeocodedSheet from '$lib/UngeocodedSheet.svelte';
 
 	// D.6.2: "Go to" panel visibility. Local to this page — distinct from
 	// mapState.addressSearchOpen, which means "the results dropdown is open".
@@ -117,6 +118,9 @@
 	<!-- D.6.3: comparator drawer (z 50/51, above the sheet) opened from a
 	     JobCard's "Compare pay" action. -->
 	<CompensationComparator />
+	<!-- Swipe-away list of postings the map couldn't place (z 45/46), opened
+	     from the "N postings not on the map" button in the filter sheet. -->
+	<UngeocodedSheet />
 </div>
 
 <style>

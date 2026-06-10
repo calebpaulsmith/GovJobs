@@ -10,6 +10,7 @@
 	import AddressSearch from '$lib/AddressSearch.svelte';
 	import ProfileDrawer from '$lib/ProfileDrawer.svelte';
 	import CompensationComparator from '$lib/CompensationComparator.svelte';
+	import UngeocodedSheet from '$lib/UngeocodedSheet.svelte';
 	import { LAYOUT_SLOTS, slotAttr } from '$lib/layout';
 	import { mapState } from '$lib/store.svelte';
 	import { jobProfile } from '$lib/jobProfile.svelte';
@@ -98,6 +99,7 @@
 
 	<ProfileDrawer />
 	<CompensationComparator />
+	<UngeocodedSheet />
 
 	{#key mapState.theme}
 		<Map />

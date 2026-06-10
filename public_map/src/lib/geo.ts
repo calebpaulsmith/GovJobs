@@ -144,6 +144,26 @@ export function normalizeRadii(value: unknown): RadiusChip[] {
 	return out;
 }
 
+/**
+ * Job IDs that have no map marker — i.e. present in jobs_detail.json but absent
+ * from jobs.geojson because no duty station could be geocoded. These are the
+ * map's blind spot: open postings the user can still apply to but won't see as
+ * a marker. `details` is the jobs_detail index (keyed by stringified job id);
+ * `jobs` is the marker FeatureCollection. Returns the ids in detail-key order.
+ */
+export function ungeocodedJobIds(
+	details: Record<string, unknown> | null | undefined,
+	jobs: FeatureCollection | null
+): string[] {
+	if (!details) return [];
+	const coords = coordsByJobId(jobs);
+	const out: string[] = [];
+	for (const id of Object.keys(details)) {
+		if (!coords.has(id)) out.push(id);
+	}
+	return out;
+}
+
 function coerceChip(raw: unknown): RadiusChip | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const r = raw as Record<string, unknown>;

@@ -459,8 +459,9 @@ Operator review 2026-06-10: the mobile experience is not cohesive because `/brow
 - [x] D.6.3 — Pay Compare from JobCard: mount `CompensationComparator` on `/browse`; "Compare pay" action seeds grade + locality via `mapState.compareSeed`.
 - [x] D.6.4 — First-run welcome card in the Here panel (dismiss flag `fedfinder.public_map.browse_welcome.v1`).
 - [x] D.6.5 — SavedTab Apply restores viewport/address target like SavedSearchMenu does, so a saved search recalls the whole view, not just filters.
+- [x] D.6.6 — Ungeocoded postings reachable on the public site *(Shipped 2026-06-10; WebKit-verified.)*. Operator request: surface the jobs the map can't place (the admin-only "Ungeocoded duty stations" list from D.5.30) somewhere logical on the public map. A dashed "N postings not on the map → View list" button at the bottom of `FilterFields` opens `UngeocodedSheet.svelte`, a swipe-away bottom sheet that reuses `JobList` (`richMode` + new `ungeocodedOnly` prop) to list those postings; each row links to USAJOBS and supports Save/Hide. The set is derived client-side via `geo.ts::ungeocodedJobIds` (jobs_detail ids absent from `coordsByJobId(jobs.geojson)`) — no exporter/bundle change. Mounted on `/browse` and `/map`. Tests: `geo.test.ts` cases + `tests/ungeocoded-sheet-webkit.spec.mjs` (real WebKit: count, open, rows, swipe-dismiss, ✕, no freeze).
 
-**Exit:** from `/browse` alone a user can geocode a location, set and see filters next to the results they produce, save and recall a named search (with viewport), compare a posting's pay against where they live, and a first-time visitor gets a starting point. WebKit harness still green.
+**Exit:** from `/browse` alone a user can geocode a location, set and see filters next to the results they produce, save and recall a named search (with viewport), compare a posting's pay against where they live, see the postings the map can't place, and a first-time visitor gets a starting point. WebKit harness still green.
 
 ### Phase E — Deploy
 
