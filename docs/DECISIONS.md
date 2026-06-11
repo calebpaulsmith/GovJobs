@@ -470,7 +470,7 @@ Status: Proposed
 
 ## ADR-0033 — Browse-first mosaic, shareable view URLs, and radius search
 Date: 2026-05-10
-Status: Proposed
+Status: Accepted — shareable view URLs (D.5.29, PR #71, KV live + verified in production 2026-06-11) and radius search (D.5.30, PR #69) are shipped; the Browse-first mosaic (D.5.28) is partially shipped (all four dock tabs functional; desktop mosaic + marker↔row crossfilter still open). See ROADMAP D.5.28–D.5.30.
 
 **Context.** Operator review on 2026-05-10 produced three coupled requests:
 

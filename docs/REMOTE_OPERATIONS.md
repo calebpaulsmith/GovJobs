@@ -116,30 +116,62 @@ Validate at <https://crontab.guru>.
 
 ---
 
-## Share links — Workers KV setup (D.5.29)
+## Share links — Workers KV (D.5.29)
+
+> **Status: DONE.** The `fedfinder_share` KV namespace is created and bound to
+> the Pages project, and short links are **verified working in production
+> (2026-06-11)**. The steps below are kept as a runbook in case the namespace
+> ever needs to be recreated or rebound — you do **not** need to do them again
+> under normal operation.
 
 The "Share" button mints a short link (`https://map.thegrandpipeline.com/s/<hash>`)
-by stashing the encoded view in a Cloudflare Workers KV namespace. **One-time
-setup in the Cloudflare dashboard** — until it's done, the button silently falls
-back to copying the full long URL (sharing still works, links are just longer):
+by stashing the encoded view in a Cloudflare Workers KV namespace. If the binding
+is ever missing, the button silently falls back to copying the full long URL
+(sharing still works, links are just longer) — it never errors.
 
-1. **Create the namespace.** Dashboard → **Workers & Pages → KV → Create a
-   namespace**. Name it `fedfinder_share`.
+### One-time setup (already completed)
+
+1. **Create the namespace.** Cloudflare dashboard → KV. Depending on dashboard
+   version it lives under **Storage & Databases → KV** (newer) or **Workers &
+   Pages → KV** (older); the top search bar for "KV" finds it either way. Click
+   **Create a namespace**, name it exactly `fedfinder_share`. No keys needed —
+   the app fills it automatically.
 2. **Bind it to the Pages project.** Your Pages project → **Settings →
-   Functions → KV namespace bindings → Add binding**. Set the **Variable name**
-   to `fedfinder_share` (must match exactly — the Functions read
-   `context.env.fedfinder_share`) and select the `fedfinder_share` namespace.
-   Add the binding to **both** Production and Preview environments.
-3. **Redeploy** (any push, or **Deployments → Retry deployment**). The Functions
-   at `public_map/functions/api/share.ts` (mint) and
-   `public_map/functions/s/[hash].ts` (resolve → 302 to `/browse?…`) pick up the
-   binding automatically.
+   Bindings** (older dashboards: **Settings → Functions → KV namespace
+   bindings**) → **Add binding**. Set **Variable name** to `fedfinder_share`
+   (must match exactly — the Functions read `context.env.fedfinder_share`) and
+   select the `fedfinder_share` namespace. Add it to **both Production and
+   Preview** environments.
+3. **Redeploy** (any push to `master`, or **Deployments → ⋯ → Retry
+   deployment**) so the binding takes effect. The Functions at
+   `public_map/functions/api/share.ts` (mint) and
+   `public_map/functions/s/[hash].ts` (resolve → 302 to `/browse?…`) pick it up
+   automatically.
 
-Entries auto-expire after **90 days** (`expirationTtl`). No cleanup needed; the
-namespace stays small because identical views hash to the same key. A KV miss or
-expired hash renders a friendly "this share link has expired" page that links to
-`/browse` — never a 404. No secrets live in KV (only encoded view params), so
-the namespace needs no special access controls.
+### Verify it's working
+
+```bash
+# Mint — expect HTTP 200 and a JSON body with hash/url:
+curl -s -X POST https://map.thegrandpipeline.com/api/share \
+  -H "content-type: application/json" -d '{"params":"q=test"}'
+# Resolve — expect HTTP 302 with a Location: …/browse?q=test header:
+curl -s -o /dev/null -D - https://map.thegrandpipeline.com/s/<hash-from-above>
+```
+In the UI: set a filter on `/browse`, click **Share**, and the toast should read
+**"Share link copied"** (not "Full link copied (short link unavailable)").
+
+### Notes & troubleshooting
+
+- Entries auto-expire after **90 days** (`expirationTtl`). No cleanup needed; the
+  namespace stays small because identical views hash to the same key.
+- A KV miss / expired / malformed hash renders a friendly "this share link has
+  expired" page that links to `/browse` — never a 404.
+- No secrets live in KV (only encoded view params), so the namespace needs no
+  special access controls.
+- **If short links regress to 503 / long-URL fallback:** the cause is the
+  binding or a stale deploy, *not* a missing feature. Check the binding still
+  exists on Production with the exact variable name `fedfinder_share`, then
+  retry the latest deployment.
 
 ## What this does NOT cover
 
