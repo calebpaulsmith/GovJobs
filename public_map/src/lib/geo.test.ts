@@ -4,6 +4,7 @@ import {
 	nearestRadiusMiles,
 	radiusMatch,
 	coordsByJobId,
+	ungeocodedJobIds,
 	radiusToParam,
 	radiusFromParam,
 	normalizeRadii,
@@ -102,6 +103,31 @@ describe('coordsByJobId', () => {
 	});
 	it('null collection yields empty map', () => {
 		expect(coordsByJobId(null).size).toBe(0);
+	});
+});
+
+describe('ungeocodedJobIds', () => {
+	const markers: FeatureCollection = {
+		type: 'FeatureCollection',
+		features: [
+			{ type: 'Feature', geometry: { type: 'Point', coordinates: NYC }, properties: { id: 1 } },
+			{ type: 'Feature', geometry: { type: 'Point', coordinates: LA }, properties: { id: 2 } }
+		]
+	} as unknown as FeatureCollection;
+
+	it('returns detail ids that have no marker', () => {
+		const details = { '1': {}, '2': {}, '3': {}, '4': {} };
+		expect(ungeocodedJobIds(details, markers).sort()).toEqual(['3', '4']);
+	});
+	it('returns empty when every posting is mapped', () => {
+		expect(ungeocodedJobIds({ '1': {}, '2': {} }, markers)).toEqual([]);
+	});
+	it('treats a null/empty marker collection as everything ungeocoded', () => {
+		expect(ungeocodedJobIds({ '1': {}, '2': {} }, null).sort()).toEqual(['1', '2']);
+	});
+	it('returns empty for empty/missing details', () => {
+		expect(ungeocodedJobIds({}, markers)).toEqual([]);
+		expect(ungeocodedJobIds(null, markers)).toEqual([]);
 	});
 });
 

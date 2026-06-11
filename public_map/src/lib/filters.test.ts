@@ -3,6 +3,7 @@ import {
 	DEFAULT_FILTERS,
 	matchesJobDetail,
 	filterJobDetails,
+	ungeocodedFilteredDetails,
 	isPostedWithin,
 	normalizeFilters,
 	filtersFromSearchParams,
@@ -10,7 +11,7 @@ import {
 	parseHiringPaths,
 	type JobFilters
 } from './filters';
-import type { JobDetails } from './data';
+import type { JobDetails, FeatureCollection } from './data';
 
 function job(overrides: Partial<JobDetails> = {}): JobDetails {
 	return {
@@ -291,5 +292,54 @@ describe('radius filtering (D.5.30)', () => {
 		writeFiltersToSearchParams(params, f);
 		// Sanity: a radius-only filter set is "active".
 		expect(filterJobDetails([job({ id: 1 })], f, coords({ '1': [LA] }))).toEqual([]);
+	});
+});
+
+describe('ungeocodedFilteredDetails', () => {
+	// Markers exist for jobs 1 and 2; jobs 3 and 4 are off the map.
+	const markers: FeatureCollection = {
+		type: 'FeatureCollection',
+		features: [
+			{ type: 'Feature', geometry: { type: 'Point', coordinates: [-74, 40] }, properties: { id: 1 } },
+			{ type: 'Feature', geometry: { type: 'Point', coordinates: [-118, 34] }, properties: { id: 2 } }
+		]
+	} as unknown as FeatureCollection;
+	const details: Record<string, JobDetails> = {
+		'1': job({ id: 1, agency_code: 'HSCB' }),
+		'2': job({ id: 2, agency_code: 'HSCB' }),
+		'3': job({ id: 3, agency_code: 'HSCB', title: 'Overseas analyst' }),
+		'4': job({ id: 4, agency_code: 'NASA', title: 'Remote scientist', remote_status: 'remote' })
+	};
+
+	it('returns only the postings with no marker', () => {
+		const ids = ungeocodedFilteredDetails(details, markers, filters()).map((j) => j.id);
+		expect(ids.sort()).toEqual([3, 4]);
+	});
+
+	it('narrows the ungeocoded set by a non-geographic filter', () => {
+		const ids = ungeocodedFilteredDetails(details, markers, filters({ agencies: ['HSCB'] })).map((j) => j.id);
+		expect(ids).toEqual([3]);
+	});
+
+	it('ignores geography/radius filters (they can\'t apply to off-map jobs)', () => {
+		// A state:TX chip would exclude jobs 3 and 4 if applied, but the helper
+		// drops geography entirely — so both off-map jobs are still returned.
+		const f = filters({
+			geographies: ['state:TX'],
+			radii: [{ center: [-74.006, 40.7128], miles: 50, label: 'NYC', includeRemote: true }]
+		});
+		const ids = ungeocodedFilteredDetails(details, markers, f).map((j) => j.id);
+		expect(ids.sort()).toEqual([3, 4]);
+	});
+
+	it('still applies a non-geographic filter alongside dropped geography', () => {
+		const f = filters({ agencies: ['NASA'], geographies: ['state:TX'] });
+		const ids = ungeocodedFilteredDetails(details, markers, f).map((j) => j.id);
+		expect(ids).toEqual([4]);
+	});
+
+	it('handles null/empty inputs', () => {
+		expect(ungeocodedFilteredDetails(null, markers, filters())).toEqual([]);
+		expect(ungeocodedFilteredDetails({}, markers, filters())).toEqual([]);
 	});
 });

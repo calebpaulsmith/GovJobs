@@ -14,7 +14,7 @@
 	import { onMount } from 'svelte';
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
-	import { filterJobs, filterJobDetails } from './filters';
+	import { filterJobs, filterJobDetails, ungeocodedFilteredDetails } from './filters';
 	import { coordsByJobId, haversineMiles } from './geo';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
@@ -22,7 +22,11 @@
 	import QuickAdd from './QuickAdd.svelte';
 	import { FACETS, rowMatchesSearch, type FacetKey } from './jobListFacets';
 
-	let { listView, richMode = false }: { listView?: ListView; richMode?: boolean } = $props();
+	let {
+		listView,
+		richMode = false,
+		ungeocodedOnly = false
+	}: { listView?: ListView; richMode?: boolean; ungeocodedOnly?: boolean } = $props();
 
 	// Normalized row model so sort/paging/templates work the same way in both
 	// modes. Scoped rows carry the GeoJSON feature `props`; rich rows do not.
@@ -175,8 +179,16 @@
 	// size of each bucket.
 	const richBase = $derived.by<Row[]>(() => {
 		if (!richMode) return [];
-		const list = filterJobDetails(Object.values(detailsIndex), mapState.filters, coordsById);
-		return list
+		const all = Object.values(detailsIndex);
+		// Ungeocoded view: the postings with no map marker (no coordinate in
+		// jobs.geojson, hence absent from coordsById), narrowed by the active
+		// filters. Geography/radius chips are dropped inside
+		// ungeocodedFilteredDetails (a job with no mappable location can't
+		// satisfy them), but every other filter still applies.
+		const base = ungeocodedOnly
+			? ungeocodedFilteredDetails(detailsIndex, allJobs, mapState.filters)
+			: filterJobDetails(all, mapState.filters, coordsById);
+		return base
 			.filter((job) => !jobProfile.isHidden(String(job.id)))
 			.map((job) => ({ id: String(job.id), detail: job, props: {} }));
 	});
