@@ -73,7 +73,8 @@
 			filters: mapState.filters,
 			metric: mapState.metric,
 			viewport: mapState.viewport,
-			addressTarget: mapState.lastAddressTarget
+			addressTarget: mapState.lastAddressTarget,
+			list: mapState.list
 		});
 		saveSavedSearches([...loadSavedSearches(), item]);
 		savingSearch = false;
@@ -127,7 +128,7 @@
 			<button type="button" class="head-btn" onclick={cancelSaveSearch}>Cancel</button>
 		</div>
 	{/if}
-	<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} />
+	<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} toolbar />
 </div>
 
 <style>

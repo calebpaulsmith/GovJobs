@@ -6,9 +6,11 @@
 // purely local narrowing applied after `filterJobDetails(_, mapState.filters)`
 // already ran. See PR C of the D.5.28 Browse plan.
 //
-// TODO(D.5.29): when `mapState.list = { search, sort, facets[] }` lands for
-// URL round-trip + saved-searches v2, this module stays — only the call
-// sites move from local `$state` into shared store reads.
+// D.5.28: `mapState.list = { search, sort, facets[] }` landed — the toolbar
+// state lives in the store and round-trips through share URLs (viewState.ts)
+// and saved searches (v3). This module owns the pure model: sort keys, the
+// toolbar-state shape + defaults, and the normalizer every entry point
+// (URL decode, saved-search load, store writes) funnels through.
 
 import type { JobDetails } from './data';
 import { urgencyBadge } from './format';
@@ -98,4 +100,63 @@ export function rowMatchesSearch(
 
 	const haystack = parts.join(' ').toLowerCase();
 	return haystack.includes(needle);
+}
+
+// ── In-list toolbar state (D.5.28) ──────────────────────────────────────────
+
+export const LIST_SORT_KEYS = [
+	'closing_soon',
+	'closing_late',
+	'salary_high',
+	'salary_low',
+	'title',
+	'agency',
+	'newest',
+	'distance'
+] as const;
+
+export type ListSortKey = (typeof LIST_SORT_KEYS)[number];
+
+export interface ListToolbarState {
+	// Free-text in-list search. Narrows visible rows only — never becomes a
+	// global filter chip.
+	search: string;
+	sort: ListSortKey;
+	facets: FacetKey[];
+}
+
+export const DEFAULT_LIST_TOOLBAR: ListToolbarState = Object.freeze({
+	search: '',
+	sort: 'closing_soon',
+	facets: []
+});
+
+const FACET_KEY_SET = new Set<string>(FACETS.map((f) => f.key));
+
+export function isListSortKey(value: unknown): value is ListSortKey {
+	return typeof value === 'string' && (LIST_SORT_KEYS as readonly string[]).includes(value);
+}
+
+/**
+ * Coerce any untrusted shape (URL params, old saved-search JSON) into a valid
+ * ListToolbarState. Unknown sort keys fall back to the default; unknown facet
+ * keys are dropped; facets are deduped preserving FACETS order so the chips
+ * render deterministically.
+ */
+export function normalizeListToolbar(input: unknown): ListToolbarState {
+	const raw = (input ?? {}) as Partial<Record<keyof ListToolbarState, unknown>>;
+	const search = typeof raw.search === 'string' ? raw.search.slice(0, 200) : '';
+	const sort = isListSortKey(raw.sort) ? raw.sort : DEFAULT_LIST_TOOLBAR.sort;
+	const requested = new Set(
+		(Array.isArray(raw.facets) ? raw.facets : []).filter(
+			(k): k is FacetKey => typeof k === 'string' && FACET_KEY_SET.has(k)
+		)
+	);
+	const facets = FACETS.map((f) => f.key).filter((k) => requested.has(k));
+	return { search, sort, facets };
+}
+
+/** True when the toolbar is at its resting state (nothing to encode/save). */
+export function isDefaultListToolbar(list: ListToolbarState): boolean {
+	return list.search === '' && list.sort === DEFAULT_LIST_TOOLBAR.sort && list.facets.length === 0;
 }

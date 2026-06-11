@@ -97,6 +97,7 @@
 		void mapState.theme;
 		void mapState.selectedFeature;
 		void mapState.listScroll;
+		void mapState.list;
 		if (!browser || !hydratedFromUrl) return;
 		if (urlTimer) clearTimeout(urlTimer);
 		urlTimer = setTimeout(() => {

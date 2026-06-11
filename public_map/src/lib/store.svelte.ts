@@ -1,5 +1,6 @@
 import { DEFAULT_METRIC, type MetricKey } from './metrics';
 import { DEFAULT_FILTERS, type JobFilters } from './filters';
+import { DEFAULT_LIST_TOOLBAR, type ListToolbarState } from './jobListFacets';
 import type { FeatureCollection, JobDetails } from './data';
 
 class MapState {
@@ -96,6 +97,42 @@ class MapState {
 	// A shared `selected=<jobId>` we still need to resolve once jobs_detail has
 	// loaded — open the card if it's still live, else flip shareClosedJobId.
 	pendingSelectedJobId = $state<string | null>(null);
+	// D.5.28 crossfilter: posting id under the pointer, linking the JobList
+	// and the map markers (hover a row → its marker(s) highlight; hover a
+	// marker → the matching row highlights). Desktop-only by nature — touch
+	// has no hover — so writers gate on pointerType/hover capability and the
+	// mobile sheet pays no cost. null when nothing is hovered.
+	hoveredJobId = $state<string | null>(null);
+	// D.5.28: the rich JobList's in-list toolbar state, hoisted out of the
+	// component so it round-trips through share URLs (viewState.ts) and saved
+	// searches (v3). Never confuse with the *global* filters: the toolbar only
+	// narrows the visible rich list. `facets` is an array (not a Set) so it
+	// serializes cleanly.
+	list = $state<ListToolbarState>({ ...DEFAULT_LIST_TOOLBAR, facets: [] });
+	// D.5.28: per-area historical pulse for the current SmallestAreaCard scope
+	// plus the list-header annotation. null until a data slice (area_pulse.json
+	// or an on-demand fetch) populates it — components must render dashed
+	// placeholders / hide cleanly when absent. See ROADMAP "Data slices to
+	// investigate".
+	areaPulse = $state<AreaPulse | null>(null);
+}
+
+// D.5.28 pulse-band shape. Everything nullable: the UI renders an explicit
+// placeholder for any missing number, never a fabricated one (hard rule 2 /
+// invariant #20 spirit — no invented stats).
+export interface AreaPulse {
+	scope: string;
+	code: string;
+	openPostings: number | null;
+	newLast7d: number | null;
+	medianWindowDays: number | null;
+	closingSoon3d: number | null;
+	// Deltas vs. the trailing-90-day average, keyed by the field they describe
+	// (e.g. { newLast7d: 23 } meaning +23%).
+	deltas?: Record<string, number | null>;
+	// One-line list-header annotation ("↑ 23% above the trailing-90-day
+	// average for IL postings"). null hides the badge.
+	annotation: string | null;
 }
 
 export interface MapViewport {

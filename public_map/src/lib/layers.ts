@@ -41,8 +41,19 @@ export const LAYER_IDS = {
 	// the operator can SEE that the dot represents more than one posting.
 	// Click handler routes to openMarkerStack just like a single-marker click.
 	markersStack: 'job-markers-stack',
-	markersStackCount: 'job-markers-stack-count'
+	markersStackCount: 'job-markers-stack-count',
+	// D.5.28 crossfilter: accent ring drawn around the marker(s) of the
+	// posting currently hovered in the JobList. Filter-driven via
+	// setHoveredJobMarker(); matches nothing by default.
+	markersHover: 'job-markers-hover'
 } as const;
+
+// A filter no feature can match — the hover ring's resting state.
+const HOVER_NO_MATCH: ExpressionSpecification = [
+	'==',
+	['get', 'id'],
+	'__no_hover__'
+] as unknown as ExpressionSpecification;
 
 const FADE = (zoomIn: number, zoomOut: number, peak = 1, off = 0): ExpressionSpecification =>
 	[
@@ -349,6 +360,26 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 		}
 	});
 
+	// 6d. Crossfilter hover ring (D.5.28). Sits above markers/stacks so the
+	//     ring reads on top, below the address pin. One posting can have
+	//     several duty-station features — they all ring. The ring renders
+	//     for both single markers and stacked bubbles (the stack's top
+	//     feature carries the id the row hovered).
+	map.addLayer({
+		id: LAYER_IDS.markersHover,
+		type: 'circle',
+		source: SOURCE_IDS.jobs,
+		minzoom: 3,
+		filter: HOVER_NO_MATCH,
+		paint: {
+			'circle-color': 'rgba(0, 0, 0, 0)',
+			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 7, 9, 9, 12, 14, 14, 19, 16],
+			'circle-stroke-color': '#fbbf24',
+			'circle-stroke-width': 2.5,
+			'circle-stroke-opacity': 0.95
+		}
+	});
+
 	map.addLayer({
 		id: LAYER_IDS.addressPinHalo,
 		type: 'circle',
@@ -376,6 +407,23 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 			'circle-opacity': 0.95
 		}
 	});
+}
+
+/**
+ * Point the crossfilter hover ring at a posting id (all of its duty-station
+ * features), or reset it to match nothing when `jobId` is null. Excludes
+ * cluster aggregates — a cluster has no single posting identity.
+ */
+export function setHoveredJobMarker(map: MaplibreMap, jobId: string | null): void {
+	if (!map.getLayer(LAYER_IDS.markersHover)) return;
+	const filter: ExpressionSpecification = jobId
+		? ([
+				'all',
+				['!', ['has', 'point_count']],
+				['==', ['to-string', ['get', 'id']], jobId]
+			] as unknown as ExpressionSpecification)
+		: HOVER_NO_MATCH;
+	map.setFilter(LAYER_IDS.markersHover, filter as unknown as Parameters<MaplibreMap['setFilter']>[1]);
 }
 
 export function setStateFillMetric(map: MaplibreMap, metricKey: MetricKey): void {

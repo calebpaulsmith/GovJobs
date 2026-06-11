@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FACETS, rowMatchesSearch, type FacetKey } from './jobListFacets';
+import {
+	FACETS,
+	rowMatchesSearch,
+	normalizeListToolbar,
+	isDefaultListToolbar,
+	DEFAULT_LIST_TOOLBAR,
+	type FacetKey
+} from './jobListFacets';
 import type { JobDetails } from './data';
 
 function job(overrides: Partial<JobDetails> = {}): JobDetails {
@@ -198,5 +205,30 @@ describe('rowMatchesSearch', () => {
 		});
 		expect(rowMatchesSearch(sparse, {}, 'program')).toBe(true);
 		expect(rowMatchesSearch(sparse, {}, 'zzz')).toBe(false);
+	});
+});
+
+describe('normalizeListToolbar (D.5.28)', () => {
+	it('defaults a missing / junk shape to the resting state', () => {
+		for (const input of [undefined, null, {}, 42, 'x', { search: 9, sort: 7, facets: 'gs_family' }]) {
+			const out = normalizeListToolbar(input);
+			expect(out).toEqual({ ...DEFAULT_LIST_TOOLBAR, facets: [] });
+			expect(isDefaultListToolbar(out)).toBe(true);
+		}
+	});
+
+	it('keeps valid values, drops invalid facets, dedupes in FACETS order', () => {
+		const out = normalizeListToolbar({
+			search: 'fema',
+			sort: 'newest',
+			facets: ['closing_7d', 'bogus', 'gs_family', 'closing_7d']
+		});
+		expect(out).toEqual({ search: 'fema', sort: 'newest', facets: ['gs_family', 'closing_7d'] });
+		expect(isDefaultListToolbar(out)).toBe(false);
+	});
+
+	it('caps a runaway search string at 200 chars', () => {
+		const out = normalizeListToolbar({ search: 'x'.repeat(500) });
+		expect(out.search.length).toBe(200);
 	});
 });

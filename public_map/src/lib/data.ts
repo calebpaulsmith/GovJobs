@@ -97,6 +97,9 @@ export interface JobDetails {
 	// when the announcement-text importer hasn't pulled this posting yet.
 	summary_excerpt?: string | null;
 	qualifications_excerpt?: string | null;
+	// D.5.28: "3rd posting · 14 mo" from the latest Repost Detector run,
+	// denormalized at export. Review evidence, not certainty — render dashed.
+	historical_badge?: string | null;
 }
 
 export type PayTables = Record<string, Record<string, Record<string, Record<string, Record<string, number>>>>>;

@@ -11,7 +11,7 @@
 	  each row has working Save/Hide actions.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs, filterJobDetails, ungeocodedFilteredDetails } from './filters';
@@ -20,13 +20,31 @@
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
 	import { jobProfile } from './jobProfile.svelte';
 	import QuickAdd from './QuickAdd.svelte';
-	import { FACETS, rowMatchesSearch, type FacetKey } from './jobListFacets';
+	import {
+		FACETS,
+		rowMatchesSearch,
+		type FacetKey,
+		type ListSortKey
+	} from './jobListFacets';
 
 	let {
 		listView,
 		richMode = false,
-		ungeocodedOnly = false
-	}: { listView?: ListView; richMode?: boolean; ungeocodedOnly?: boolean } = $props();
+		ungeocodedOnly = false,
+		toolbar = false
+	}: {
+		listView?: ListView;
+		richMode?: boolean;
+		ungeocodedOnly?: boolean;
+		// Render the sticky toolbar (search / sort / facets) on a scoped list
+		// too — BrowsePostingsPanel passes this so the main Browse work
+		// surface gets the full toolbar while /map's FeaturePanel keeps the
+		// compact sort row. Rich mode always shows the toolbar.
+		toolbar?: boolean;
+	} = $props();
+
+	// Rich mode always carries the toolbar; scoped mode only when asked.
+	const showToolbar = $derived(richMode || toolbar);
 
 	// Normalized row model so sort/paging/templates work the same way in both
 	// modes. Scoped rows carry the GeoJSON feature `props`; rich rows do not.
@@ -69,16 +87,17 @@
 	// below does not expose it. Both modes share this union so a single
 	// sort()-switch handles every value, but the scoped UI only renders the
 	// pre-existing six options.
-	type SortKey =
-		| 'closing_soon'
-		| 'closing_late'
-		| 'salary_high'
-		| 'salary_low'
-		| 'title'
-		| 'agency'
-		| 'newest'
-		| 'distance';
-	let sortKey = $state<SortKey>('closing_soon');
+	type SortKey = ListSortKey;
+	// Toolbar-less scoped lists (/map FeaturePanel) keep a local sort; toolbar
+	// hosts read/write the shared mapState.list so the choice round-trips
+	// through share URLs and saved searches (D.5.28).
+	let scopedSortKey = $state<SortKey>('closing_soon');
+	const sortKey = $derived<SortKey>(showToolbar ? mapState.list.sort : scopedSortKey);
+	function setSortKey(value: string) {
+		const v = value as SortKey;
+		if (showToolbar) mapState.list = { ...mapState.list, sort: v };
+		else scopedSortKey = v;
+	}
 
 	// Scoped pager (prev/next, 20/page).
 	let page = $state(0);
@@ -87,27 +106,38 @@
 	const RICH_PAGE = 25;
 	let visibleCount = $state(RICH_PAGE);
 
-	// --- rich-mode in-list toolbar state (PR C of D.5.28) ---
-	// TODO(D.5.29): hoist to `mapState.list = { search, sort, facets[] }`
-	// for URL round-trip + saved-searches v2. Until then this state is
-	// local to the component and is reset on full page reload.
+	// --- in-list toolbar state (PR C of D.5.28, hoisted to mapState.list) ---
+	// The committed values live in `mapState.list` so they round-trip through
+	// share URLs (viewState.ts) and saved searches v3. Only the input's
+	// uncommitted draft stays local (debounced 200 ms into the store).
 	let listSearchDraft = $state('');
-	let listSearch = $state('');
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+	const listSearch = $derived(showToolbar ? mapState.list.search : '');
 	function onListSearch(value: string) {
 		listSearchDraft = value;
 		if (searchTimer) clearTimeout(searchTimer);
 		searchTimer = setTimeout(() => {
-			listSearch = listSearchDraft;
+			mapState.list = { ...mapState.list, search: listSearchDraft };
 		}, 200);
 	}
-	let activeFacets = $state<Set<FacetKey>>(new Set());
+	// Follow external store changes (URL hydration, saved-search apply) into
+	// the draft. untrack the draft comparison so typing (a draft-only change)
+	// doesn't re-run this effect and stomp the user's keystrokes; the effect
+	// only fires when the *store* value changes. Writing component-local state
+	// from a mapState-reading effect is fine — the WebKit rule is about
+	// writing back to the same store proxy.
+	$effect(() => {
+		const committed = mapState.list.search;
+		untrack(() => {
+			if (committed !== listSearchDraft) listSearchDraft = committed;
+		});
+	});
+	const activeFacets = $derived(new Set<FacetKey>(showToolbar ? mapState.list.facets : []));
 	function toggleFacet(key: FacetKey) {
-		// Re-assign so Svelte 5 sees the mutation on the $state Set.
 		const next = new Set(activeFacets);
 		if (next.has(key)) next.delete(key);
 		else next.add(key);
-		activeFacets = next;
+		mapState.list = { ...mapState.list, facets: FACETS.map((f) => f.key).filter((k) => next.has(k)) };
 	}
 
 	// Rich mode loads the deduplicated detail index into a local cache.
@@ -193,7 +223,9 @@
 			.map((job) => ({ id: String(job.id), detail: job, props: {} }));
 	});
 
-	// Per-facet counts against `richBase` — each chip shows its absolute size.
+	// Per-facet counts against the pre-toolbar base (rich or scoped) — each
+	// chip shows its absolute bucket size, independent of the other facets
+	// and of the in-list search.
 	const facetCounts = $derived.by<Record<FacetKey, number>>(() => {
 		const counts: Record<FacetKey, number> = {
 			gs_family: 0,
@@ -201,9 +233,9 @@
 			closing_7d: 0,
 			hide_viewed: 0
 		};
-		if (!richMode) return counts;
+		if (!showToolbar) return counts;
 		const ctx = { isViewed: (id: string) => jobProfile.isViewed(id) };
-		for (const row of richBase) {
+		for (const row of richMode ? richBase : scopedBase) {
 			const detail = row.detail;
 			if (!detail) continue;
 			for (const def of FACETS) {
@@ -213,25 +245,11 @@
 		return counts;
 	});
 
-	// Normalized rows for the active mode. In rich mode we apply, in order:
-	// the in-list search, then the active facets (AND across facets).
-	const rows = $derived.by<Row[]>(() => {
-		if (richMode) {
-			const search = listSearch;
-			const facets = activeFacets;
-			const ctx = { isViewed: (id: string) => jobProfile.isViewed(id) };
-			return richBase.filter((row) => {
-				const detail = row.detail;
-				if (!detail) return false;
-				if (search && !rowMatchesSearch(detail, row.props, search)) return false;
-				for (const key of facets) {
-					const def = FACETS.find((f) => f.key === key);
-					if (!def) continue;
-					if (!def.match(detail, ctx)) return false;
-				}
-				return true;
-			});
-		}
+	// Scoped-mode base: features in scope, deduped to one row per posting,
+	// before any toolbar narrowing. Split out so facet counts can be computed
+	// against it when the toolbar is enabled on a scoped list.
+	const scopedBase = $derived.by<Row[]>(() => {
+		if (richMode) return [];
 		if (!allJobs) return [];
 		// Subscribe to viewport bounds so the list re-derives on pan/zoom
 		// when in viewport scope. The read is a no-op for other scopes.
@@ -256,6 +274,38 @@
 			deduped.push({ id, detail: details[id], props });
 		}
 		return deduped;
+	});
+
+	// Toolbar narrowing applied to either base, in order: the in-list search,
+	// then the active facets (AND across facets). Rich rows always have a
+	// detail; scoped rows might not while jobs_detail streams in — when a
+	// facet is active those rows are excluded (a facet can't be evaluated
+	// without the detail, and silently passing them would overcount).
+	function applyToolbar(base: Row[]): Row[] {
+		const search = listSearch;
+		const facets = activeFacets;
+		if (!search && facets.size === 0) return base;
+		const ctx = { isViewed: (id: string) => jobProfile.isViewed(id) };
+		return base.filter((row) => {
+			if (search && !rowMatchesSearch(row.detail, row.props, search)) return false;
+			if (facets.size > 0) {
+				const detail = row.detail;
+				if (!detail) return false;
+				for (const key of facets) {
+					const def = FACETS.find((f) => f.key === key);
+					if (def && !def.match(detail, ctx)) return false;
+				}
+			}
+			return true;
+		});
+	}
+
+	const rows = $derived.by<Row[]>(() => {
+		if (richMode) {
+			// Rich rows without a detail can't render; drop them first.
+			return applyToolbar(richBase.filter((row) => row.detail));
+		}
+		return showToolbar ? applyToolbar(scopedBase) : scopedBase;
 	});
 
 	// Sort accessors read from row.detail first, falling back to row.props.
@@ -338,6 +388,13 @@
 
 	const totalCount = $derived(sorted.length);
 
+	// Toolbar counter denominator: every posting the toolbar could reach
+	// before its own narrowing — the full detail index in rich mode, the
+	// in-scope deduped set in scoped mode.
+	const toolbarDenominator = $derived(
+		richMode ? Object.keys(detailsIndex).length : scopedBase.length
+	);
+
 	// Scoped pager.
 	const totalPages = $derived(Math.max(1, Math.ceil(totalCount / PAGE_SIZE)));
 	const pageSafe = $derived(Math.min(page, Math.max(0, totalPages - 1)));
@@ -360,6 +417,20 @@
 
 	function backToRoundup() {
 		mapState.listView = null;
+	}
+
+	// --- D.5.28 crossfilter (row -> marker) --------------------------------
+	// Mouse-only by construction: we gate on pointerType so synthesized
+	// pointer events from touch taps never write hover state and the mobile
+	// sheet pays no cost. Event handlers, not effects, so the mapState writes
+	// are safe (no state_unsafe_mutation shape).
+	function rowHoverStart(e: PointerEvent, id: string) {
+		if (e.pointerType !== 'mouse') return;
+		mapState.hoveredJobId = id || null;
+	}
+	function rowHoverEnd(e: PointerEvent, id: string) {
+		if (e.pointerType !== 'mouse') return;
+		if (mapState.hoveredJobId === id) mapState.hoveredJobId = null;
 	}
 
 	function prevPage() {
@@ -423,7 +494,7 @@
 		{#if error}
 			<p class="error">{richMode ? `Couldn't load postings: ${error}` : error}</p>
 		{:else if totalCount === 0}
-			{#if richMode}
+			{#if showToolbar}
 				<!-- Render the sticky toolbar even when empty so the user can clear
 				     a too-narrow in-list search or active facet without first
 				     loosening a global chip. -->
@@ -439,7 +510,7 @@
 						/>
 						<label class="sort">
 							<span class="sort-label">Sort</span>
-							<select bind:value={sortKey} aria-label="Sort postings">
+							<select value={sortKey} onchange={(e) => setSortKey(e.currentTarget.value)} aria-label="Sort postings">
 								<option value="closing_soon">Closing soonest</option>
 								<option value="closing_late">Closing latest</option>
 								<option value="salary_high">Highest pay</option>
@@ -466,15 +537,17 @@
 						{/each}
 					</div>
 					<div class="rich-toolbar">
-						<span class="count">0 of {Object.keys(detailsIndex).length.toLocaleString()} postings</span>
+						<span class="count">0 of {toolbarDenominator.toLocaleString()} postings</span>
 					</div>
 				</div>
+			{/if}
+			{#if richMode}
 				<p class="empty">No postings match the current filter. Remove an agency or open More filters to widen it.</p>
 			{:else}
 				<p class="note">No postings match the current filters in {listView?.label}. Adjust your filter chips and try again.</p>
 			{/if}
 		{:else}
-			{#if richMode}
+			{#if showToolbar}
 				<div class="rich-sticky">
 					<div class="rich-search-row">
 						<input
@@ -487,7 +560,7 @@
 						/>
 						<label class="sort">
 							<span class="sort-label">Sort</span>
-							<select bind:value={sortKey} aria-label="Sort postings">
+							<select value={sortKey} onchange={(e) => setSortKey(e.currentTarget.value)} aria-label="Sort postings">
 								<option value="closing_soon">Closing soonest</option>
 								<option value="closing_late">Closing latest</option>
 								<option value="salary_high">Highest pay</option>
@@ -515,8 +588,14 @@
 					</div>
 					<div class="rich-toolbar">
 						<span class="count">
-							<strong>{totalCount.toLocaleString()}</strong> of {Object.keys(detailsIndex).length.toLocaleString()} postings
+							<strong>{totalCount.toLocaleString()}</strong> of {toolbarDenominator.toLocaleString()} postings
 						</span>
+						{#if mapState.areaPulse?.annotation}
+							<!-- D.5.28: one-line historical context ("↑ 23% above the
+							     trailing-90-day average…"). Hidden until a data slice
+							     populates mapState.areaPulse — no stub stats, ever. -->
+							<span class="pulse-annotation">{mapState.areaPulse.annotation}</span>
+						{/if}
 						{#if radiusSummary}
 							<span class="radius-summary">
 								{radiusSummary.within.toLocaleString()} within {radiusSummary.where}{#if radiusSummary.anyRemoteIncluded && radiusSummary.remoteOnly > 0}
@@ -539,7 +618,7 @@
 					</span>
 					<label class="sort">
 						<span class="sort-label">Sort</span>
-						<select bind:value={sortKey}>
+						<select bind:value={scopedSortKey}>
 							<option value="closing_soon">Closing soonest</option>
 							<option value="closing_late">Closing latest</option>
 							<option value="salary_high">Salary (high → low)</option>
@@ -559,7 +638,13 @@
 							{@const urg = urgencyBadge(job.close_date)}
 							{@const saved = jobProfile.isSaved(row.id)}
 							{@const viewed = jobProfile.isViewed(row.id)}
-							<li class="row-rich" class:viewed>
+							<li
+									class="row-rich"
+									class:viewed
+									class:hover-linked={mapState.hoveredJobId === row.id}
+									onpointerenter={(e) => rowHoverStart(e, row.id)}
+									onpointerleave={(e) => rowHoverEnd(e, row.id)}
+								>
 								<div class="row-head">
 									{#if job.url}
 										<a
@@ -578,6 +663,9 @@
 										<span class="urgency {urg.level}">{urg.text}</span>
 									{:else if viewed}
 										<span class="urgency viewed-tag">Viewed</span>
+									{/if}
+									{#if job.historical_badge}
+										<span class="hist-badge" title="From the local Repost Detector's latest run — review evidence, not certainty">{job.historical_badge}</span>
 									{/if}
 								</div>
 								<div class="row-meta-rich">
@@ -612,7 +700,14 @@
 						{@const detail = row.detail}
 						{@const urg = urgencyBadge(String(detail?.close_date ?? props.close_date ?? ''))}
 						<li>
-							<button type="button" class="row" onclick={() => pickJob(row)}>
+							<button
+									type="button"
+									class="row"
+									class:hover-linked={mapState.hoveredJobId === row.id}
+									onclick={() => pickJob(row)}
+									onpointerenter={(e) => rowHoverStart(e, row.id)}
+									onpointerleave={(e) => rowHoverEnd(e, row.id)}
+								>
 								<div class="row-header">
 									<div class="row-title">{detail?.title ?? propString(props, 'title', 'Loading…')}</div>
 									{#if urg.level}<span class="urgency-badge urgency-{urg.level}">{urg.text}</span>{/if}
@@ -987,6 +1082,13 @@
 	.row-rich.viewed {
 		opacity: 0.72;
 	}
+	/* D.5.28 crossfilter: hovered marker's row (and vice versa). Matches the
+	   hover ring's amber so the linkage reads as one gesture. */
+	.row-rich.hover-linked,
+	.row.hover-linked {
+		border-color: #fbbf24;
+		box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.35);
+	}
 	.row-head {
 		display: flex;
 		gap: 0.4rem;
@@ -1122,5 +1224,26 @@
 	.muted {
 		color: var(--c-muted, #94a3b8);
 		font-weight: 500;
+	}
+	/* D.5.28 list-header historical annotation (hidden while areaPulse is null). */
+	.pulse-annotation {
+		font-size: 10px;
+		color: var(--c-accent, #7bd0f2);
+		background: var(--c-accent-bg, rgba(123, 208, 242, 0.08));
+		border: 1px dashed var(--c-accent-dim, #4979b3);
+		border-radius: 999px;
+		padding: 0.1rem 0.5rem;
+	}
+	/* D.5.28 per-job historical badge (dashed = repost-detector evidence). */
+	.hist-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.05rem 0.4rem;
+		border-radius: 999px;
+		font-size: 10px;
+		font-weight: 600;
+		background: var(--c-accent-bg, rgba(123, 208, 242, 0.1));
+		border: 1px dashed var(--c-accent-dim, #4979b3);
+		color: var(--c-accent, #7bd0f2);
 	}
 </style>
