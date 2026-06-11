@@ -24,6 +24,9 @@ data/processed/**/*.csv
 data/processed/**/*.xlsx
 data/app.log
 
+# Node (root-level stray caches; the app's deps live in public_map/node_modules)
+node_modules/
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -116,6 +116,31 @@ Validate at <https://crontab.guru>.
 
 ---
 
+## Share links — Workers KV setup (D.5.29)
+
+The "Share" button mints a short link (`https://map.thegrandpipeline.com/s/<hash>`)
+by stashing the encoded view in a Cloudflare Workers KV namespace. **One-time
+setup in the Cloudflare dashboard** — until it's done, the button silently falls
+back to copying the full long URL (sharing still works, links are just longer):
+
+1. **Create the namespace.** Dashboard → **Workers & Pages → KV → Create a
+   namespace**. Name it `fedfinder_share`.
+2. **Bind it to the Pages project.** Your Pages project → **Settings →
+   Functions → KV namespace bindings → Add binding**. Set the **Variable name**
+   to `fedfinder_share` (must match exactly — the Functions read
+   `context.env.fedfinder_share`) and select the `fedfinder_share` namespace.
+   Add the binding to **both** Production and Preview environments.
+3. **Redeploy** (any push, or **Deployments → Retry deployment**). The Functions
+   at `public_map/functions/api/share.ts` (mint) and
+   `public_map/functions/s/[hash].ts` (resolve → 302 to `/browse?…`) pick up the
+   binding automatically.
+
+Entries auto-expire after **90 days** (`expirationTtl`). No cleanup needed; the
+namespace stays small because identical views hash to the same key. A KV miss or
+expired hash renders a friendly "this share link has expired" page that links to
+`/browse` — never a 404. No secrets live in KV (only encoded view params), so
+the namespace needs no special access controls.
+
 ## What this does NOT cover
 
 - HistoricJoa bulk imports (per ADR-0029, those are now on-demand via the Cloudflare Pages Function — no scheduled refresh needed for historic data).

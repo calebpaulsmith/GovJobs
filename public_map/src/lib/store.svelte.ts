@@ -83,6 +83,19 @@ class MapState {
 	// button at the bottom of the filter fields; surfaces the map's blind
 	// spot so unmappable jobs are still reachable on the public site.
 	ungeocodedOpen = $state<boolean>(false);
+	// D.5.29 (ADR-0033): shareable view URLs.
+	// `listScroll` is the Browse Postings list's current scroll fraction (0..1),
+	// captured into the share URL; `pendingListScroll` is a fraction to restore
+	// after hydrating a shared link (consumed once the list has rendered).
+	listScroll = $state<number>(0);
+	pendingListScroll = $state<number | null>(null);
+	// When a shared `selected=<jobId>` points at a posting that has since closed
+	// (absent from the open-jobs detail index), we surface a dismissable banner
+	// instead of opening a dead card. Holds the closed job id, or null.
+	shareClosedJobId = $state<string | null>(null);
+	// A shared `selected=<jobId>` we still need to resolve once jobs_detail has
+	// loaded — open the card if it's still live, else flip shareClosedJobId.
+	pendingSelectedJobId = $state<string | null>(null);
 }
 
 export interface MapViewport {

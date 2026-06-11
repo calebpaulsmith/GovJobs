@@ -12,11 +12,13 @@
 	control.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { mapState } from '$lib/store.svelte';
 	import { activeFilterCount } from '$lib/filters';
 	import { jobProfile } from '$lib/jobProfile.svelte';
+	import { readViewFromParams, writeViewToParams } from '$lib/viewState';
+	import { applySharedView, readCurrentView } from '$lib/viewSync';
 	import Map from '$lib/Map.svelte';
 	import FilterSheet from '$lib/FilterSheet.svelte';
 	import BrowseSheet from '$lib/BrowseSheet.svelte';
@@ -25,18 +27,69 @@
 	import AddressSearch from '$lib/AddressSearch.svelte';
 	import CompensationComparator from '$lib/CompensationComparator.svelte';
 	import UngeocodedSheet from '$lib/UngeocodedSheet.svelte';
+	import ShareLinkButton from '$lib/ShareLinkButton.svelte';
+	import ShareClosedBanner from '$lib/ShareClosedBanner.svelte';
 
 	// D.6.2: "Go to" panel visibility. Local to this page — distinct from
 	// mapState.addressSearchOpen, which means "the results dropdown is open".
 	let goToOpen = $state(false);
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
+	let hydratedFromUrl = false;
 
-	// Theme — read once, persist on change (so /browse themes when opened direct).
+	// Theme + full shared-view hydration (D.5.29). Read the stored theme first,
+	// then let any URL view state (filters, metric, viewport, theme, selected,
+	// scroll) override it — a shared link should land exactly as the sender saw
+	// it, taking precedence over the recipient's stored theme.
 	onMount(() => {
 		if (!browser) return;
 		const stored = localStorage.getItem(THEME_KEY);
 		if (stored === 'light' || stored === 'dark') mapState.theme = stored;
+		applySharedView(readViewFromParams(new URLSearchParams(window.location.search)));
+		hydratedFromUrl = true;
+	});
+
+	// Resolve a shared `selected=<jobId>` once jobs_detail has loaded: open the
+	// card if it's still live, otherwise flip the closed-job banner. Writes back
+	// to mapState while reading it, so the writes are wrapped in untrack
+	// (WebKit state_unsafe_mutation rule).
+	$effect(() => {
+		const id = mapState.pendingSelectedJobId;
+		const details = mapState.allJobDetails;
+		if (!id) return;
+		if (Object.keys(details).length === 0) return; // bundle not loaded yet
+		untrack(() => {
+			if (details[id]) {
+				mapState.selectedFeature = { source: 'share', label: 'Job card', properties: { id } };
+			} else {
+				mapState.shareClosedJobId = id;
+			}
+			mapState.pendingSelectedJobId = null;
+		});
+	});
+
+	// Keep the address bar in sync with the live view (debounced) so the browser
+	// URL is always a shareable long link. Reads mapState, writes history — never
+	// mapState — so there's no self-referential effect.
+	let urlTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		// Subscribe to everything the share URL encodes.
+		void mapState.filters;
+		void mapState.metric;
+		void mapState.viewport;
+		void mapState.theme;
+		void mapState.selectedFeature;
+		void mapState.listScroll;
+		if (!browser || !hydratedFromUrl) return;
+		if (urlTimer) clearTimeout(urlTimer);
+		urlTimer = setTimeout(() => {
+			const url = new URL(window.location.href);
+			writeViewToParams(url.searchParams, readCurrentView());
+			window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+		}, 300);
+	});
+	onDestroy(() => {
+		if (urlTimer) clearTimeout(urlTimer);
 	});
 	$effect(() => {
 		if (!browser) return;
@@ -63,6 +116,7 @@
 			<a class="mode" href="/map">Map only</a>
 			<span class="mode disabled" aria-disabled="true" title="Coming soon">Localities</span>
 		</nav>
+		<ShareLinkButton />
 		<button type="button" class="saved-btn" onclick={() => (mapState.savedDrawerOpen = true)} aria-label="Open saved">
 			★ Saved{#if savedCount > 0}<span class="saved-pip">{savedCount}</span>{/if}
 		</button>
@@ -121,6 +175,8 @@
 	<!-- Swipe-away list of postings the map couldn't place (z 45/46), opened
 	     from the "N postings not on the map" button in the filter sheet. -->
 	<UngeocodedSheet />
+	<!-- D.5.29: banner when a shared link's selected job has since closed. -->
+	<ShareClosedBanner />
 </div>
 
 <style>
