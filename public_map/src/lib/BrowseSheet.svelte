@@ -66,6 +66,34 @@
 		localStorage.setItem(PAGE_KEY, mapState.browseSheetPage);
 	});
 
+	// D.5.29: capture/restore the Postings list scroll for shareable URLs. The
+	// `.panel` is the scroll container; the fraction (0..1) round-trips through
+	// the share link. Capture happens in an event handler (no effect); restore
+	// runs in an effect that wraps its mapState write in untrack.
+	let postingsPanel = $state<HTMLElement | null>(null);
+	function onPostingsScroll() {
+		const el = postingsPanel;
+		if (!el) return;
+		const max = el.scrollHeight - el.clientHeight;
+		mapState.listScroll = max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
+	}
+	$effect(() => {
+		const frac = mapState.pendingListScroll;
+		const el = postingsPanel;
+		if (frac == null || !el) return;
+		// Wait two frames so the list has a chance to render its rows (and grow
+		// scrollHeight) before we restore; best-effort, degrades to top-of-list.
+		requestAnimationFrame(() =>
+			requestAnimationFrame(() => {
+				const max = el.scrollHeight - el.clientHeight;
+				if (max > 0) el.scrollTop = frac * max;
+			})
+		);
+		untrack(() => {
+			mapState.pendingListScroll = null;
+		});
+	});
+
 	// Auto-open the Here page (expanded) when a new feature/point is tapped.
 	// Tracks selection identity so switching to Postings while a feature stays
 	// selected doesn't get yanked back to Here.
@@ -439,7 +467,7 @@
 						<SmallestAreaCard onViewList={() => setPage('list')} />
 					{/if}
 				</div>
-				<div class="panel">
+				<div class="panel" bind:this={postingsPanel} onscroll={onPostingsScroll}>
 					<div class="scoped-head">
 						<p class="eyebrow">Postings in {mapState.listView?.label ?? 'this area'}</p>
 						{#if mapState.listView}
