@@ -88,7 +88,7 @@ await page.waitForTimeout(1200);
 await snap('after L1 tap');
 
 // STEP 2: tap the Filters FAB.
-const fabBox = await page.locator('.filters-fab').boundingBox();
+const fabBox = await page.locator('.filters-fab[aria-label="Open filters"]').boundingBox();
 out(`STEP 2: tap Filters FAB @ (${Math.round(fabBox.x + fabBox.width / 2)},${Math.round(fabBox.y + fabBox.height / 2)})`);
 await page.touchscreen.tap(fabBox.x + fabBox.width / 2, fabBox.y + fabBox.height / 2);
 await page.waitForTimeout(500);

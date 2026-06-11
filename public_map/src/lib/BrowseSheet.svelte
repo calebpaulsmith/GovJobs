@@ -1,17 +1,20 @@
 <!--
-	Browse map bottom sheet. Sits over the bottom of the full-screen map and
-	holds two swipeable pages:
-	  • "Here"     — the tapped area's card (State / Locality / County), a job
-	                 card for a tapped marker, or the smallest enclosing area for
-	                 the viewport when nothing is selected.
-	  • "Postings" — the shared JobList (rich mode), i.e. the working list the
-	                 filters produce and that can be saved.
+	Browse map bottom sheet (mobile / narrow viewports). Sits over the bottom
+	of the full-screen map and holds two swipeable pages:
+	  • "Here"     — BrowseHerePanel: the tapped area's card (State / Locality /
+	                 County), a job card for a tapped marker, or the smallest
+	                 enclosing area for the viewport when nothing is selected.
+	  • "Postings" — BrowsePostingsPanel: the shared JobList, i.e. the working
+	                 list the filters produce and that can be saved.
+
+	On desktop (≥ 1024 px) /browse renders the same two panels side-by-side in
+	the mosaic grid instead of mounting this sheet — the sheet owns only the
+	mobile chrome (grabber, detents, swipe pager, peek bar).
 
 	Pages switch by horizontal swipe (page dots show which page + that you can
 	swipe) or by tapping the pill labels. The last page is remembered in
 	localStorage, defaulting to Postings. Tapping any feature on the map auto-
-	opens the sheet to the Here page. "Add this area to my list" is the explicit,
-	opt-in way to narrow the working list by geography (no auto-chips on tap).
+	opens the sheet to the Here page.
 
 	Swipe vs. scroll: the pager sets `touch-action: pan-y`, so the browser keeps
 	handling vertical scroll of the active panel natively while horizontal drags
@@ -20,78 +23,21 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { browser } from '$app/environment';
-	import { mapState, type ListView } from './store.svelte';
-
-	// Default Postings-tab scope when the user hasn't tapped a polygon
-	// or cluster yet. Filters by what's currently visible on the map.
-	const DEFAULT_VIEWPORT_SCOPE: ListView = {
-		scope: 'viewport',
-		code: '',
-		label: 'this area'
-	};
-	import { LAYER_IDS } from './layers';
-	import { propString, countValue } from './format';
-	import { createSavedSearch, loadSavedSearches, saveSavedSearches } from './savedSearches';
-	import ActiveFilterStrip from './ActiveFilterStrip.svelte';
-	import AddressSearch from './AddressSearch.svelte';
-	import StateRoundup from './StateRoundup.svelte';
-	import LocalityDetail from './LocalityDetail.svelte';
-	import CountyDetail from './CountyDetail.svelte';
-	import SmallestAreaCard from './SmallestAreaCard.svelte';
-	import JobCard from './JobCard.svelte';
-	import JobList from './JobList.svelte';
-	import PointJobList from './PointJobList.svelte';
+	import { mapState } from './store.svelte';
+	import BrowseHerePanel from './BrowseHerePanel.svelte';
+	import BrowsePostingsPanel from './BrowsePostingsPanel.svelte';
 
 	const PAGE_KEY = 'fedfinder.public_map.browse_sheet_page.v1';
-	const WELCOME_KEY = 'fedfinder.public_map.browse_welcome.v1';
-
-	// D.6.4 (ADR-0035): first-run welcome card in the Here panel. Defaults to
-	// dismissed so it never flashes before onMount reads the flag.
-	let welcomeDismissed = $state(true);
-
-	function dismissWelcome() {
-		welcomeDismissed = true;
-		if (browser) localStorage.setItem(WELCOME_KEY, '1');
-	}
 
 	// Restore the last page (Postings by default), then persist on change.
 	onMount(() => {
 		if (!browser) return;
-		welcomeDismissed = localStorage.getItem(WELCOME_KEY) === '1';
 		const stored = localStorage.getItem(PAGE_KEY);
 		if (stored === 'here' || stored === 'list') mapState.browseSheetPage = stored;
 	});
 	$effect(() => {
 		if (!browser) return;
 		localStorage.setItem(PAGE_KEY, mapState.browseSheetPage);
-	});
-
-	// D.5.29: capture/restore the Postings list scroll for shareable URLs. The
-	// `.panel` is the scroll container; the fraction (0..1) round-trips through
-	// the share link. Capture happens in an event handler (no effect); restore
-	// runs in an effect that wraps its mapState write in untrack.
-	let postingsPanel = $state<HTMLElement | null>(null);
-	function onPostingsScroll() {
-		const el = postingsPanel;
-		if (!el) return;
-		const max = el.scrollHeight - el.clientHeight;
-		mapState.listScroll = max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
-	}
-	$effect(() => {
-		const frac = mapState.pendingListScroll;
-		const el = postingsPanel;
-		if (frac == null || !el) return;
-		// Wait two frames so the list has a chance to render its rows (and grow
-		// scrollHeight) before we restore; best-effort, degrades to top-of-list.
-		requestAnimationFrame(() =>
-			requestAnimationFrame(() => {
-				const max = el.scrollHeight - el.clientHeight;
-				if (max > 0) el.scrollTop = frac * max;
-			})
-		);
-		untrack(() => {
-			mapState.pendingListScroll = null;
-		});
 	});
 
 	// Auto-open the Here page (expanded) when a new feature/point is tapped.
@@ -225,57 +171,6 @@
 	// reveals content immediately instead of an empty growing box).
 	const showContent = $derived(mapState.browseSheetExpanded || dragH !== null);
 
-	// --- Save current search (D.6.1) -------------------------------------
-	// Inline name input → createSavedSearch; lands in SavedTab's Job Lists.
-	let savingSearch = $state(false);
-	let saveName = $state('');
-	let saveConfirmed = $state(false);
-	let saveConfirmTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function startSaveSearch() {
-		savingSearch = true;
-		saveConfirmed = false;
-		saveName = `Search ${new Date().toLocaleDateString()}`;
-	}
-
-	function commitSaveSearch() {
-		const item = createSavedSearch({
-			name: saveName,
-			filters: mapState.filters,
-			metric: mapState.metric,
-			viewport: mapState.viewport,
-			addressTarget: mapState.lastAddressTarget
-		});
-		saveSavedSearches([...loadSavedSearches(), item]);
-		savingSearch = false;
-		saveName = '';
-		saveConfirmed = true;
-		if (saveConfirmTimer) clearTimeout(saveConfirmTimer);
-		saveConfirmTimer = setTimeout(() => (saveConfirmed = false), 2500);
-	}
-
-	function cancelSaveSearch() {
-		savingSearch = false;
-		saveName = '';
-	}
-
-	// Explicit, opt-in geography add. Mirrors the chip format ScopedAreaActions
-	// uses on /map so the two paths produce identical, deduped chips.
-	function addAreaToList(type: 'state' | 'locality', code: string) {
-		const value = String(code ?? '').trim().toUpperCase();
-		if (!value) return;
-		const chip = `${type}:${value}`;
-		if (mapState.filters.geographies.includes(chip)) return;
-		mapState.filters = {
-			...mapState.filters,
-			geographies: [...mapState.filters.geographies, chip]
-		};
-	}
-
-	function isInList(type: 'state' | 'locality', code: string): boolean {
-		return mapState.filters.geographies.includes(`${type}:${String(code ?? '').trim().toUpperCase()}`);
-	}
-
 	// --- horizontal swipe between the two pages ---
 	let pagerEl = $state<HTMLDivElement | null>(null);
 	let dragging = $state(false);
@@ -382,130 +277,16 @@
 				style="transform: translateX(calc({pageIndex * -100}% + {dragPx}px));"
 			>
 				<div class="panel">
-					{#if mapState.jobStack && !sel}
-						<!-- {#key} forces PointJobList to fully remount when the
-						     jobStack's items count changes. The cluster path
-						     seeds an empty stack synchronously from the click
-						     handler (so this branch is selected immediately) and
-						     then the async leaves callback fills in the items.
-						     Without the key, PointJobList's `stack` prop doesn't
-						     re-evaluate when mapState.jobStack is replaced from
-						     the actor callback. Keying on items.length triggers
-						     a clean remount once the leaves arrive. -->
-						{#key mapState.jobStack.items.length}
-							<PointJobList stack={mapState.jobStack} />
-						{/key}
-					{:else if sel}
-						{#if sel.source === LAYER_IDS.markers}
-							<JobCard properties={sel.properties} />
-						{:else if sel.source === LAYER_IDS.statesFill}
-							<button
-								type="button"
-								class="add-area"
-								disabled={isInList('state', String(sel.properties.state ?? ''))}
-								onclick={() => addAreaToList('state', String(sel.properties.state ?? ''))}
-							>
-								{isInList('state', String(sel.properties.state ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
-							</button>
-							<StateRoundup properties={sel.properties} />
-						{:else if sel.source === LAYER_IDS.localitiesFill}
-							<button
-								type="button"
-								class="add-area"
-								disabled={isInList('locality', String(sel.properties.code ?? ''))}
-								onclick={() => addAreaToList('locality', String(sel.properties.code ?? ''))}
-							>
-								{isInList('locality', String(sel.properties.code ?? '')) ? '✓ In your list' : '+ Add this area to my list'}
-							</button>
-							<LocalityDetail properties={sel.properties} />
-						{:else if sel.source === LAYER_IDS.countiesOutline}
-							<CountyDetail properties={sel.properties} />
-						{:else}
-							<section class="generic">
-								<h2>{propString(sel.properties, 'name')}</h2>
-								<dl>
-									<dt>Open postings</dt><dd>{countValue(sel.properties.postings)}</dd>
-									{#if sel.properties.cbsa_code}<dt>CBSA</dt><dd>{propString(sel.properties, 'cbsa_code')}</dd>{/if}
-									{#if sel.properties.agency}<dt>Agency</dt><dd>{propString(sel.properties, 'agency')}</dd>{/if}
-								</dl>
-							</section>
-						{/if}
-					{:else}
-						{#if !welcomeDismissed}
-							<div class="welcome" role="region" aria-label="Getting started">
-								<div class="welcome-head">
-									<h2>Find your federal job</h2>
-									<button type="button" class="welcome-close" onclick={dismissWelcome} aria-label="Dismiss welcome">✕</button>
-								</div>
-								<p class="welcome-sub">Jump to where you'd work, or browse everything that's open.</p>
-								<AddressSearch docked onChoose={dismissWelcome} />
-								<div class="welcome-actions">
-									<button
-										type="button"
-										class="welcome-btn"
-										onclick={() => {
-											dismissWelcome();
-											setPage('list');
-										}}
-									>
-										See postings list
-									</button>
-									<button
-										type="button"
-										class="welcome-btn"
-										onclick={() => {
-											dismissWelcome();
-											mapState.browseSheetExpanded = false;
-											mapState.browseSheetFull = false;
-										}}
-									>
-										Explore the map
-									</button>
-								</div>
-							</div>
-						{/if}
-						<SmallestAreaCard onViewList={() => setPage('list')} />
-					{/if}
+					<BrowseHerePanel
+						onViewList={() => setPage('list')}
+						onExploreMap={() => {
+							mapState.browseSheetExpanded = false;
+							mapState.browseSheetFull = false;
+						}}
+					/>
 				</div>
-				<div class="panel" bind:this={postingsPanel} onscroll={onPostingsScroll}>
-					<div class="scoped-head">
-						<p class="eyebrow">Postings in {mapState.listView?.label ?? 'this area'}</p>
-						{#if mapState.listView}
-							<button type="button" class="clear-scope" onclick={() => (mapState.listView = null)} aria-label="Clear scope">
-								× show this area
-							</button>
-						{/if}
-					</div>
-					<!-- D.6.1 task spine: criteria live on the same surface as the
-					     results they produce. Same chip component as /map (docked). -->
-					<div class="filters-row">
-						<div class="strip-wrap"><ActiveFilterStrip docked /></div>
-						<button type="button" class="head-btn" onclick={() => (mapState.filterSheetOpen = true)}>
-							Edit
-						</button>
-						{#if saveConfirmed}
-							<span class="save-ok" role="status">✓ Saved</span>
-						{:else}
-							<button type="button" class="head-btn" onclick={startSaveSearch}>Save</button>
-						{/if}
-					</div>
-					{#if savingSearch}
-						<div class="save-row">
-							<input
-								type="text"
-								value={saveName}
-								oninput={(e) => (saveName = e.currentTarget.value)}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') commitSaveSearch();
-									else if (e.key === 'Escape') cancelSaveSearch();
-								}}
-								aria-label="Name this search"
-							/>
-							<button type="button" class="head-btn primary" onclick={commitSaveSearch}>Save</button>
-							<button type="button" class="head-btn" onclick={cancelSaveSearch}>Cancel</button>
-						</div>
-					{/if}
-					<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} />
+				<div class="panel postings-host">
+					<BrowsePostingsPanel />
 				</div>
 			</div>
 		</div>
@@ -647,8 +428,11 @@
 		color: var(--c-text-2, #cfd9e6);
 		font-size: 12px;
 	}
-	.panel:last-child {
+	.panel.postings-host {
+		/* BrowsePostingsPanel owns its own scroll container (shared with the
+		   desktop mosaic), so the sheet panel just hosts it edge-to-edge. */
 		padding: 0;
+		overflow: hidden;
 	}
 	.peek {
 		appearance: none;
@@ -676,202 +460,5 @@
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--c-accent, #7bd0f2);
-	}
-	.scoped-head {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0 0.75rem 0.4rem;
-	}
-	.scoped-head .eyebrow {
-		flex: 1;
-		margin: 0;
-		font-size: 11px;
-		color: var(--c-accent, #7bd0f2);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.clear-scope {
-		appearance: none;
-		flex-shrink: 0;
-		border: 1px solid var(--c-border-input, #2c4870);
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		color: var(--c-muted, #94a3b8);
-		font: inherit;
-		font-size: 11px;
-		padding: 0.2rem 0.55rem;
-		border-radius: 999px;
-		cursor: pointer;
-	}
-	.clear-scope:hover {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.filters-row {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0 0.75rem 0.4rem;
-	}
-	.strip-wrap {
-		flex: 1;
-		min-width: 0;
-	}
-	.save-row {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0 0.75rem 0.4rem;
-	}
-	.save-row input {
-		flex: 1;
-		min-width: 0;
-		box-sizing: border-box;
-		background: var(--c-bg, #06111f);
-		border: 1px solid var(--c-border-input, #2c4870);
-		color: var(--c-text, #e5edf5);
-		border-radius: 6px;
-		padding: 0.35rem 0.5rem;
-		font: inherit;
-		font-size: 12px;
-	}
-	.save-row input:focus {
-		outline: none;
-		border-color: var(--c-accent, #7bd0f2);
-	}
-	.head-btn {
-		appearance: none;
-		flex-shrink: 0;
-		border: 1px solid var(--c-border-input, #2c4870);
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		color: var(--c-text-2, #cfd9e6);
-		font: inherit;
-		font-size: 11px;
-		font-weight: 600;
-		padding: 0.3rem 0.6rem;
-		border-radius: 999px;
-		cursor: pointer;
-	}
-	.head-btn:hover {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.head-btn.primary {
-		border-color: var(--c-accent-dim, #4979b3);
-		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
-		color: var(--c-accent, #7bd0f2);
-	}
-	.save-ok {
-		flex-shrink: 0;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--c-success, #9be0b4);
-	}
-	.add-area {
-		appearance: none;
-		width: 100%;
-		margin-bottom: 0.6rem;
-		border: 1px solid var(--c-accent-dim, #4979b3);
-		border-radius: 8px;
-		background: var(--c-accent-bg-strong, rgba(73, 121, 179, 0.2));
-		color: var(--c-text, #e5edf5);
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		padding: 0.55rem;
-		cursor: pointer;
-	}
-	.add-area:hover:not(:disabled) {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.add-area:disabled {
-		cursor: default;
-		opacity: 0.7;
-		border-color: #5e9a4a;
-		background: rgba(94, 154, 74, 0.15);
-	}
-	.welcome {
-		margin-bottom: 0.7rem;
-		padding: 0.7rem 0.75rem 0.8rem;
-		border: 1px solid var(--c-accent-dim, #4979b3);
-		border-radius: 10px;
-		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.1));
-	}
-	.welcome-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-	}
-	.welcome-head h2 {
-		margin: 0;
-		font-size: 16px;
-		color: var(--c-text, #e5edf5);
-	}
-	.welcome-close {
-		appearance: none;
-		border: none;
-		background: none;
-		color: var(--c-muted, #94a3b8);
-		font-size: 14px;
-		cursor: pointer;
-		padding: 0.15rem 0.35rem;
-		border-radius: 4px;
-	}
-	.welcome-close:hover {
-		color: var(--c-text, #e5edf5);
-		background: rgba(255, 255, 255, 0.07);
-	}
-	.welcome-sub {
-		margin: 0.25rem 0 0.6rem;
-		font-size: 12px;
-		color: var(--c-text-2, #cfd9e6);
-		line-height: 1.45;
-	}
-	.welcome-actions {
-		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.6rem;
-	}
-	.welcome-btn {
-		appearance: none;
-		flex: 1;
-		border: 1px solid var(--c-border-input, #2c4870);
-		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
-		color: var(--c-text-2, #cfd9e6);
-		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		padding: 0.45rem;
-		border-radius: 8px;
-		cursor: pointer;
-	}
-	.welcome-btn:hover {
-		border-color: var(--c-accent, #7bd0f2);
-		color: var(--c-accent, #7bd0f2);
-	}
-	.generic h2 {
-		margin: 0 0 0.6rem;
-		font-size: 18px;
-		color: var(--c-text, #e5edf5);
-	}
-	.generic dl {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 0.4rem 0.8rem;
-		margin: 0;
-	}
-	.generic dt {
-		color: var(--c-muted, #94a3b8);
-	}
-	.generic dd {
-		margin: 0;
-		font-weight: 600;
-		text-align: right;
-		color: var(--c-text-2, #cfd9e6);
 	}
 </style>

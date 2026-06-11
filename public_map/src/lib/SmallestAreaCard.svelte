@@ -375,18 +375,22 @@
 			</button>
 		</div>
 
-		<div class="actions">
-			<!-- Deferred: "+ Save as Job List" button + provenance toast.
-			     The slot is preserved so Saved-tab work can drop in later. -->
-			<button
-				type="button"
-				class="pill-btn primary"
-				onclick={() => onViewList?.()}
-				disabled={filteredJobCount === 0}
-			>
-				{viewListLabel}
-			</button>
-		</div>
+		{#if onViewList}
+			<div class="actions">
+				<!-- Deferred: "+ Save as Job List" button + provenance toast.
+				     The slot is preserved so Saved-tab work can drop in later.
+				     Hidden when the host passes no handler (desktop mosaic —
+				     the postings list is already on screen). -->
+				<button
+					type="button"
+					class="pill-btn primary"
+					onclick={() => onViewList?.()}
+					disabled={filteredJobCount === 0}
+				>
+					{viewListLabel}
+				</button>
+			</div>
+		{/if}
 
 		{#if area.scope === 'state' && localityCodeProp && localityCodeProp !== '—'}
 			<p class="note">Locality {localityCodeProp} covers the most counties of {area.code}.</p>

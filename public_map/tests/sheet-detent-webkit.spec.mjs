@@ -57,7 +57,9 @@ const readState = () =>
 			expanded: m.browseSheetExpanded,
 			full: m.browseSheetFull,
 			page: m.browseSheetPage,
-			selSource: m.selectedFeature?.source ?? null
+			selSource: m.selectedFeature?.source ?? null,
+			stackSet: m.jobStack !== null,
+			listScope: m.listView?.scope ?? null
 		}),
 		handle
 	);
@@ -131,11 +133,23 @@ check(!s.expanded && !s.full, 'drag-down to bottom collapses and clears full');
 out('--- post-cycle reactivity ---');
 const marker = await page.evaluate(() => {
 	const m = window.__ffMap;
-	const layers = m.getStyle().layers.filter((l) => /marker|jobs/i.test(l.id)).map((l) => l.id);
+	// Individual job markers and same-coord stacks only. The old /marker|jobs/i
+	// regex also matched the cluster layers ('job-clusters'), and tapping a
+	// cluster zooms the map instead of selecting — which this check would
+	// mis-read as a freeze.
+	const layers = m
+		.getStyle()
+		.layers.filter((l) => l.id === 'job-markers' || l.id === 'job-markers-stack')
+		.map((l) => l.id);
 	const rendered = m.queryRenderedFeatures(undefined, { layers });
+	// Skip markers that project behind the collapsed bottom sheet (~3.6rem)
+	// or the masthead — a tap there hits the sheet's peek bar, not the map,
+	// and the check would mis-read that as a freeze.
+	const h = m.getCanvas().clientHeight;
 	for (const f of rendered) {
 		if (f.geometry?.type !== 'Point') continue;
 		const p = m.project(f.geometry.coordinates);
+		if (p.y > h - 80 || p.y < 60) continue;
 		return { x: Math.round(p.x), y: Math.round(p.y) };
 	}
 	return null;
@@ -148,7 +162,17 @@ if (!marker) {
 	await page.waitForTimeout(700);
 	s = await readState();
 	out('after marker tap:', JSON.stringify(s));
-	check(s.expanded && s.page === 'here', 'marker tap still drives the sheet after detent cycle (no freeze)');
+	// Two legitimate outcomes prove the reactive chain is alive:
+	//   • single marker → jobStack/selectedFeature set, sheet opens to Here;
+	//   • "+N" stack    → exact-IDs listView, sheet opens to Postings
+	//     (Map.svelte's applyMarkerStackIdsListView path — selectedFeature
+	//     intentionally stays null there).
+	// A frozen graph shows expanded with none of those state changes.
+	const drove =
+		s.expanded &&
+		((s.page === 'here' && (s.selSource !== null || s.stackSet)) ||
+			(s.page === 'list' && s.listScope === 'ids'));
+	check(drove, 'marker tap still drives the sheet after detent cycle (no freeze)');
 }
 
 out('================');

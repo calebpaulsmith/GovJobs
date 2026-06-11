@@ -614,3 +614,43 @@ export function computeRectPx(rect: Rect, viewport: Viewport): PixelRect {
 export function rectsOverlap(a: PixelRect, b: PixelRect): boolean {
 	return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Browse desktop mosaic (D.5.28, rev-2 mock)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Grid spec for /browse at desktop widths. Below `minWidth` the page keeps the
+ * map-as-home layout (full-screen map + BrowseSheet bottom sheet); at or above
+ * it the same two sheet panels render side-by-side in this grid.
+ *
+ * Proportions come from the rev-2 mock (`public_map/mocks/browse/
+ * desktop-mosaic.html`, decision #6): top band 30% (map 38% wide, Here card
+ * the rest), JobList 70% — the list is the work, the map is context. This
+ * supersedes ADR-0033's original 50/50/50 sketch.
+ *
+ * The mosaic is a CSS grid with named areas, so panes cannot overlap by
+ * construction — `layout.test.ts` asserts the template's structural integrity
+ * instead of pairwise rect checks.
+ */
+export const BROWSE_MOSAIC = {
+	/** px; matchMedia breakpoint for switching sheet ↔ mosaic. */
+	minWidth: 1024,
+	/** Top band (map + Here pane) share of the content height. */
+	topBandHeight: '30%',
+	/** Map pane share of the top band's width. */
+	mapColumnWidth: '38%',
+	/** Named grid areas, row-major. Every row must have the same length. */
+	areas: [
+		['map', 'here'],
+		['list', 'list']
+	]
+} as const;
+
+/** Inline grid declarations for the /browse mosaic container. */
+export function browseMosaicCss(): string {
+	const rows = `${BROWSE_MOSAIC.topBandHeight} 1fr`;
+	const cols = `${BROWSE_MOSAIC.mapColumnWidth} 1fr`;
+	const areas = BROWSE_MOSAIC.areas.map((row) => `"${row.join(' ')}"`).join(' ');
+	return `grid-template-rows: ${rows}; grid-template-columns: ${cols}; grid-template-areas: ${areas};`;
+}

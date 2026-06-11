@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	BREAKPOINT_MIN_WIDTH,
+	BROWSE_MOSAIC,
 	COEXISTING_SLOTS,
 	LAYOUT_RECTS,
 	REFERENCE_VIEWPORTS,
+	browseMosaicCss,
 	computeRectPx,
 	layoutCssBlock,
 	parseLength,
@@ -181,5 +183,56 @@ describe('layoutCssBlock', () => {
 		expect(css).toContain(slotCssVarName('filters', 'top'));
 		expect(css).toContain(slotCssVarName('feature', 'right'));
 		expect(css).toContain(slotCssVarName('metric', 'width'));
+	});
+});
+
+describe('BROWSE_MOSAIC (D.5.28 desktop mosaic)', () => {
+	it('matches the rev-2 mock parameters', () => {
+		// public_map/mocks/browse/desktop-mosaic.html decision #6: the top band
+		// (map + Here card) is context at 30%, the list is the work at 70%;
+		// the map takes 38% of the top band's width.
+		expect(BROWSE_MOSAIC.minWidth).toBe(1024);
+		expect(BROWSE_MOSAIC.topBandHeight).toBe('30%');
+		expect(BROWSE_MOSAIC.mapColumnWidth).toBe('38%');
+	});
+
+	it('declares a structurally valid grid (rectangular, full-width list row)', () => {
+		const areas = BROWSE_MOSAIC.areas;
+		expect(areas.length).toBe(2);
+		// Every row has the same number of columns.
+		const width = areas[0].length;
+		for (const row of areas) expect(row.length).toBe(width);
+		// Top band: map left of here; bottom row: list spans all columns. A
+		// named-areas grid like this cannot overlap by construction — each
+		// cell belongs to exactly one area.
+		expect(areas[0]).toEqual(['map', 'here']);
+		expect(new Set(areas[1]).size).toBe(1);
+		expect(areas[1][0]).toBe('list');
+	});
+
+	it('every named area forms a contiguous rectangle (CSS grid requirement)', () => {
+		const areas: readonly (readonly string[])[] = BROWSE_MOSAIC.areas;
+		const names = new Set(areas.flat());
+		for (const name of names) {
+			let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity, count = 0;
+			areas.forEach((row, r) =>
+				row.forEach((cell, c) => {
+					if (cell !== name) return;
+					count += 1;
+					minR = Math.min(minR, r);
+					maxR = Math.max(maxR, r);
+					minC = Math.min(minC, c);
+					maxC = Math.max(maxC, c);
+				})
+			);
+			expect(count).toBe((maxR - minR + 1) * (maxC - minC + 1));
+		}
+	});
+
+	it('browseMosaicCss emits the grid template the page consumes', () => {
+		const css = browseMosaicCss();
+		expect(css).toContain('grid-template-rows: 30% 1fr;');
+		expect(css).toContain('grid-template-columns: 38% 1fr;');
+		expect(css).toContain('grid-template-areas: "map here" "list list";');
 	});
 });
