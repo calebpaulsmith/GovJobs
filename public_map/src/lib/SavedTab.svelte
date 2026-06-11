@@ -103,7 +103,7 @@
 
 	function applyList(item: SavedSearch) {
 		// Single-source-of-truth: assign the whole filters object so consumers
-		// (JobList, AgencyPicker, FilterPanel) see one updated reference.
+		// (JobList, FilterFields, FilterPanel) see one updated reference.
 		mapState.filters = cloneFilters(item.filters);
 		if (item.metric) mapState.metric = item.metric;
 		// D.6.5: recall the whole view, not just the filters — same restore
