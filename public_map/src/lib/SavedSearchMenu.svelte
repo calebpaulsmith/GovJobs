@@ -10,6 +10,7 @@
 		saveSavedSearches,
 		type SavedSearch
 	} from './savedSearches';
+	import { normalizeListToolbar } from './jobListFacets';
 
 	let open = $state(false);
 	let searches = $state<SavedSearch[]>([]);
@@ -54,6 +55,9 @@
 
 	function applySearch(item: SavedSearch) {
 		mapState.filters = item.filters;
+		// D.5.28: restore the in-list toolbar too (missing on pre-v3 saves →
+		// normalize falls back to the resting state).
+		mapState.list = normalizeListToolbar(item.list);
 		mapState.metric = item.metric;
 		mapState.choroplethEnabled = true;
 		if (item.addressTarget) {

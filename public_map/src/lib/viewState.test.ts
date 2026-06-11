@@ -7,6 +7,7 @@ import {
 	type ShareableView
 } from './viewState';
 import { DEFAULT_FILTERS, type JobFilters } from './filters';
+import { DEFAULT_LIST_TOOLBAR, type ListToolbarState } from './jobListFacets';
 
 function filters(overrides: Partial<JobFilters> = {}): JobFilters {
 	return { ...DEFAULT_FILTERS, agencies: [], geographies: [], radii: [], ...overrides };
@@ -20,8 +21,13 @@ function view(overrides: Partial<ShareableView> = {}): ShareableView {
 		theme: null,
 		selectedJobId: null,
 		scroll: null,
+		list: { ...DEFAULT_LIST_TOOLBAR, facets: [] },
 		...overrides
 	};
+}
+
+function toolbar(overrides: Partial<ListToolbarState> = {}): ListToolbarState {
+	return { ...DEFAULT_LIST_TOOLBAR, facets: [], ...overrides };
 }
 
 function roundTrip(v: ShareableView): ShareableView {
@@ -111,5 +117,50 @@ describe('shareUrlFromView', () => {
 	it('honors a custom path and omits the query when the view is empty', () => {
 		const url = shareUrlFromView(view(), { origin: 'https://x.test', path: '/map' });
 		expect(url).toBe('https://x.test/map');
+	});
+});
+
+describe('in-list toolbar codec (D.5.28)', () => {
+	it('round-trips search, sort, and facets', () => {
+		const v = view({
+			list: toolbar({ search: 'analyst chicago', sort: 'salary_high', facets: ['gs_family', 'closing_7d'] })
+		});
+		const qs = viewToParamString(v);
+		expect(qs).toContain('lq=analyst+chicago');
+		expect(qs).toContain('lsort=salary_high');
+		expect(qs.match(/lf=/g)?.length).toBe(2);
+		expect(roundTrip(v).list).toEqual({
+			search: 'analyst chicago',
+			sort: 'salary_high',
+			facets: ['gs_family', 'closing_7d']
+		});
+	});
+
+	it('omits the resting toolbar from the URL entirely', () => {
+		const qs = viewToParamString(view());
+		expect(qs).not.toContain('lq=');
+		expect(qs).not.toContain('lsort=');
+		expect(qs).not.toContain('lf=');
+	});
+
+	it('drops unknown sort keys and facet keys on decode', () => {
+		const params = new URLSearchParams('lsort=bogus&lf=nope&lf=remote_eligible');
+		const decoded = readViewFromParams(params);
+		expect(decoded.list.sort).toBe('closing_soon');
+		expect(decoded.list.facets).toEqual(['remote_eligible']);
+	});
+
+	it('facet order in the URL does not matter — FACETS order wins', () => {
+		const params = new URLSearchParams('lf=closing_7d&lf=gs_family&lf=gs_family');
+		const decoded = readViewFromParams(params);
+		expect(decoded.list.facets).toEqual(['gs_family', 'closing_7d']);
+	});
+
+	it('rewriting a URL that already carries toolbar keys is idempotent', () => {
+		const params = new URLSearchParams('lq=old&lsort=title&lf=gs_family');
+		writeViewToParams(params, view({ list: toolbar({ search: 'new' }) }));
+		expect(params.get('lq')).toBe('new');
+		expect(params.get('lsort')).toBeNull();
+		expect(params.getAll('lf')).toEqual([]);
 	});
 });

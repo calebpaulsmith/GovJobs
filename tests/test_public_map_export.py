@@ -18,6 +18,7 @@ from src.database import (
 from src.public_map_export import (
     EXCERPT_MAX_CHARS,
     _excerpt,
+    historical_badges,
     agency_options,
     closed_jobs_geojson,
     current_reference_year,
@@ -788,3 +789,131 @@ def test_federal_properties_geojson_omits_null_properties(conn):
 def test_federal_properties_geojson_empty_when_table_has_no_rows(conn):
     fc = federal_properties_geojson(conn)
     assert fc == {"type": "FeatureCollection", "features": []}
+
+
+# ---------- D.5.28 historical badges (repost denormalization) ----------------
+
+
+def _seed_repost_group(conn, member_specs):
+    """Create one completed repost run with a single group whose members are
+    (job_id, open_date) tuples (jobs must already exist)."""
+    conn.execute(
+        "INSERT INTO repost_runs (started_at, completed_at, params_json)"
+        " VALUES (?, ?, '{}')",
+        (utc_now(), utc_now()),
+    )
+    run_id = conn.execute("SELECT MAX(id) FROM repost_runs").fetchone()[0]
+    conn.execute(
+        "INSERT INTO repost_groups (run_id, group_signature, member_count,"
+        " confidence_score, created_at) VALUES (?, 'sig', ?, 0.9, ?)",
+        (run_id, len(member_specs), utc_now()),
+    )
+    group_id = conn.execute("SELECT MAX(id) FROM repost_groups").fetchone()[0]
+    for job_id in member_specs:
+        conn.execute(
+            "INSERT INTO repost_group_members (group_id, job_id, created_at)"
+            " VALUES (?, ?, ?)",
+            (group_id, job_id, utc_now()),
+        )
+    conn.commit()
+    return run_id
+
+
+def test_historical_badges_orders_by_open_date_and_reports_span(conn):
+    _seed_chicago(conn)
+    ids = []
+    for i, open_date in enumerate(["2024-09-01", "2025-06-01", "2026-03-01"]):
+        upsert_job(
+            conn,
+            _job(
+                usajobs_control_number=f"20000000{i}",
+                position_id=f"REPOST-{i}",
+                announcement_number=f"REPOST-{i}",
+                open_date=open_date,
+                url=f"https://www.usajobs.gov/job/20000000{i}",
+            ),
+        )
+        ids.append(
+            conn.execute(
+                "SELECT id FROM jobs WHERE position_id = ?", (f"REPOST-{i}",)
+            ).fetchone()[0]
+        )
+    # Insert members out of order — open_date must drive the ranking.
+    _seed_repost_group(conn, [ids[1], ids[0], ids[2]])
+
+    badges = historical_badges(conn)
+    assert badges[ids[0]] == "1st posting"
+    assert badges[ids[1]] == "2nd posting · 9 mo"
+    assert badges[ids[2]] == "3rd posting · 18 mo"
+
+
+def test_historical_badges_empty_without_completed_run(conn):
+    assert historical_badges(conn) == {}
+    # An incomplete run must not count either.
+    conn.execute(
+        "INSERT INTO repost_runs (started_at, completed_at, params_json)"
+        " VALUES (?, NULL, '{}')",
+        (utc_now(),),
+    )
+    conn.commit()
+    assert historical_badges(conn) == {}
+
+
+def test_historical_badges_only_uses_latest_completed_run(conn):
+    _seed_chicago(conn)
+    for i in range(2):
+        upsert_job(
+            conn,
+            _job(
+                usajobs_control_number=f"21000000{i}",
+                position_id=f"LATEST-{i}",
+                announcement_number=f"LATEST-{i}",
+                open_date=f"2026-0{i + 1}-01",
+                url=f"https://www.usajobs.gov/job/21000000{i}",
+            ),
+        )
+    ids = [
+        conn.execute("SELECT id FROM jobs WHERE position_id = ?", (f"LATEST-{i}",)).fetchone()[0]
+        for i in range(2)
+    ]
+    _seed_repost_group(conn, ids)  # old run
+    _seed_repost_group(conn, ids)  # latest run — the only one that counts
+    old_run = conn.execute(
+        "SELECT MIN(id) FROM repost_runs WHERE completed_at IS NOT NULL"
+    ).fetchone()[0]
+    # Groups from the older run must be ignored even if they disagree.
+    badges = historical_badges(conn)
+    assert set(badges) == set(ids)
+    rows = conn.execute(
+        "SELECT COUNT(*) FROM repost_groups WHERE run_id = ?", (old_run,)
+    ).fetchone()[0]
+    assert rows == 1  # the old group exists but contributed nothing extra
+
+
+def test_job_details_carries_historical_badge(conn):
+    _seed_chicago(conn)
+    for i in range(2):
+        upsert_job(
+            conn,
+            _job(
+                usajobs_control_number=f"22000000{i}",
+                position_id=f"BADGE-{i}",
+                announcement_number=f"BADGE-{i}",
+                open_date=f"2025-0{i + 1}-01",
+                url=f"https://www.usajobs.gov/job/22000000{i}",
+            ),
+        )
+    ids = [
+        conn.execute("SELECT id FROM jobs WHERE position_id = ?", (f"BADGE-{i}",)).fetchone()[0]
+        for i in range(2)
+    ]
+    _seed_repost_group(conn, ids)
+
+    details = job_details(conn)
+    assert details[str(ids[0])]["historical_badge"] == "1st posting"
+    assert details[str(ids[1])]["historical_badge"] == "2nd posting · 1 mo"
+    # A job outside any group carries None, not a fabricated badge.
+    upsert_job(conn, _job(usajobs_control_number="230000001", position_id="SOLO-1",
+                          announcement_number="SOLO-1", url="https://www.usajobs.gov/job/230000001"))
+    solo_id = conn.execute("SELECT id FROM jobs WHERE position_id = 'SOLO-1'").fetchone()[0]
+    assert job_details(conn)[str(solo_id)]["historical_badge"] is None

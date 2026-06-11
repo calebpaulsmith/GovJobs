@@ -35,6 +35,7 @@
 		setClosedJobsVisible,
 		setChoroplethVisible,
 		setFederalPropertiesVisible,
+		setHoveredJobMarker,
 		setStateFillMetric
 	} from './layers';
 	import { mapState, type Manifest } from './store.svelte';
@@ -254,6 +255,15 @@
 		untrack(() => {
 			mapState.pendingViewport = null;
 		});
+	});
+
+	// D.5.28 crossfilter: ring the hovered posting's marker(s). Reads
+	// mapState, writes only to the mapbox instance — no self-referential
+	// state, so no untrack needed.
+	$effect(() => {
+		const hovered = mapState.hoveredJobId;
+		if (!mounted || !map || !map.getLayer(LAYER_IDS.markersHover)) return;
+		setHoveredJobMarker(map, hovered);
 	});
 
 	$effect(() => {
@@ -555,6 +565,14 @@
 				if (!feature) return;
 				const coords = feature.geometry?.type === 'Point' ? feature.geometry.coordinates : null;
 				if (!coords) return;
+				// Crossfilter (D.5.28): publish the hovered posting id so the
+				// JobList can highlight the matching row. Job layers only —
+				// closed/FRPP markers have no row in the list. Event handler,
+				// not an effect, so the mapState write is safe.
+				if (id === LAYER_IDS.markers || id === LAYER_IDS.markersStack) {
+					const hoveredId = String(feature.properties?.id ?? '');
+					mapState.hoveredJobId = hoveredId || null;
+				}
 				const html = renderTooltipHtml(id, feature);
 				if (!html) {
 					hoverPopup.remove();
@@ -564,6 +582,9 @@
 			});
 			m.on('mouseleave', id, () => {
 				hoverPopup?.remove();
+				if (id === LAYER_IDS.markers || id === LAYER_IDS.markersStack) {
+					mapState.hoveredJobId = null;
+				}
 			});
 		}
 	}

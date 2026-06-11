@@ -204,6 +204,36 @@
 			{summary}
 		</div>
 
+		<!-- D.5.28 pulse band: four headline numbers with deltas vs. the
+		     trailing-90-day average. Reads mapState.areaPulse; until a data
+		     slice populates it (area_pulse.json / on-demand fetch — see
+		     ROADMAP "Data slices to investigate") it renders dashed-border
+		     placeholders, never fabricated numbers. -->
+		<div class="pulse-band" data-status={mapState.areaPulse ? 'live' : 'placeholder'}>
+			{#each [
+				{ label: 'Open postings', value: mapState.areaPulse?.openPostings, deltaKey: 'openPostings' },
+				{ label: 'New in last 7d', value: mapState.areaPulse?.newLast7d, deltaKey: 'newLast7d' },
+				{ label: 'Median window', value: mapState.areaPulse?.medianWindowDays, deltaKey: 'medianWindowDays', unit: 'd' },
+				{ label: 'Closing ≤ 3d', value: mapState.areaPulse?.closingSoon3d, deltaKey: 'closingSoon3d' }
+			] as cell (cell.label)}
+				{@const delta = mapState.areaPulse?.deltas?.[cell.deltaKey]}
+				<div class="pulse-cell" class:empty={cell.value == null}>
+					<div class="pulse-label">{cell.label}</div>
+					<div class="pulse-value">
+						{cell.value != null ? `${cell.value.toLocaleString()}${cell.unit ?? ''}` : '—'}
+					</div>
+					{#if delta != null}
+						<div class="pulse-delta" class:up={delta > 0} class:down={delta < 0}>
+							{delta > 0 ? '↑' : delta < 0 ? '↓' : ''} {Math.abs(delta)}% vs 90d avg
+						</div>
+					{/if}
+				</div>
+			{/each}
+			{#if !mapState.areaPulse}
+				<div class="pulse-caption">PLACEHOLDER — needs historical slice</div>
+			{/if}
+		</div>
+
 		<!-- Four metric blocks. 2x2; opening one expands it across the row,
 		     and only one is open at a time. -->
 		<div class="metric-blocks">
@@ -375,18 +405,22 @@
 			</button>
 		</div>
 
-		<div class="actions">
-			<!-- Deferred: "+ Save as Job List" button + provenance toast.
-			     The slot is preserved so Saved-tab work can drop in later. -->
-			<button
-				type="button"
-				class="pill-btn primary"
-				onclick={() => onViewList?.()}
-				disabled={filteredJobCount === 0}
-			>
-				{viewListLabel}
-			</button>
-		</div>
+		{#if onViewList}
+			<div class="actions">
+				<!-- Deferred: "+ Save as Job List" button + provenance toast.
+				     The slot is preserved so Saved-tab work can drop in later.
+				     Hidden when the host passes no handler (desktop mosaic —
+				     the postings list is already on screen). -->
+				<button
+					type="button"
+					class="pill-btn primary"
+					onclick={() => onViewList?.()}
+					disabled={filteredJobCount === 0}
+				>
+					{viewListLabel}
+				</button>
+			</div>
+		{/if}
 
 		{#if area.scope === 'state' && localityCodeProp && localityCodeProp !== '—'}
 			<p class="note">Locality {localityCodeProp} covers the most counties of {area.code}.</p>
@@ -581,5 +615,59 @@
 		color: var(--c-muted, #94a3b8);
 		font-size: 11px;
 		line-height: 1.45;
+	}
+	/* D.5.28 pulse band. Dashed border + explicit caption while the data
+	   slice is absent (data-status="placeholder"). */
+	.pulse-band {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.35rem;
+		margin: 0 0 0.5rem;
+		position: relative;
+	}
+	.pulse-band[data-status='placeholder'] {
+		padding-bottom: 0.9rem;
+	}
+	.pulse-cell {
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		border: 1px solid var(--c-border-subtle, #22344c);
+		border-radius: 6px;
+		padding: 0.35rem 0.45rem;
+	}
+	.pulse-band[data-status='placeholder'] .pulse-cell {
+		border-style: dashed;
+		opacity: 0.75;
+	}
+	.pulse-label {
+		font-size: 8.5px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--c-muted, #94a3b8);
+	}
+	.pulse-value {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--c-text, #e5edf5);
+	}
+	.pulse-cell.empty .pulse-value {
+		color: var(--c-faint, #64748b);
+	}
+	.pulse-delta {
+		font-size: 9px;
+		color: var(--c-muted, #94a3b8);
+	}
+	.pulse-delta.up {
+		color: var(--c-success, #9be0b4);
+	}
+	.pulse-delta.down {
+		color: var(--c-danger, #f3a0a0);
+	}
+	.pulse-caption {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		font-size: 8.5px;
+		letter-spacing: 0.04em;
+		color: var(--c-faint, #64748b);
 	}
 </style>

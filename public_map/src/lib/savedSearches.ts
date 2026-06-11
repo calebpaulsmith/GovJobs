@@ -1,13 +1,20 @@
 import { DEFAULT_METRIC, type MetricKey } from './metrics';
 import { DEFAULT_FILTERS, normalizeFilters, type JobFilters } from './filters';
+import {
+	isDefaultListToolbar,
+	normalizeListToolbar,
+	type ListToolbarState
+} from './jobListFacets';
 import type { AddressTarget, MapViewport } from './store.svelte';
 
 export const SAVED_SEARCHES_KEY = 'fedfinder.public_map.saved_searches.v1';
-// v2 (D.5.30) adds radius chips to each saved search's filters. v1 stores are
-// still readable — they simply have no radii, and `cloneFilters` →
-// `normalizeFilters` defaults the field to []. The migration is non-destructive.
-export const SAVED_SEARCHES_SCHEMA_VERSION = 2;
-const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2]);
+// v2 (D.5.30) adds radius chips to each saved search's filters. v3 (D.5.28
+// toolbar hoist) adds the in-list toolbar (`list`: search / sort / facets).
+// Both migrations are non-destructive: older stores load with the missing
+// fields at their defaults (`normalizeFilters` → radii [], missing `list` →
+// DEFAULT_LIST_TOOLBAR via `normalizeListToolbar`).
+export const SAVED_SEARCHES_SCHEMA_VERSION = 3;
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 
 export interface SavedSearch {
 	id: string;
@@ -18,6 +25,9 @@ export interface SavedSearch {
 	metric: MetricKey;
 	viewport?: MapViewport;
 	addressTarget?: AddressTarget;
+	// D.5.28: the in-list toolbar at save time. Absent when it was at its
+	// resting state (and in pre-v3 stores).
+	list?: ListToolbarState;
 }
 
 interface SavedSearchStore {
@@ -58,8 +68,10 @@ export function createSavedSearch(input: {
 	metric: MetricKey;
 	viewport?: MapViewport;
 	addressTarget?: AddressTarget | null;
+	list?: ListToolbarState | null;
 }): SavedSearch {
 	const now = new Date().toISOString();
+	const list = input.list ? normalizeListToolbar(input.list) : null;
 	return {
 		id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		name: cleanName(input.name),
@@ -68,7 +80,8 @@ export function createSavedSearch(input: {
 		filters: cloneFilters(input.filters),
 		metric: input.metric,
 		viewport: input.viewport ? cloneViewport(input.viewport) : undefined,
-		addressTarget: input.addressTarget ? cloneAddressTarget(input.addressTarget) : undefined
+		addressTarget: input.addressTarget ? cloneAddressTarget(input.addressTarget) : undefined,
+		list: list && !isDefaultListToolbar(list) ? list : undefined
 	};
 }
 
@@ -98,7 +111,8 @@ function normalizeSavedSearch(item: Partial<SavedSearch>): SavedSearch | null {
 		filters: cloneFilters(item.filters ?? DEFAULT_FILTERS),
 		metric,
 		viewport: item.viewport ? cloneViewport(item.viewport) : undefined,
-		addressTarget: item.addressTarget ? cloneAddressTarget(item.addressTarget) : undefined
+		addressTarget: item.addressTarget ? cloneAddressTarget(item.addressTarget) : undefined,
+		list: item.list ? normalizeListToolbar(item.list) : undefined
 	};
 }
 

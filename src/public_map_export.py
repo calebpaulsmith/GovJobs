@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -508,6 +508,78 @@ def _excerpt(text: Any, max_chars: int = EXCERPT_MAX_CHARS) -> str | None:
     return f"{trimmed}…"
 
 
+def _ordinal(n: int) -> str:
+    """1 -> 1st, 2 -> 2nd, 3 -> 3rd, 11 -> 11th, 22 -> 22nd."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def historical_badges(conn: sqlite3.Connection) -> dict[int, str]:
+    """Per-job repost badge text from the latest completed Repost Detector run.
+
+    D.5.28: denormalizes ``repost_groups`` / ``repost_group_members`` into
+    ``jobs_detail.json`` so the Browse list's rich rows can render a
+    "3rd posting · 14 mo" badge without a per-row fetch. Only the most
+    recent *completed* run counts — older runs may disagree with current
+    grouping. Position is the member's 1-based rank by ``open_date`` within
+    its group; the month span runs from the group's earliest member to this
+    member. Per CLAUDE.md, repost groups are review evidence, not
+    administrative certainty — the UI renders these dashed/tentative.
+
+    Returns an empty dict when the detector has never run (the dashboard
+    feature is optional), so the exporter works on any database.
+    """
+    run_row = conn.execute(
+        "SELECT MAX(id) AS run_id FROM repost_runs WHERE completed_at IS NOT NULL"
+    ).fetchone()
+    run_id = run_row["run_id"] if run_row else None
+    if run_id is None:
+        return {}
+
+    member_rows = conn.execute(
+        """
+        SELECT m.group_id AS group_id, m.job_id AS job_id, j.open_date AS open_date
+        FROM repost_group_members m
+        JOIN repost_groups g ON g.id = m.group_id
+        JOIN jobs j ON j.id = m.job_id
+        WHERE g.run_id = ?
+        ORDER BY m.group_id, COALESCE(j.open_date, '9999-12-31'), m.job_id
+        """,
+        (run_id,),
+    ).fetchall()
+
+    by_group: dict[int, list[sqlite3.Row]] = {}
+    for row in member_rows:
+        by_group.setdefault(int(row["group_id"]), []).append(row)
+
+    badges: dict[int, str] = {}
+    for members in by_group.values():
+        if len(members) < 2:
+            continue
+        first_open = _parse_iso_date(members[0]["open_date"])
+        for position, row in enumerate(members, start=1):
+            this_open = _parse_iso_date(row["open_date"])
+            text = f"{_ordinal(position)} posting"
+            if first_open and this_open and this_open > first_open:
+                months = round((this_open - first_open).days / 30.44)
+                if months >= 1:
+                    text += f" \u00b7 {months} mo"
+            badges[int(row["job_id"])] = text
+    return badges
+
+
+def _parse_iso_date(raw: Any) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return None
+
+
 def job_details(
     conn: sqlite3.Connection,
     *,
@@ -612,6 +684,9 @@ def job_details(
             "qualifications_excerpt": _excerpt(row["qualifications"]),
         }
 
+    # D.5.28: repost badges from the latest completed detector run.
+    badges = historical_badges(conn)
+
     details: dict[str, dict[str, Any]] = {}
     for row in job_rows:
         job_id = int(row["job_id"])
@@ -650,6 +725,7 @@ def job_details(
             "pay_grid": pay_grid,
             "summary_excerpt": text.get("summary_excerpt"),
             "qualifications_excerpt": text.get("qualifications_excerpt"),
+            "historical_badge": badges.get(job_id),
         }
     return details
 

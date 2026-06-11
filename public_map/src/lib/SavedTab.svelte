@@ -38,6 +38,7 @@
 		saveSavedSearches,
 		type SavedSearch
 	} from './savedSearches';
+	import { normalizeListToolbar } from './jobListFacets';
 	import { relativeTime, summariseSavedSearch } from './savedTab';
 
 	interface Props {
@@ -103,8 +104,11 @@
 
 	function applyList(item: SavedSearch) {
 		// Single-source-of-truth: assign the whole filters object so consumers
-		// (JobList, AgencyPicker, FilterPanel) see one updated reference.
+		// (JobList, FilterFields, FilterPanel) see one updated reference.
 		mapState.filters = cloneFilters(item.filters);
+		// D.5.28: restore the in-list toolbar too (missing on pre-v3 saves →
+		// normalize falls back to the resting state).
+		mapState.list = normalizeListToolbar(item.list);
 		if (item.metric) mapState.metric = item.metric;
 		// D.6.5: recall the whole view, not just the filters — same restore
 		// order as SavedSearchMenu.applySearch (address target wins, else

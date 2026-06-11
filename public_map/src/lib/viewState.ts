@@ -13,6 +13,12 @@ import {
 	writeFiltersToSearchParams,
 	type JobFilters
 } from './filters';
+import {
+	DEFAULT_LIST_TOOLBAR,
+	isDefaultListToolbar,
+	normalizeListToolbar,
+	type ListToolbarState
+} from './jobListFacets';
 
 export interface ShareViewport {
 	center: [number, number];
@@ -27,12 +33,28 @@ export interface ShareableView {
 	selectedJobId: string | null;
 	/** Rich-list scroll position as a 0..1 fraction of scrollable height. */
 	scroll: number | null;
+	/** In-list toolbar (D.5.28): search / sort / facets. Always present;
+	 *  defaults are omitted from the encoded URL. */
+	list: ListToolbarState;
 }
 
 // View-only param keys (filters own their own keys in filters.ts). Listed so
 // `writeViewToParams` can clear them before rewriting, keeping the codec
 // idempotent when called against a URL that already carries view state.
-export const VIEW_PARAM_KEYS = ['metric', 'center', 'zoom', 'theme', 'selected', 'scroll'] as const;
+export const VIEW_PARAM_KEYS = [
+	'metric',
+	'center',
+	'zoom',
+	'theme',
+	'selected',
+	'scroll',
+	// In-list toolbar (D.5.28): lq = in-list search, lsort = sort key,
+	// lf = repeated facet keys. Prefixed to keep clear of the global filter
+	// keys (q/keyword etc. belong to filters.ts).
+	'lq',
+	'lsort',
+	'lf'
+] as const;
 
 function isMetricKey(value: unknown): value is MetricKey {
 	return typeof value === 'string' && METRIC_ORDER.includes(value as MetricKey);
@@ -83,6 +105,15 @@ export function writeViewToParams(params: URLSearchParams, view: ShareableView):
 	if (view.scroll != null && Number.isFinite(view.scroll) && view.scroll > 0) {
 		params.set('scroll', String(round3(clampScroll(view.scroll))));
 	}
+
+	// In-list toolbar: encode only what differs from the resting state so a
+	// plain view stays a clean URL.
+	const list = normalizeListToolbar(view.list);
+	if (!isDefaultListToolbar(list)) {
+		if (list.search) params.set('lq', list.search);
+		if (list.sort !== DEFAULT_LIST_TOOLBAR.sort) params.set('lsort', list.sort);
+		for (const facet of list.facets) params.append('lf', facet);
+	}
 }
 
 /** Decode a full view from `params`. Missing keys fall back to sane defaults. */
@@ -102,7 +133,12 @@ export function readViewFromParams(params: URLSearchParams): ShareableView {
 		viewport: center && zoom != null ? { center, zoom } : null,
 		theme: themeRaw === 'light' || themeRaw === 'dark' ? themeRaw : null,
 		selectedJobId: params.get('selected') || null,
-		scroll
+		scroll,
+		list: normalizeListToolbar({
+			search: params.get('lq') ?? '',
+			sort: params.get('lsort') ?? undefined,
+			facets: params.getAll('lf')
+		})
 	};
 }
 

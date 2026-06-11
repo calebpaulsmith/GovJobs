@@ -1,15 +1,19 @@
 <!--
-	FedFinder — Browse view (mobile-first), map-as-home.
+	FedFinder — Browse view, map-as-home (mobile) / mosaic (desktop).
 
-	The full-screen map is the home surface. A left-edge "Filters" pill opens the
-	shared FilterSheet (same fields as /map, one mapState.filters store). Tapping
-	a state / locality / county / marker opens the bottom sheet (BrowseSheet) to
-	that area's card; swiping/segmenting to "Postings" shows the shared JobList.
-	"Saved" in the masthead opens the SavedDrawer (job lists + saved postings).
+	Below 1024 px the full-screen map is the home surface. A left-edge
+	"Filters" pill opens the shared FilterSheet (same fields as /map, one
+	mapState.filters store). Tapping a state / locality / county / marker opens
+	the bottom sheet (BrowseSheet) to that area's card; swiping/segmenting to
+	"Postings" shows the shared JobList. "Saved" in the masthead opens the
+	SavedDrawer (job lists + saved postings).
 
-	Spec: public_map/mocks/browse/ (rev 2), ADR-0033. Bottom-sheet swipe gesture
-	+ remembered page is the next increment (Layer 4); Layer 3 uses a segmented
-	control.
+	At ≥ 1024 px (BROWSE_MOSAIC.minWidth) the same two sheet panels render
+	simultaneously in a CSS grid instead of the sheet: map top-left (context),
+	BrowseHerePanel top-right, BrowsePostingsPanel across the bottom (the work
+	surface). Proportions per the rev-2 desktop mock — see layout.ts.
+
+	Spec: public_map/mocks/browse/ (rev 2), ADR-0033.
 -->
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
@@ -19,9 +23,12 @@
 	import { jobProfile } from '$lib/jobProfile.svelte';
 	import { readViewFromParams, writeViewToParams } from '$lib/viewState';
 	import { applySharedView, readCurrentView } from '$lib/viewSync';
+	import { BROWSE_MOSAIC, browseMosaicCss } from '$lib/layout';
 	import Map from '$lib/Map.svelte';
 	import FilterSheet from '$lib/FilterSheet.svelte';
 	import BrowseSheet from '$lib/BrowseSheet.svelte';
+	import BrowseHerePanel from '$lib/BrowseHerePanel.svelte';
+	import BrowsePostingsPanel from '$lib/BrowsePostingsPanel.svelte';
 	import SavedDrawer from '$lib/SavedDrawer.svelte';
 	import BuildStamp from '$lib/BuildStamp.svelte';
 	import AddressSearch from '$lib/AddressSearch.svelte';
@@ -33,6 +40,12 @@
 	// D.6.2: "Go to" panel visibility. Local to this page — distinct from
 	// mapState.addressSearchOpen, which means "the results dropdown is open".
 	let goToOpen = $state(false);
+
+	// Desktop mosaic vs. map-as-home + bottom sheet. Initialized synchronously
+	// (SPA mode — window exists at component init) so the first paint already
+	// uses the right layout; the listener keeps it live across window resizes.
+	const mosaicQuery = `(min-width: ${BROWSE_MOSAIC.minWidth}px)`;
+	let isDesktop = $state(browser ? window.matchMedia(mosaicQuery).matches : false);
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 	let hydratedFromUrl = false;
@@ -47,6 +60,10 @@
 		if (stored === 'light' || stored === 'dark') mapState.theme = stored;
 		applySharedView(readViewFromParams(new URLSearchParams(window.location.search)));
 		hydratedFromUrl = true;
+		const mq = window.matchMedia(mosaicQuery);
+		const onModeChange = (e: MediaQueryListEvent) => (isDesktop = e.matches);
+		mq.addEventListener('change', onModeChange);
+		return () => mq.removeEventListener('change', onModeChange);
 	});
 
 	// Resolve a shared `selected=<jobId>` once jobs_detail has loaded: open the
@@ -80,6 +97,7 @@
 		void mapState.theme;
 		void mapState.selectedFeature;
 		void mapState.listScroll;
+		void mapState.list;
 		if (!browser || !hydratedFromUrl) return;
 		if (urlTimer) clearTimeout(urlTimer);
 		urlTimer = setTimeout(() => {
@@ -129,8 +147,10 @@
 	<!-- Build/version + USAJOBS data freshness. -->
 	<BuildStamp />
 
-	<!-- Map fills the home surface; overlays sit on top of it. -->
-	<main class="content">
+	<!-- Mobile: map fills the home surface, overlays + bottom sheet on top.
+	     Desktop (≥ BROWSE_MOSAIC.minWidth): the same panels in a grid — map
+	     top-left, Here pane top-right, Postings pane across the bottom. -->
+	<main class="content" class:mosaic={isDesktop} style={isDesktop ? browseMosaicCss() : undefined}>
 		<div class="map-frame">
 			<Map browseMode />
 			<div class="fab-row">
@@ -163,9 +183,20 @@
 					<AddressSearch docked commitRadius onChoose={() => (goToOpen = false)} />
 				</div>
 			{/if}
-			<FilterSheet />
-			<BrowseSheet />
+			{#if !isDesktop}
+				<BrowseSheet />
+			{/if}
 		</div>
+		{#if isDesktop}
+			<aside class="here-pane" aria-label="Area details">
+				<BrowseHerePanel />
+			</aside>
+			<section class="list-pane" aria-label="Postings">
+				<BrowsePostingsPanel />
+			</section>
+		{/if}
+		<!-- position:fixed overlay — mount point only matters for the store. -->
+		<FilterSheet />
 	</main>
 
 	<SavedDrawer />
@@ -298,6 +329,41 @@
 		position: absolute;
 		inset: 0;
 	}
+
+	/* Desktop mosaic (≥ BROWSE_MOSAIC.minWidth, gated by matchMedia in the
+	   script — not a media query — so the sheet and the panes are never
+	   mounted at the same time). grid-template-* comes inline from
+	   browseMosaicCss() so layout.ts stays the single source of truth.
+	   The 1px gaps over the border color draw the pane separators. */
+	.content.mosaic {
+		display: grid;
+		gap: 1px;
+		background: var(--c-border, #2a3a52);
+	}
+	.content.mosaic .map-frame {
+		position: relative;
+		inset: auto;
+		grid-area: map;
+		overflow: hidden;
+		background: var(--c-bg, #06111f);
+	}
+	.here-pane {
+		grid-area: here;
+		overflow-y: auto;
+		background: var(--c-bg, #06111f);
+		padding: 0.75rem 1rem 1rem;
+		font-size: 12px;
+		color: var(--c-text-2, #cfd9e6);
+	}
+	.list-pane {
+		grid-area: list;
+		display: flex;
+		flex-direction: column;
+		box-sizing: border-box;
+		overflow: hidden;
+		background: var(--c-bg, #06111f);
+		padding-top: 0.5rem;
+	}
 	.fab-row {
 		position: absolute;
 		top: 0.75rem;
@@ -360,12 +426,7 @@
 		font-weight: 700;
 	}
 
-	@media (min-width: 720px) {
-		.browse {
-			max-width: 30rem;
-			margin: 0 auto;
-			border-left: 1px solid var(--c-border, #2a3a52);
-			border-right: 1px solid var(--c-border, #2a3a52);
-		}
-	}
+	/* 720–1023 px (tablets / narrow windows): full-width map-as-home — the
+	   30 rem centered-column clamp was dropped per operator decision
+	   2026-06-11. ≥ 1024 px gets the mosaic via matchMedia above. */
 </style>

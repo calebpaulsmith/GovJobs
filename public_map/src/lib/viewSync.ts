@@ -8,6 +8,7 @@
 // which DOES run in an effect, lives in the page and wraps its writes).
 
 import { mapState } from './store.svelte';
+import { normalizeListToolbar } from './jobListFacets';
 import type { ShareableView } from './viewState';
 
 /** True when the current selection is an actual job card (not a polygon). */
@@ -31,7 +32,8 @@ export function readCurrentView(): ShareableView {
 		viewport,
 		theme: mapState.theme,
 		selectedJobId: selectedJobId(),
-		scroll: mapState.listScroll > 0 ? mapState.listScroll : null
+		scroll: mapState.listScroll > 0 ? mapState.listScroll : null,
+		list: mapState.list
 	};
 }
 
@@ -44,6 +46,7 @@ export function readCurrentView(): ShareableView {
 export function applySharedView(view: ShareableView): void {
 	mapState.filters = view.filters;
 	mapState.metric = view.metric;
+	mapState.list = normalizeListToolbar(view.list);
 	if (view.theme) mapState.theme = view.theme;
 	if (view.viewport) {
 		mapState.pendingViewport = { center: view.viewport.center, zoom: view.viewport.zoom };
