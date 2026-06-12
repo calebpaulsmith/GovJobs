@@ -252,6 +252,17 @@ def test_closed_jobs_geojson_includes_recently_closed_postings(conn):
     assert props["closed_within_days"] >= 0
 
 
+def test_closed_jobs_geojson_carries_open_date_for_area_pulse(conn):
+    # D.5.28: the client derives the trailing-90-day opening-rate baseline
+    # from closed features' open_date — it must ride the overlay.
+    _seed_chicago(conn)
+    upsert_job(conn, _job(open_date="2026-03-01", close_date="2026-05-20"))
+    features = closed_jobs_geojson(conn, trailing_days=9000)["features"]
+    assert len(features) >= 1
+    assert features[0]["properties"]["open_date"] == "2026-03-01"
+    assert features[0]["properties"]["status"] == "closed"
+
+
 def test_closed_jobs_geojson_excludes_old_closed_postings(conn):
     _seed_chicago(conn)
     upsert_job(conn, _job(close_date="2020-01-01"))

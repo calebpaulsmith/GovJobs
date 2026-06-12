@@ -12,18 +12,21 @@
 	Mock: public_map/mocks/browse/mobile-dock.html, <section class="tab tab-here">.
 -->
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
 	import {
 		loadStates,
 		loadLocalities,
 		loadJobDetailsIndex,
+		loadClosedJobs,
 		type FeatureCollection,
 		type JobDetails
 	} from './data';
-	import { filterJobDetails } from './filters';
+	import { filterJobDetails, filterJobs } from './filters';
 	import { mapState } from './store.svelte';
 	import { money, percent, propString } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { resolveArea, urgencyCounts, type ResolvedArea } from './areaCard';
+	import { computeAreaPulse } from './areaPulse';
 
 	interface Props {
 		// Parent passes `() => (tab = 'list')`. Optional so the component is
@@ -36,6 +39,7 @@
 	let states = $state<FeatureCollection | null>(null);
 	let localities = $state<FeatureCollection | null>(null);
 	let jobIndex = $state<Record<string, JobDetails>>({});
+	let closedJobs = $state<FeatureCollection | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -51,11 +55,12 @@
 	$effect(() => {
 		loading = true;
 		error = null;
-		Promise.all([loadStates(), loadLocalities(), loadJobDetailsIndex()])
-			.then(([s, l, idx]) => {
+		Promise.all([loadStates(), loadLocalities(), loadJobDetailsIndex(), loadClosedJobs()])
+			.then(([s, l, idx, closed]) => {
 				states = s;
 				localities = l;
 				jobIndex = idx;
+				closedJobs = closed;
 			})
 			.catch((err) => (error = (err as Error).message))
 			.finally(() => (loading = false));
@@ -72,6 +77,40 @@
 	);
 	const filteredJobCount = $derived(filteredJobs.length);
 	const urgency = $derived(urgencyCounts(filteredJobs));
+
+	// --- D.5.28 area pulse — live, computed from the bundle -------------------
+	// Headline numbers from the filtered open postings; the new-in-7d delta
+	// from the opening-rate baseline across open ∪ closed-within-90d postings
+	// (the closed overlay is the one historic slice the bundle ships, per
+	// invariant #22). Published to mapState.areaPulse so the JobList header
+	// annotation reads the same numbers this card shows.
+	const filteredClosed = $derived(
+		closedJobs ? filterJobs(closedJobs, mapState.filters, jobIndex).features : []
+	);
+	const pulse = $derived(
+		loading || error
+			? null
+			: computeAreaPulse(filteredJobs, filteredClosed, {
+					scope: area.scope,
+					code: area.scope === 'nationwide' ? '' : area.code,
+					label: area.label
+				})
+	);
+	// Publish. This effect reads mapState (filters via the deriveds) and
+	// writes mapState.areaPulse back to the same proxy, so the write is
+	// wrapped in untrack (WebKit state_unsafe_mutation rule — CLAUDE.md).
+	$effect(() => {
+		const next = pulse;
+		untrack(() => {
+			mapState.areaPulse = next;
+		});
+	});
+	// The pulse describes THIS card's scope; when the card unmounts (a
+	// feature card replaces it, the sheet collapses) the context is gone —
+	// clear so the list annotation never shows a stale claim.
+	onDestroy(() => {
+		mapState.areaPulse = null;
+	});
 
 	// --- area feature properties ----------------------------------------------
 
@@ -209,27 +248,34 @@
 		     slice populates it (area_pulse.json / on-demand fetch — see
 		     ROADMAP "Data slices to investigate") it renders dashed-border
 		     placeholders, never fabricated numbers. -->
-		<div class="pulse-band" data-status={mapState.areaPulse ? 'live' : 'placeholder'}>
+		<!-- Reads the local `pulse` derived (not mapState.areaPulse) so this
+		     component never reads the field its own effect writes. -->
+		<div class="pulse-band" data-status={pulse ? 'live' : 'placeholder'}>
 			{#each [
-				{ label: 'Open postings', value: mapState.areaPulse?.openPostings, deltaKey: 'openPostings' },
-				{ label: 'New in last 7d', value: mapState.areaPulse?.newLast7d, deltaKey: 'newLast7d' },
-				{ label: 'Median window', value: mapState.areaPulse?.medianWindowDays, deltaKey: 'medianWindowDays', unit: 'd' },
-				{ label: 'Closing ≤ 3d', value: mapState.areaPulse?.closingSoon3d, deltaKey: 'closingSoon3d' }
+				{ label: 'Open postings', value: pulse?.openPostings, deltaKey: 'openPostings' },
+				{ label: 'New in last 7d', value: pulse?.newLast7d, deltaKey: 'newLast7d' },
+				{ label: 'Median window', value: pulse?.medianWindowDays, deltaKey: 'medianWindowDays', unit: 'd' },
+				{ label: 'Closing ≤ 3d', value: pulse?.closingSoon3d, deltaKey: 'closingSoon3d' }
 			] as cell (cell.label)}
-				{@const delta = mapState.areaPulse?.deltas?.[cell.deltaKey]}
+				{@const delta = pulse?.deltas?.[cell.deltaKey]}
 				<div class="pulse-cell" class:empty={cell.value == null}>
 					<div class="pulse-label">{cell.label}</div>
 					<div class="pulse-value">
 						{cell.value != null ? `${cell.value.toLocaleString()}${cell.unit ?? ''}` : '—'}
 					</div>
 					{#if delta != null}
-						<div class="pulse-delta" class:up={delta > 0} class:down={delta < 0}>
+						<div
+							class="pulse-delta"
+							class:up={delta > 0}
+							class:down={delta < 0}
+							title="New postings this week vs. the trailing-90-day weekly average of posting openings (open + closed-within-90-days postings under the current filter; approximate)"
+						>
 							{delta > 0 ? '↑' : delta < 0 ? '↓' : ''} {Math.abs(delta)}% vs 90d avg
 						</div>
 					{/if}
 				</div>
 			{/each}
-			{#if !mapState.areaPulse}
+			{#if !pulse}
 				<div class="pulse-caption">PLACEHOLDER — needs historical slice</div>
 			{/if}
 		</div>

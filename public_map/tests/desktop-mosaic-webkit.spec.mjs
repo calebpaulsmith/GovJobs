@@ -72,6 +72,23 @@ check(listBox && mapBox && listBox.y > mapBox.y, 'Postings pane sits below the t
 await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
 check(await page.locator('.here-pane section.tab-here').isVisible(), 'Here pane shows SmallestAreaCard when nothing is selected');
 
+// D.5.28 area pulse: once the bundle loads, the band computes client-side and
+// flips from placeholder to live; the Open-postings cell shows a real count.
+await page.waitForSelector('.here-pane .pulse-band[data-status="live"]', { timeout: 30000 }).catch(() => {});
+check(
+	(await page.locator('.here-pane .pulse-band').getAttribute('data-status')) === 'live',
+	'pulse band is live (computed from the bundle, not placeholder)'
+);
+const openCell = await page.locator('.here-pane .pulse-cell .pulse-value').first().innerText();
+check(/^[\d,]+$/.test(openCell.trim()), `Open-postings pulse cell shows a number (${openCell.trim()})`);
+const pulseInStore = await page.evaluate(
+	async () => (await import('/src/lib/store.svelte.ts')).mapState.areaPulse
+);
+check(
+	pulseInStore !== null && typeof pulseInStore.openPostings === 'number',
+	'mapState.areaPulse is published for the JobList annotation'
+);
+
 // Wait for the postings list to populate (jobs.geojson is large).
 await page.waitForSelector('.list-pane .row', { timeout: 30000 });
 const rowCount = await page.locator('.list-pane .row').count();

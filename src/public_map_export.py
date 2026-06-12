@@ -226,6 +226,7 @@ def recently_closed_features(
             j.salary_min      AS salary_min,
             j.salary_max      AS salary_max,
             j.remote_status   AS remote_status,
+            j.open_date       AS open_date,
             j.close_date      AS close_date,
             jl.city           AS jl_city,
             jl.state          AS jl_state,
@@ -285,6 +286,10 @@ def recently_closed_features(
         )
         feature["properties"]["status"] = "closed"
         feature["properties"]["closed_within_days"] = int(row["closed_within_days"] or 0)
+        # D.5.28 area pulse: open_date lets the client derive the trailing-
+        # 90-day opening-rate baseline. Closed features only — open postings
+        # carry open_date in jobs_detail.json already.
+        feature["properties"]["open_date"] = row["open_date"]
         features.append(feature)
     return features
 
