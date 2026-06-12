@@ -27,6 +27,7 @@
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { resolveArea, urgencyCounts, type ResolvedArea } from './areaCard';
 	import { computeAreaPulse } from './areaPulse';
+	import AreaTrendSparkline from './AreaTrendSparkline.svelte';
 
 	interface Props {
 		// Parent passes `() => (tab = 'list')`. Optional so the component is
@@ -450,6 +451,11 @@
 				{/if}
 			</button>
 		</div>
+
+		<!-- D.5.28 volume sparkline: click-to-load 12-month HistoricJoa trend
+		     via the edge-cached /api/job-history Function (ADR-0029 / invariant
+		     #22 — on-demand, never bundled). -->
+		<AreaTrendSparkline {area} />
 
 		{#if onViewList}
 			<div class="actions">

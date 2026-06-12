@@ -392,6 +392,8 @@ The bulk-historic plan (D.5.7's HistoricJoa half + D.5.21 static history JSON + 
 
 **Consequences.** ADR-0016's "no live API" clause is narrowed to: "no live API that requires keys, no live DB, no user data online." Public, keyless endpoints behind an edge cache are allowed for explicit click-to-load features. The dashboard's local SQLite stays small (no millions of HistoricJoa rows). Adds one Cloudflare Pages Function (free tier covers ~100k req/day) and one new ROADMAP entry, **D.5.24 — On-demand Posting Intelligence**. The on-demand tab eventually replaces D.5.21 (per-job history) and D.5.22 (timeline sparkline) — both are folded into D.5.24. The trailing-90-days closed-jobs overlay (D.5.7's static half) is unchanged.
 
+**Addendum (2026-06-12) — the Function also powers the Here card's volume sparkline.** D.5.28's `posting_volume_history.json` slice question is resolved against a new file: an agency × locality × series × month precompute is combinatorially explosive and would put bulk HistoricJoa back in the bundle, exactly what this ADR rejected. Instead, `AreaTrendSparkline.svelte` on `/browse`'s Here card is a second click-to-load consumer of the unchanged `/api/job-history` contract, pinned to `window=1yr`. Query mapping lives in `public_map/src/lib/areaTrend.ts`: locality-scoped cards fall back to the locality's primary state with an explicit "approximate" note (HistoricJoa has no locality filter); agency/series chips beyond the first are named in a note rather than silently dropped; filter drift after load shows a reload notice instead of auto-refetching. No new endpoint, no new cache namespace, no bundle growth.
+
 ---
 
 ## ADR-0030 — 2026 GS pay-table cutover with bootstrap seed + operator verification
