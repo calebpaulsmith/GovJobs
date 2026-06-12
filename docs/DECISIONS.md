@@ -392,6 +392,8 @@ The bulk-historic plan (D.5.7's HistoricJoa half + D.5.21 static history JSON + 
 
 **Consequences.** ADR-0016's "no live API" clause is narrowed to: "no live API that requires keys, no live DB, no user data online." Public, keyless endpoints behind an edge cache are allowed for explicit click-to-load features. The dashboard's local SQLite stays small (no millions of HistoricJoa rows). Adds one Cloudflare Pages Function (free tier covers ~100k req/day) and one new ROADMAP entry, **D.5.24 — On-demand Posting Intelligence**. The on-demand tab eventually replaces D.5.21 (per-job history) and D.5.22 (timeline sparkline) — both are folded into D.5.24. The trailing-90-days closed-jobs overlay (D.5.7's static half) is unchanged.
 
+**Addendum (2026-06-12) — the Function also powers the Here card's volume sparkline.** D.5.28's `posting_volume_history.json` slice question is resolved against a new file: an agency × locality × series × month precompute is combinatorially explosive and would put bulk HistoricJoa back in the bundle, exactly what this ADR rejected. Instead, `AreaTrendSparkline.svelte` on `/browse`'s Here card is a second click-to-load consumer of the unchanged `/api/job-history` contract, pinned to `window=1yr`. Query mapping lives in `public_map/src/lib/areaTrend.ts`: locality-scoped cards fall back to the locality's primary state with an explicit "approximate" note (HistoricJoa has no locality filter); agency/series chips beyond the first are named in a note rather than silently dropped; filter drift after load shows a reload notice instead of auto-refetching. No new endpoint, no new cache namespace, no bundle growth.
+
 ---
 
 ## ADR-0030 — 2026 GS pay-table cutover with bootstrap seed + operator verification
@@ -654,3 +656,19 @@ Amends: ADR-0033 (Browse-first mosaic) — extends, does not contradict.
 **Explicitly deferred** (operator declined or out of scope): an "Applied" mark on JobCard (declined 2026-06-10); renaming "Job Lists"; richer comparator prefill (current city memory); any account/sync surface.
 
 **Consequences.** Browse reaches feature parity for the job-seeker loop without forked components; `/map`-only duplication (SavedSearchMenu vs SavedTab overlap) stops growing because new entry points target the shared stores. Every new `$effect` introduced by this work must follow the CLAUDE.md `untrack` rule (reads + writes on the same `$state` proxy). Roadmap tracking: Phase D.6 in `docs/ROADMAP.md`.
+
+## ADR-0036 — Area "What to watch" is deterministic and keyless, not an LLM call
+Date: 2026-06-12
+Status: Accepted
+Amends: ADR-0029 (extends its Function to a third consumer); supersedes the rev-1 mock's "📡 on-demand area enrichment" external-model sketch (`public_map/mocks/browse/metrics-pane.html`).
+
+**Context.** The last open D.5.28 data slice was the "on-demand area summary": a 1-2 paragraph natural-language summary plus a "what to watch" note for the Here card's area scope. The rev-1 mock sketched it as an external-model (LLM) call behind a new `functions/api/area-summary.ts` Pages Function, edge-cached 6 h per scope hash, with "where the secret lives" explicitly unresolved. The rev-2 mocks — the current target — say the area summary is "deterministic templated prose — never an LLM call," and the shipped `SmallestAreaCard` carries that comment. An LLM-backed Function would require an Anthropic API key in the Cloudflare Pages environment and per-request spend on a public, anonymous-traffic endpoint — breaking the posture ADR-0029 established ("no live API that requires keys, no secrets in the deployment") and adding a cost/abuse surface.
+
+**Decision (operator, 2026-06-12).** Deterministic and keyless. No LLM, no new Pages Function, no secret in the deployment. `AreaWatchNote.svelte` on the Here card is a click-to-load consumer of the existing `/api/job-history` Function at `window=3yr`; the pure module `public_map/src/lib/areaWatch.ts::computeWatchNote` derives the note client-side:
+
+- **Year-over-year:** trailing 12 complete months vs. the 12 before (the in-progress month is excluded from both). Withheld when the payload is truncated, the window has < 24 complete months, or the prior year has < 12 openings.
+- **Seasonality:** average openings per calendar month across the window; claims a peak month (or two, when the runner-up is within 90%) only when the peak is ≥ 1.5× the monthly mean over ≥ 24 openings; a flat year is reported as "no strong seasonal pattern" (itself a defensible claim). Withheld when truncated or thin.
+- **Typical posting window:** median open→close days across the returned records (≥ 8 usable date pairs), with an "apply early" nudge when ≤ 14 days.
+- **Every withheld claim is surfaced with its reason** — absence is explained, never papered over — and the basis line always states sample size, date range, and the upstream cap when it fired. Query mapping reuses `areaTrend.ts::buildAreaTrendQuery` (locality→primary-state fallback labeled approximate; extra chips named).
+
+**Consequences.** The 6-hour-per-scope-hash cache design dies with the LLM variant (the 24 h per-query edge cache on `/api/job-history` is the cache). The ROADMAP's `functions/api/area-summary.ts` item closes as "declined — superseded by client-side deterministic compute." If an external-model enrichment is ever revisited, it needs a new ADR that answers key custody, per-request budget, and abuse controls first; the rev-1 mock's open question is now answered "dashboard-side or not at all" for V1.x. With this slice shipped, D.5.28's data slices are all resolved and the milestone closes via the D.5.12 verification pass.
