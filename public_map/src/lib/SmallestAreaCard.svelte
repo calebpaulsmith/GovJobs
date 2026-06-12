@@ -28,6 +28,7 @@
 	import { resolveArea, urgencyCounts, type ResolvedArea } from './areaCard';
 	import { computeAreaPulse } from './areaPulse';
 	import AreaTrendSparkline from './AreaTrendSparkline.svelte';
+	import AreaWatchNote from './AreaWatchNote.svelte';
 
 	interface Props {
 		// Parent passes `() => (tab = 'list')`. Optional so the component is
@@ -456,6 +457,10 @@
 		     via the edge-cached /api/job-history Function (ADR-0029 / invariant
 		     #22 — on-demand, never bundled). -->
 		<AreaTrendSparkline {area} />
+
+		<!-- ADR-0036 "What to watch": deterministic, keyless 3-year context
+		     from the same Function. Click-to-load, like the sparkline. -->
+		<AreaWatchNote {area} />
 
 		{#if onViewList}
 			<div class="actions">

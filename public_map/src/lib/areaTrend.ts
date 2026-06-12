@@ -46,9 +46,14 @@ export interface AreaTrendQuery {
 /**
  * Map the resolved area + active filters onto the `/api/job-history`
  * contract. Only fields HistoricJoa (or the Function's post-filter) actually
- * supports are sent; everything dropped is named in `notes`.
+ * supports are sent; everything dropped is named in `notes`. `window`
+ * defaults to the sparkline's 1yr; the What-to-watch note passes 3yr.
  */
-export function buildAreaTrendQuery(area: ResolvedArea, filters: JobFilters): AreaTrendQuery {
+export function buildAreaTrendQuery(
+	area: ResolvedArea,
+	filters: JobFilters,
+	window: WindowKey = TREND_WINDOW
+): AreaTrendQuery {
 	const notes: string[] = [];
 
 	let state: string | undefined;
@@ -95,7 +100,7 @@ export function buildAreaTrendQuery(area: ResolvedArea, filters: JobFilters): Ar
 	if (state) parts.push(`state ${state.toUpperCase()}`);
 	const description = parts.length ? parts.join(' · ') : 'all federal postings';
 
-	return { query, description, notes, key: cacheKey(query, TREND_WINDOW) };
+	return { query, description, notes, key: cacheKey(query, window) };
 }
 
 /**
