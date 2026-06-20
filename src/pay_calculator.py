@@ -19,6 +19,7 @@ import logging
 import sqlite3
 from typing import Any
 
+from src.database import is_overseas
 from src.reference_data import (
     base_pay_scale,
     locality_or_rus,
@@ -28,6 +29,23 @@ from src.reference_data import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Overseas US-federal posts have no US locality. We still show GS base pay (USD)
+# but never silently treat them as "Rest of US" (0% adjustment presented as a
+# valid US locality). This sentinel marks the table as overseas; the real
+# State Dept DSSR allowances are layered on in a later stage.
+_OVERSEAS_LOCALITY = {
+    "code": "OCONUS",
+    "name": "Overseas post",
+    "adjustment_pct": None,
+    "inclusion_type": "overseas",
+    "source": "overseas:no-us-locality",
+}
+_OVERSEAS_NOTE = (
+    "Overseas post — US locality pay does not apply; GS base shown in USD. "
+    "Post (cost-of-living) allowance, hardship differential, and danger pay are "
+    "not yet modeled (State Dept DSSR)."
+)
 
 
 def _grade_range(grade_low: str | int | None, grade_high: str | int | None) -> list[str]:
@@ -69,6 +87,7 @@ def calculate_job_pay_table(
     state: str | None,
     grade_low: str | int | None,
     grade_high: str | int | None = None,
+    country: str | None = None,
 ) -> dict[str, Any]:
     """Return the locality-adjusted pay table for one job.
 
@@ -88,7 +107,11 @@ def calculate_job_pay_table(
     """
     plan = pay_plan(conn, pay_plan_code)
     notes: list[str] = []
-    locality = locality_or_rus(conn, city, state, year)
+    if is_overseas(country):
+        locality = dict(_OVERSEAS_LOCALITY)
+        notes.append(_OVERSEAS_NOTE)
+    else:
+        locality = locality_or_rus(conn, city, state, year)
 
     if plan is None:
         notes.append(
@@ -144,7 +167,7 @@ def calculate_job_pay_table(
                     "source": row["source"],
                     "source_url": row.get("source_url"),
                 }
-            if adjustment == 0 and locality["code"] != "RUS":
+            if adjustment == 0 and locality["code"] not in ("RUS", "OCONUS"):
                 notes.append(
                     f"locality {locality['code']} has 0% adjustment; "
                     "rates equal the base table"
@@ -177,13 +200,17 @@ def lookup_single_rate(
     state: str | None,
     grade: str | int,
     step: int = 1,
+    country: str | None = None,
 ) -> dict[str, Any] | None:
     """Return one locality-adjusted cell for spot-check / popup use.
 
     Prefers a locality-specific pay_scales row; if absent, derives from the
     base row + locality adjustment_pct.
     """
-    locality = locality_or_rus(conn, city, state, year)
+    if is_overseas(country):
+        locality = dict(_OVERSEAS_LOCALITY)
+    else:
+        locality = locality_or_rus(conn, city, state, year)
     grade_str = str(grade).zfill(2) if str(grade).isdigit() else str(grade)
     locality_row = pay_scale_lookup(
         conn,
