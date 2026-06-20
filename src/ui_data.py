@@ -40,6 +40,7 @@ JOB_DISPLAY_COLUMNS = [
     "jobs.grade_high AS grade_high",
     "jobs.state AS state",
     "jobs.city AS city",
+    "jobs.country AS country",
     "jobs.remote_status AS remote_status",
     "jobs.salary_min AS salary_min",
     "jobs.salary_max AS salary_max",
@@ -258,6 +259,9 @@ def jobs_dataframe(conn: sqlite3.Connection, filters: dict[str, Any] | None = No
     if filters.get("state") and filters["state"] != "All":
         where.append("jobs.state = ?")
         params.append(filters["state"])
+    if filters.get("country") and filters["country"] != "All":
+        where.append("jobs.country = ?")
+        params.append(filters["country"])
     if filters.get("remote_status") and filters["remote_status"] != "All":
         where.append("jobs.remote_status = ?")
         params.append(filters["remote_status"])
@@ -301,6 +305,26 @@ def jobs_dataframe(conn: sqlite3.Connection, filters: dict[str, Any] | None = No
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY jobs.close_date IS NULL, jobs.close_date ASC, jobs.updated_at DESC LIMIT 1000"
     return pd.read_sql_query(sql, conn, params=params)
+
+
+def country_options(conn: sqlite3.Connection) -> list[str]:
+    """Distinct job countries for the Search scope selector, US first.
+
+    Returns ["All", "US", <other ISO codes sorted>]. Values are the
+    canonicalized jobs.country codes written by the importer / backfill, so the
+    selector filters on the same form jobs_dataframe compares against.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT country FROM jobs "
+        "WHERE country IS NOT NULL AND TRIM(country) != ''"
+    ).fetchall()
+    codes = sorted({str(row[0]) for row in rows})
+    ordered = ["All"]
+    if "US" in codes:
+        ordered.append("US")
+        codes.remove("US")
+    ordered.extend(codes)
+    return ordered
 
 
 def job_detail(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:

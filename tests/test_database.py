@@ -605,3 +605,120 @@ def test_child_rows_cascade_when_job_is_deleted(conn):
     assert conn.execute("SELECT COUNT(*) FROM saved_jobs").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM job_notes").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM job_tags").fetchone()[0] == 0
+
+
+# --- Overseas US-federal postings: jobs.country (Stage 1) ------------------
+from src.database import (  # noqa: E402
+    normalize_country,
+    is_overseas,
+    _backfill_jobs_country,
+)
+
+
+def test_jobs_has_country_column_and_index(conn):
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    assert "country" in cols
+    indexes = {row["name"] for row in conn.execute("PRAGMA index_list(jobs)").fetchall()}
+    assert "idx_jobs_country" in indexes
+
+
+def test_init_schema_idempotent_for_country_column(tmp_path):
+    path = tmp_path / "federal_jobs.sqlite"
+    conn = init_schema(path)
+    # Simulate a pre-migration database that lacks the country column.
+    try:
+        conn.execute("ALTER TABLE jobs DROP COLUMN country")
+    except sqlite3.OperationalError:
+        pytest.skip("SQLite build lacks DROP COLUMN support")
+    conn.commit()
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    assert cols.count("country") == 0
+    # Re-running init_schema must re-add it exactly once (migration path).
+    conn = init_schema(path)
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    assert cols.count("country") == 1
+
+
+def test_backfill_jobs_country_defaults_us_and_normalizes_overseas(conn):
+    us_id = upsert_job(
+        conn,
+        {
+            "source": "usajobs_search",
+            "position_id": "P-US",
+            "announcement_number": "A-US",
+            "title": "Domestic job",
+            "locations": [{"city": "Chicago", "state": "IL", "country": "US"}],
+        },
+    )
+    it_id = upsert_job(
+        conn,
+        {
+            "source": "usajobs_search",
+            "position_id": "P-IT",
+            "announcement_number": "A-IT",
+            "title": "Embassy Rome",
+            "locations": [{"city": "Rome", "state": "", "country": "Italy"}],
+        },
+    )
+    bare_id = upsert_job(
+        conn,
+        {
+            "source": "usajobs_search",
+            "position_id": "P-NONE",
+            "announcement_number": "A-NONE",
+            "title": "No location country",
+        },
+    )
+    # Simulate pre-migration rows, then backfill from job_locations.country.
+    conn.execute("UPDATE jobs SET country = NULL")
+    conn.commit()
+    _backfill_jobs_country(conn)
+    rows = {r["id"]: r["country"] for r in conn.execute("SELECT id, country FROM jobs").fetchall()}
+    assert rows[us_id] == "US"
+    assert rows[it_id] == "IT"  # "Italy" name collapses to ISO code
+    assert rows[bare_id] == "US"  # no location country -> domestic default
+    assert all(v is not None and v != "" for v in rows.values())
+
+
+def test_normalize_country_collapses_codes_and_names():
+    assert normalize_country("US") == "US"
+    assert normalize_country("United States") == "US"
+    assert normalize_country("United States of America") == "US"
+    assert normalize_country("IT") == "IT"
+    assert normalize_country("Italy") == "IT"
+    assert normalize_country("Japan") == "JP"
+    assert normalize_country("  mexico ") == "MX"
+    assert normalize_country(None) is None
+    assert normalize_country("") is None
+    # Unrecognized longer name is preserved, never dropped.
+    assert normalize_country("Wakanda") == "Wakanda"
+
+
+def test_is_overseas_treats_us_and_territories_as_domestic():
+    assert is_overseas("Italy") is True
+    assert is_overseas("JP") is True
+    assert is_overseas("US") is False
+    assert is_overseas("United States") is False
+    assert is_overseas(None) is False  # unknown -> domestic, never strip US pay on a guess
+    assert is_overseas("PR") is False  # US territory
+    assert is_overseas("Guam") is False
+
+
+def test_init_schema_twice_keeps_single_country_column(tmp_path):
+    path = tmp_path / "federal_jobs.sqlite"
+    init_schema(path)
+    conn = init_schema(path)  # re-run migration on existing DB
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    assert cols.count("country") == 1
+
+
+def test_ensure_column_is_noop_when_present_and_adds_when_missing(tmp_path):
+    from src.database import _ensure_column
+
+    conn = init_schema(tmp_path / "federal_jobs.sqlite")
+    _ensure_column(conn, "jobs", "country", "TEXT")  # already present -> no-op
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    assert cols.count("country") == 1
+    _ensure_column(conn, "jobs", "tmp_probe_col", "TEXT")  # new -> added
+    cols2 = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    assert "tmp_probe_col" in cols2

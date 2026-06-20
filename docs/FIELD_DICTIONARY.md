@@ -51,6 +51,7 @@ Occupational series can repeat on some JOAs. The `job_categories` child table pr
 | `location_text` | Original location string. |
 | `state` | Two-letter US state postal code (`IL`, `DC`, …). `null` for foreign or unknown. |
 | `city` | Normalized city name; `null` if not parseable. |
+| `country` | ISO alpha-2 country code, canonicalized across sources via `database.normalize_country` (USAJOBS Search sends codes like `IT`; HistoricJoa sends names like `Italy`). Defaults to `'US'`. Denormalized from the primary `job_locations.country` for cheap filtering. US territories (PR, GU, AS, MP, VI) are domestic, not overseas. See ADR-0037. |
 | `remote_status` | One of: `remote` (anywhere), `hybrid`, `onsite`, `unknown`. |
 | `telework_status` | The free-text telework string from the JOA, untransformed. |
 

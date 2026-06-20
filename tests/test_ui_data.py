@@ -300,3 +300,41 @@ def test_match_scores_feed_scorecard(conn):
     assert len(card) == 2
     assert card.iloc[0]["score"] > card.iloc[1]["score"]
     assert card.iloc[0]["agency"] == "Federal Emergency Management Agency"
+
+
+# --- Country scope (Stage 2): overseas US-fed postings ---------------------
+from src.ui_data import country_options  # noqa: E402
+
+
+def _seed_countries(conn):
+    upsert_job(conn, {"source": "usajobs_search", "position_id": "c-us",
+                      "announcement_number": "c-us", "title": "Domestic analyst",
+                      "country": "US", "state": "IL", "city": "Chicago"})
+    upsert_job(conn, {"source": "usajobs_search", "position_id": "c-it",
+                      "announcement_number": "c-it", "title": "Embassy Rome",
+                      "country": "IT", "city": "Rome"})
+    upsert_job(conn, {"source": "usajobs_search", "position_id": "c-jp",
+                      "announcement_number": "c-jp", "title": "Base Tokyo",
+                      "country": "JP", "city": "Tokyo"})
+
+
+def test_jobs_dataframe_filters_by_country(conn):
+    _seed_countries(conn)
+    all_df = jobs_dataframe(conn, {})
+    assert len(all_df) == 3
+    assert "country" in all_df.columns  # relevant-first row carries country
+    it_df = jobs_dataframe(conn, {"country": "IT"})
+    assert list(it_df["title"]) == ["Embassy Rome"]
+    us_df = jobs_dataframe(conn, {"country": "US"})
+    assert list(us_df["title"]) == ["Domestic analyst"]
+    # "All" is a no-op, same as no country key
+    assert len(jobs_dataframe(conn, {"country": "All"})) == 3
+
+
+def test_country_options_lists_us_first(conn):
+    _seed_countries(conn)
+    assert country_options(conn) == ["All", "US", "IT", "JP"]
+
+
+def test_country_options_empty_db_is_just_all(conn):
+    assert country_options(conn) == ["All"]

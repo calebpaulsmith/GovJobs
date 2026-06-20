@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from src.database import record_match_score
+from src.database import is_overseas, record_match_score
 
 
 SCORING_VERSION = "v1.0"
@@ -247,6 +247,11 @@ def _score_location(
     negatives: list[dict[str, Any]],
     missing: list[dict[str, Any]],
 ) -> None:
+    if is_overseas(job.get("country")):
+        # Overseas US-fed posts get a neutral location factor: the US-geography
+        # rules (Chicago/Midwest bonus, outside-Midwest penalty, missing-location
+        # flag) do not apply abroad. Agency/series/grade scoring is unaffected.
+        return
     city = str(job.get("city") or "").lower()
     location_text = " ".join(
         str(value or "")

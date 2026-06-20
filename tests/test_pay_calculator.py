@@ -176,3 +176,57 @@ def test_lookup_single_rate_locality_row(conn):
     assert cell["rate"] == 122_500
     assert cell["method"] == "locality_row"
     assert cell["locality"]["code"] == "CHI"
+
+
+# --- Overseas US-fed posts (Stage 3): never silent Rest-of-US --------------
+def test_overseas_job_uses_oconus_sentinel_not_rus(conn):
+    # GS base row only (no locality); an overseas job must show GS base, labeled
+    # OCONUS with the overseas note — never the silent RUS 0% presentation.
+    _seed_pay_row(
+        conn, pay_plan_code="GS", year=2026, grade="13", step=1,
+        locality_code="", rate=100000.00,
+    )
+    table = calculate_job_pay_table(
+        conn, pay_plan_code="GS", year=2026, city="Rome", state="RM",
+        grade_low=13, grade_high=13, country="IT",
+    )
+    assert table["locality"]["code"] == "OCONUS"
+    assert table["locality"]["code"] != "RUS"
+    assert table["locality"]["inclusion_type"] == "overseas"
+    assert any("Overseas post" in n for n in table["notes"])
+    # GS base shown verbatim (no fabricated locality adjustment).
+    assert table["grades"]["13"]["01"]["rate"] == 100000.00
+
+
+def test_domestic_job_is_unaffected_by_country_param(conn):
+    upsert_geocoded_location(
+        conn, city="Chicago", state="IL", lat=41.8781, lon=-87.6298, county_fips="17031"
+    )
+    _seed_locality(
+        conn, code="CHI", year=2026, name="Chicago-Naperville",
+        adjustment_pct=32.45, counties=["17031"],
+    )
+    _seed_pay_row(
+        conn, pay_plan_code="GS", year=2026, grade="13", step=1,
+        locality_code="CHI", rate=122500.00,
+    )
+    table = calculate_job_pay_table(
+        conn, pay_plan_code="GS", year=2026, city="Chicago", state="IL",
+        grade_low=13, grade_high=13, country="US",
+    )
+    assert table["locality"]["code"] == "CHI"
+    assert table["grades"]["13"]["01"]["rate"] == 122500.00
+
+
+def test_lookup_single_rate_overseas_is_oconus(conn):
+    _seed_pay_row(
+        conn, pay_plan_code="GS", year=2026, grade="13", step=1,
+        locality_code="", rate=100000.00,
+    )
+    cell = lookup_single_rate(
+        conn, pay_plan_code="GS", year=2026, city="Tokyo", state="13",
+        grade="13", step=1, country="JP",
+    )
+    assert cell is not None
+    assert cell["locality"]["code"] == "OCONUS"
+    assert cell["rate"] == 100000.00  # GS base, no adjustment

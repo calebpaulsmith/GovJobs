@@ -6,8 +6,11 @@ import streamlit as st
 
 from config import load_config
 from src.usajobs_current_api import import_search
+from src.database import is_overseas
+from src.reference_data import OVERSEAS_PAY_CONTEXT
 from src.ui_data import (
     app_connection,
+    country_options,
     feedback_dataframe,
     job_detail,
     jobs_dataframe,
@@ -42,7 +45,8 @@ with st.sidebar:
     agency_code_filter = st.text_input("Agency code", value=organization)
     department_code_filter = st.text_input("Department code filter")
     agency_filter = st.text_input("Agency contains")
-    state_filter = st.text_input("State", max_chars=2)
+    state_filter = st.text_input("State / subdivision", max_chars=2)
+    country_filter = st.selectbox("Country", country_options(conn))
     pay_plan_filter = st.text_input("Pay plan")
     grade_low_filter = st.text_input("Min grade")
     grade_high_filter = st.text_input("Max grade")
@@ -89,10 +93,14 @@ filters = {
     "salary_max": salary_max_filter or None,
     "hiring_path": hiring_path_filter,
     "state": state_filter.upper() if state_filter else "All",
+    "country": country_filter,
     "remote_status": remote_filter,
     "keyword": keyword,
 }
 df = jobs_dataframe(conn, filters)
+
+if country_filter != "All" and is_overseas(country_filter):
+    st.info(OVERSEAS_PAY_CONTEXT)
 
 st.subheader("Postings")
 st.dataframe(df, use_container_width=True, hide_index=True)
@@ -134,6 +142,14 @@ if not df.empty:
             if detail.get("duties"):
                 with st.expander("Duties", expanded=False):
                     st.write(detail["duties"])
+            if is_overseas(detail.get("country")):
+                with st.expander("Deep research — overseas location context", expanded=False):
+                    st.write(f"**Country:** {detail.get('country')}")
+                    st.write(
+                        f"**Duty station:** {detail.get('city') or '—'}, "
+                        f"{detail.get('state') or '—'}"
+                    )
+                    st.caption(OVERSEAS_PAY_CONTEXT)
             if detail.get("url"):
                 st.link_button("Open USAJOBS", detail["url"])
 

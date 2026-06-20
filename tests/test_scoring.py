@@ -223,3 +223,32 @@ def test_score_all_jobs_stores_v1_scores(conn):
 
     context = scoring_context(conn, job_id)
     assert context["series_values"] == ["0089"]
+
+
+# --- Overseas US-fed posts (Stage 3): neutral location scoring -------------
+def test_overseas_job_gets_neutral_location_factor():
+    result = score_job(
+        {
+            "title": "Management Analyst",
+            "agency": "Department of State",
+            "country": "IT",
+            "state": "RM",
+            "city": "Rome",
+        }
+    )
+    names = _factor_names(result)
+    assert "outside Midwest" not in names
+    assert "Chicago" not in names and "Midwest" not in names
+    assert "location" not in {m["field"] for m in result.missing_info}
+
+
+def test_us_location_scoring_unchanged_by_overseas_gate():
+    chicago = score_job({"title": "Analyst", "agency": "FEMA", "country": "US",
+                         "state": "IL", "city": "Chicago"})
+    assert "Chicago" in _factor_names(chicago)
+    texas = score_job({"title": "Analyst", "agency": "FEMA", "country": "US",
+                       "state": "TX", "city": "Austin"})
+    assert "outside Midwest" in _factor_names(texas)
+    # Legacy rows without a country still score as domestic.
+    legacy = score_job({"title": "Analyst", "agency": "FEMA", "state": "TX", "city": "Austin"})
+    assert "outside Midwest" in _factor_names(legacy)

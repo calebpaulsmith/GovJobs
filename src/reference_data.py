@@ -24,6 +24,24 @@ REST_OF_US_CODE = "RUS"
 """OPM's "Rest of U.S." catch-all locality used when no specific area applies."""
 
 
+OVERSEAS_PAY_CONTEXT = (
+    "**Overseas US-federal position.** This is a US federal job located outside "
+    "the United States. Base pay still follows the GS schedule in **USD**. "
+    "US locality pay does **not** apply abroad — instead, total compensation may "
+    "include State Department allowances: a post (cost-of-living) allowance, a "
+    "post (hardship) differential, and danger pay, depending on the post. Those "
+    "allowances are not yet modeled in this dashboard, so treat the listed salary "
+    "as **GS base only**; actual compensation abroad can differ. (Detailed DSSR "
+    "allowance modeling is a planned update.)"
+)
+"""Reusable explainer shown when a single overseas country is in scope.
+
+Stored here as data (not page markup) so Search and any future surface render
+the same copy. Per-post DSSR allowance figures arrive in a later stage; until
+then this card is the honest stand-in that prevents GS-base pay from reading
+as final overseas compensation."""
+
+
 # ---------- Locality lookups ------------------------------------------------
 
 

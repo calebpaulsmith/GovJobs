@@ -6,7 +6,7 @@ from html import unescape
 from collections.abc import Mapping
 from typing import Any
 
-from src.database import build_raw_job_text
+from src.database import build_raw_job_text, normalize_country
 
 
 STATE_NAMES = {
@@ -124,6 +124,7 @@ def job_from_search_item(
         "location_text": _text(descriptor.get("PositionLocationDisplay")),
         "state": _state_from_location(location),
         "city": _text(location.get("CityName") or location.get("LocationName")),
+        "country": normalize_country(location.get("CountryCode") or location.get("CountryName")),
         "remote_status": _remote_status(details.get("RemoteIndicator"), details.get("TeleworkEligible")),
         "telework_status": _text(details.get("TeleworkEligible")),
         "open_date": _date(descriptor.get("PublicationStartDate") or descriptor.get("PositionStartDate")),
@@ -186,6 +187,7 @@ def job_from_historic_record(
         "location_text": _historic_location_text(location),
         "state": _state_from_location(location),
         "city": _text(location.get("positionLocationCity")),
+        "country": normalize_country(location.get("positionLocationCountry")),
         "remote_status": _remote_status(None, record.get("teleworkEligible")),
         "telework_status": _text(record.get("teleworkEligible")),
         "open_date": _date(record.get("positionOpenDate")),
