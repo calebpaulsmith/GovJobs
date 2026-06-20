@@ -291,3 +291,170 @@ def cost_of_living(
     sql += " ORDER BY year DESC, CASE source WHEN 'bea:rpp' THEN 0 ELSE 1 END LIMIT 1"
     row = conn.execute(sql, params).fetchone()
     return dict(row) if row else None
+
+
+# ---------- Overseas DSSR allowances (DSSR 220 / 500 / 650) ------------------
+# US-fed jobs abroad keep GS base (USD) with NO US locality pay; their real comp
+# adds State Dept allowances. Sources are the live Web920 tables (verified
+# 2026-06-20). These are reads only; scripts/ingest_dssr_allowances.py writes.
+_DSSR_HARDSHIP_URL = "https://allowances.state.gov/Web920/hardship.asp"
+_DSSR_DANGER_URL = "https://allowances.state.gov/Web920/danger_pay_all.asp"
+_DSSR_COLA_URL = "https://allowances.state.gov/Web920/cola.asp"
+
+
+def overseas_post_allowance(
+    conn: sqlite3.Connection, country: Any, city: Any
+) -> dict[str, Any] | None:
+    """Match a duty station to a DSSR post row.
+
+    Match precision, most to least specific: exact (country_iso, post=city) →
+    the country's "Other" catch-all row (State's own country-level fallback) →
+    None (caller shows GS base only). Adds a ``match`` field: ``'post'`` |
+    ``'country'``. ``country`` is normalized to ISO so an ISO-coded job row joins
+    the ingest's ISO column.
+    """
+    from src.database import normalize_country
+
+    iso = normalize_country(country)
+    if not iso:
+        return None
+    iso = iso.upper()
+    city_text = (str(city).strip() if city else "") or None
+    if city_text:
+        row = conn.execute(
+            "SELECT * FROM overseas_post_allowances "
+            "WHERE country_iso=? AND post_name=? COLLATE NOCASE",
+            (iso, city_text),
+        ).fetchone()
+        if row:
+            out = dict(row)
+            out["match"] = "post"
+            return out
+    row = conn.execute(
+        "SELECT * FROM overseas_post_allowances "
+        "WHERE country_iso=? AND post_name='Other'",
+        (iso,),
+    ).fetchone()
+    if row:
+        out = dict(row)
+        out["match"] = "country"
+        return out
+    return None
+
+
+def spendable_income_for(
+    conn: sqlite3.Connection, salary: float | int | None, family_size: int = 1
+) -> dict[str, Any] | None:
+    """Annual spendable income for a salary + family size (DSSR 229 table).
+
+    Returns the matching band row, or None when salary is missing or below the
+    lowest published band (caller must then withhold the COLA dollar estimate).
+    """
+    if salary is None:
+        return None
+    row = conn.execute(
+        "SELECT * FROM spendable_income "
+        "WHERE family_size=? AND salary_min<=? "
+        "AND (salary_max IS NULL OR salary_max>=?) "
+        "ORDER BY salary_min DESC LIMIT 1",
+        (int(family_size), float(salary), float(salary)),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def overseas_compensation(
+    conn: sqlite3.Connection,
+    *,
+    country: Any,
+    city: Any,
+    base_salary: float | int | None,
+    family_size: int = 1,
+) -> dict[str, Any]:
+    """Build a traceable overseas comp breakdown for one duty station.
+
+    Returns GS base plus DSSR line items — each with its percentage, the DSSR
+    section, the dollar amount, the source URL, and the effective date. Hardship
+    and danger are exact (% of base). COLA is % of *spendable income*, so its
+    dollar value is an **estimate** flagged with the family-size assumption and
+    withheld (not guessed) when the salary is below the published table. An
+    unmatched post returns GS base only with an explicit note — never fabricated
+    numbers.
+    """
+    base = float(base_salary) if base_salary is not None else None
+    matched = overseas_post_allowance(conn, country, city)
+    result: dict[str, Any] = {
+        "base_salary": base,
+        "matched_post": None,
+        "lines": [],
+        "estimated_total": base,
+        "notes": [],
+        "family_size": int(family_size),
+    }
+    if matched is None:
+        result["notes"].append(
+            "Duty station not matched in the DSSR allowance tables — GS base "
+            "shown; post allowances unknown."
+        )
+        return result
+
+    result["matched_post"] = {
+        "country_name": matched.get("country_name"),
+        "post_name": matched.get("post_name"),
+        "match": matched.get("match"),
+    }
+    if matched.get("match") == "country":
+        result["notes"].append(
+            f"No exact post match; using {matched.get('country_name')} country-level "
+            "(\"Other\") rates — approximate for this specific city."
+        )
+    eff = matched.get("effective_date")
+    lines: list[dict[str, Any]] = []
+
+    def _amount(pct: float | None) -> float | None:
+        if pct is None or base is None:
+            return None
+        return round(base * pct / 100.0, 2)
+
+    hardship_pct = matched.get("post_differential_pct")
+    if hardship_pct is not None:
+        lines.append({
+            "label": "Post (hardship) differential", "dssr": "DSSR 500",
+            "pct": hardship_pct, "basis": "% of base pay", "amount": _amount(hardship_pct),
+            "estimated": False, "source_url": _DSSR_HARDSHIP_URL, "effective_date": eff,
+        })
+    danger_pct = matched.get("danger_pay_pct")
+    if danger_pct is not None:
+        lines.append({
+            "label": "Danger pay", "dssr": "DSSR 650",
+            "pct": danger_pct, "basis": "% of base pay", "amount": _amount(danger_pct),
+            "estimated": False, "source_url": _DSSR_DANGER_URL, "effective_date": eff,
+        })
+    cola_pct = matched.get("cola_pct_spendable_income")
+    if cola_pct is not None:
+        si = spendable_income_for(conn, base, family_size)
+        cola_amount = None
+        estimated = True
+        assumption = f"family size {int(family_size)}"
+        if cola_pct == 0:
+            cola_amount = 0.0
+        elif si is not None:
+            cola_amount = round(cola_pct / 100.0 * si["annual_spendable_income"], 2)
+        else:
+            result["notes"].append(
+                "Post (COLA) allowance dollar estimate withheld: the posting's "
+                "salary is outside the published Spendable Income Table."
+            )
+        lines.append({
+            "label": "Post (COLA) allowance", "dssr": "DSSR 220",
+            "pct": cola_pct, "basis": "% of spendable income", "amount": cola_amount,
+            "estimated": estimated, "assumption": assumption,
+            "source_url": _DSSR_COLA_URL, "effective_date": eff,
+        })
+
+    result["lines"] = lines
+    if base is not None:
+        total = base + sum(
+            (line["amount"] or 0.0) for line in lines if line.get("amount") is not None
+        )
+        result["estimated_total"] = round(total, 2)
+    return result

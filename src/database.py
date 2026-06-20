@@ -879,6 +879,33 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_federal_properties_agency_code
             ON federal_properties(agency_code);
 
+        CREATE TABLE IF NOT EXISTS overseas_post_allowances (
+            country_iso TEXT NOT NULL,
+            country_name TEXT NOT NULL,
+            post_name TEXT NOT NULL,
+            post_differential_pct REAL,
+            danger_pay_pct REAL,
+            cola_pct_spendable_income REAL,
+            effective_date TEXT,
+            source_url TEXT NOT NULL,
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(country_iso, post_name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_overseas_post_allow_country
+            ON overseas_post_allowances(country_iso);
+
+        CREATE TABLE IF NOT EXISTS spendable_income (
+            salary_min INTEGER NOT NULL,
+            salary_max INTEGER,
+            family_size INTEGER NOT NULL,
+            annual_spendable_income INTEGER NOT NULL,
+            effective_date TEXT,
+            source_url TEXT NOT NULL,
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(salary_min, family_size)
+        );
+
         CREATE TABLE IF NOT EXISTS cost_of_living_index (
             year INTEGER NOT NULL,
             geo_type TEXT NOT NULL,
@@ -926,7 +953,7 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     _backfill_child_tables_from_jobs(conn)
     _backfill_search_locations_from_raw(conn)
     _backfill_jobs_country(conn)
-    _set_meta(conn, "schema_version", "12")
+    _set_meta(conn, "schema_version", "13")
     conn.commit()
     return conn
 

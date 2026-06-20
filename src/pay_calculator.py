@@ -23,6 +23,7 @@ from src.database import is_overseas
 from src.reference_data import (
     base_pay_scale,
     locality_or_rus,
+    overseas_post_allowance,
     pay_plan,
     pay_scale_lookup,
     pay_scales_for_grade,
@@ -176,6 +177,32 @@ def calculate_job_pay_table(
         if steps_for_grade:
             grade_table[grade] = steps_for_grade
 
+    # Overseas posts: attach the matched DSSR allowance percentages (% of base
+    # for hardship/danger; % of spendable income for COLA) so any consumer of
+    # the pay table sees real comp context, not just GS base. Dollar amounts are
+    # left to src.reference_data.overseas_compensation, which needs the posting's
+    # salary + a family-size assumption.
+    overseas_allowances = None
+    if is_overseas(country):
+        match = overseas_post_allowance(conn, country, city)
+        if match:
+            overseas_allowances = {
+                "matched_post": {
+                    "country_name": match.get("country_name"),
+                    "post_name": match.get("post_name"),
+                    "match": match.get("match"),
+                },
+                "post_differential_pct": match.get("post_differential_pct"),
+                "danger_pay_pct": match.get("danger_pay_pct"),
+                "cola_pct_spendable_income": match.get("cola_pct_spendable_income"),
+                "effective_date": match.get("effective_date"),
+                "source": "State Dept DSSR (allowances.state.gov)",
+            }
+            notes.append(
+                "DSSR allowances apply (see overseas_allowances): post "
+                f"{match.get('post_name')}, {match.get('country_name')}."
+            )
+
     return {
         "pay_plan": (pay_plan_code or "").upper(),
         "year": year,
@@ -187,6 +214,7 @@ def calculate_job_pay_table(
             "source": locality.get("source"),
         },
         "grades": grade_table,
+        "overseas_allowances": overseas_allowances,
         "notes": notes,
     }
 

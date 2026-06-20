@@ -230,3 +230,42 @@ def test_lookup_single_rate_overseas_is_oconus(conn):
     assert cell is not None
     assert cell["locality"]["code"] == "OCONUS"
     assert cell["rate"] == 100000.00  # GS base, no adjustment
+
+
+# --- Overseas DSSR allowances attached to the pay table (Stage 4) ----------
+def _seed_dssr_kabul(conn):
+    conn.execute(
+        "INSERT INTO overseas_post_allowances (country_iso, country_name, "
+        "post_name, post_differential_pct, danger_pay_pct, "
+        "cola_pct_spendable_income, effective_date, source_url, imported_at) "
+        "VALUES ('AF','AFGHANISTAN','Kabul',35.0,35.0,0.0,'2026-06-14','x',?)",
+        (utc_now(),),
+    )
+    conn.commit()
+
+
+def test_pay_table_attaches_overseas_allowances(conn):
+    _seed_dssr_kabul(conn)
+    _seed_pay_row(conn, pay_plan_code="GS", year=2026, grade="13", step=1,
+                  locality_code="", rate=100000.00)
+    table = calculate_job_pay_table(
+        conn, pay_plan_code="GS", year=2026, city="Kabul", state=None,
+        grade_low=13, grade_high=13, country="AF",
+    )
+    oa = table["overseas_allowances"]
+    assert oa is not None
+    assert oa["matched_post"]["post_name"] == "Kabul"
+    assert oa["post_differential_pct"] == 35.0
+    assert oa["danger_pay_pct"] == 35.0
+    assert any("DSSR allowances apply" in n for n in table["notes"])
+
+
+def test_pay_table_us_job_has_no_overseas_allowances(conn):
+    _seed_dssr_kabul(conn)
+    _seed_pay_row(conn, pay_plan_code="GS", year=2026, grade="13", step=1,
+                  locality_code="", rate=100000.00)
+    table = calculate_job_pay_table(
+        conn, pay_plan_code="GS", year=2026, city="Chicago", state="IL",
+        grade_low=13, grade_high=13, country="US",
+    )
+    assert table["overseas_allowances"] is None

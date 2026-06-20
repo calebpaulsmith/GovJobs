@@ -597,6 +597,36 @@ Normalized rows imported from downloaded OPM/FedScope files by `src/opm_data.py`
 
 This table is **never joined** to `jobs` without a clearly-labeled chart/footnote that explains postings ≠ hires.
 
+### `overseas_post_allowances`
+
+State Dept DSSR allowances for US-fed jobs posted abroad (no US locality pay overseas). Written by `scripts/ingest_dssr_allowances.py` from live `allowances.state.gov` HTML, seed-CSV floor. A **new pay path**, kept separate from `pay_scales` (ADR-0034 no-widen rule). Read via `src/reference_data.py`. See ADR-0037 Stage 4 addendum.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| country_iso | TEXT | ISO alpha-2 via `normalize_country` (PK part) |
+| country_name | TEXT | DSSR country name (e.g. `ITALY`) |
+| post_name | TEXT | DSSR post / city; `Other` = country-level row (PK part) |
+| post_differential_pct | REAL | DSSR 500 hardship, **% of base pay** |
+| danger_pay_pct | REAL | DSSR 650, **% of base pay** |
+| cola_pct_spendable_income | REAL | DSSR 220, **% of spendable income** (not base) |
+| effective_date | TEXT | rates-effective date |
+| source_url | TEXT | allowances.state.gov page |
+| imported_at | TEXT | |
+
+### `spendable_income`
+
+DSSR 229 Annual Spendable Income by salary band × family size — turns a COLA percentage into a flagged dollar estimate. PK `(salary_min, family_size)`; `salary_max IS NULL` = "and over".
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| salary_min | INTEGER | band floor |
+| salary_max | INTEGER | band ceiling, NULL = open-ended |
+| family_size | INTEGER | 1–6 |
+| annual_spendable_income | INTEGER | USD |
+| effective_date | TEXT | |
+| source_url | TEXT | spendable-income .docx |
+| imported_at | TEXT | |
+
 ---
 
 ## Migrations
