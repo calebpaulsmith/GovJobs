@@ -91,6 +91,7 @@ JOB_COLUMNS = (
     "location_text",
     "state",
     "city",
+    "country",
     "remote_status",
     "telework_status",
     "open_date",
@@ -186,6 +187,7 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             location_text TEXT,
             state TEXT,
             city TEXT,
+            country TEXT,
             remote_status TEXT DEFAULT 'unknown',
             telework_status TEXT,
             open_date TEXT,
@@ -210,6 +212,7 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
             ON jobs(source, usajobs_control_number)
             WHERE usajobs_control_number IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
+        CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs(country);
         CREATE INDEX IF NOT EXISTS idx_jobs_agency ON jobs(agency);
         CREATE INDEX IF NOT EXISTS idx_jobs_series ON jobs(series);
         CREATE INDEX IF NOT EXISTS idx_jobs_close_date ON jobs(close_date);
@@ -911,16 +914,19 @@ def init_schema(target: sqlite3.Connection | str | Path) -> sqlite3.Connection:
     )
     _ensure_column(conn, "jobs", "agency_code", "TEXT")
     _ensure_column(conn, "jobs", "department_code", "TEXT")
+    _ensure_column(conn, "jobs", "country", "TEXT")
     _ensure_column(conn, "job_locations", "latitude", "REAL")
     _ensure_column(conn, "job_locations", "longitude", "REAL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_agency_code ON jobs(agency_code)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_department_code ON jobs(department_code)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs(country)")
     _seed_core_codes(conn)
     _seed_state_centroids(conn)
     _seed_pay_plans(conn)
     _backfill_child_tables_from_jobs(conn)
     _backfill_search_locations_from_raw(conn)
-    _set_meta(conn, "schema_version", "11")
+    _backfill_jobs_country(conn)
+    _set_meta(conn, "schema_version", "12")
     conn.commit()
     return conn
 
@@ -2149,6 +2155,89 @@ def _clean(value: Any) -> str | None:
     return text or None
 
 
+# --- Country canonicalization for overseas US-federal postings -------------
+# USAJOBS Search supplies ISO-3166 alpha-2 codes (CountryCode: "US", "IT");
+# HistoricJoa supplies full names (positionLocationCountry: "United States",
+# "Italy"). normalize_country() collapses both to one canonical form so the
+# denormalized jobs.country column and its filters do not fragment by source.
+_US_COUNTRY_ALIASES = {
+    "US", "USA", "U.S.", "U.S.A.", "UNITED STATES",
+    "UNITED STATES OF AMERICA",
+}
+# US territories are DOMESTIC, not overseas: they retain US locality / RUS pay
+# treatment and US-geography scoring. (State codes also live in STATE_NAMES.)
+_US_TERRITORY_TOKENS = {
+    "PR", "GU", "AS", "MP", "VI", "UM",
+    "PUERTO RICO", "GUAM", "AMERICAN SAMOA", "NORTHERN MARIANA ISLANDS",
+    "U.S. VIRGIN ISLANDS", "VIRGIN ISLANDS", "U.S. MINOR OUTLYING ISLANDS",
+}
+# Common country names -> ISO alpha-2 for places US federal agencies post
+# overseas. Unrecognized names fall through unchanged (never dropped); extend
+# this map as new posts appear.
+COUNTRY_NAME_TO_ISO2 = {
+    "AFGHANISTAN": "AF", "ALBANIA": "AL", "ARGENTINA": "AR", "AUSTRALIA": "AU",
+    "AUSTRIA": "AT", "BAHRAIN": "BH", "BELGIUM": "BE", "BRAZIL": "BR",
+    "BULGARIA": "BG", "CAMBODIA": "KH", "CANADA": "CA", "CHILE": "CL",
+    "CHINA": "CN", "COLOMBIA": "CO", "COSTA RICA": "CR", "CROATIA": "HR",
+    "CYPRUS": "CY", "CZECH REPUBLIC": "CZ", "CZECHIA": "CZ", "DENMARK": "DK",
+    "DJIBOUTI": "DJ", "DOMINICAN REPUBLIC": "DO", "ECUADOR": "EC", "EGYPT": "EG",
+    "EL SALVADOR": "SV", "ESTONIA": "EE", "ETHIOPIA": "ET", "FINLAND": "FI",
+    "FRANCE": "FR", "GEORGIA": "GE", "GERMANY": "DE", "GHANA": "GH",
+    "GREECE": "GR", "GUATEMALA": "GT", "HONDURAS": "HN", "HUNGARY": "HU",
+    "ICELAND": "IS", "INDIA": "IN", "INDONESIA": "ID", "IRAQ": "IQ",
+    "IRELAND": "IE", "ISRAEL": "IL", "ITALY": "IT", "JAPAN": "JP",
+    "JORDAN": "JO", "KENYA": "KE", "KOREA": "KR", "SOUTH KOREA": "KR",
+    "KUWAIT": "KW", "LATVIA": "LV", "LEBANON": "LB", "LITHUANIA": "LT",
+    "LUXEMBOURG": "LU", "MALAYSIA": "MY", "MEXICO": "MX", "MOROCCO": "MA",
+    "NETHERLANDS": "NL", "NEW ZEALAND": "NZ", "NIGERIA": "NG", "NORWAY": "NO",
+    "PAKISTAN": "PK", "PANAMA": "PA", "PERU": "PE", "PHILIPPINES": "PH",
+    "POLAND": "PL", "PORTUGAL": "PT", "QATAR": "QA", "ROMANIA": "RO",
+    "RUSSIA": "RU", "SAUDI ARABIA": "SA", "SENEGAL": "SN", "SERBIA": "RS",
+    "SINGAPORE": "SG", "SLOVAKIA": "SK", "SLOVENIA": "SI", "SOUTH AFRICA": "ZA",
+    "SPAIN": "ES", "SWEDEN": "SE", "SWITZERLAND": "CH", "TAIWAN": "TW",
+    "THAILAND": "TH", "TUNISIA": "TN", "TURKEY": "TR", "TURKIYE": "TR",
+    "UKRAINE": "UA", "UNITED ARAB EMIRATES": "AE", "UNITED KINGDOM": "GB",
+    "UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND": "GB",
+    "VIETNAM": "VN", "ZAMBIA": "ZM", "ZIMBABWE": "ZW",
+}
+
+
+def normalize_country(value: Any) -> str | None:
+    """Canonicalize a USAJOBS country value to an ISO alpha-2 code.
+
+    Returns "US" for any United-States alias, an ISO alpha-2 code for known
+    names or 2-letter inputs, or the cleaned original string for unrecognized
+    longer names (never silently dropped). Returns None for empty input.
+    """
+    cleaned = _clean(value)
+    if cleaned is None:
+        return None
+    upper = cleaned.upper()
+    if upper in _US_COUNTRY_ALIASES:
+        return "US"
+    if upper in COUNTRY_NAME_TO_ISO2:
+        return COUNTRY_NAME_TO_ISO2[upper]
+    if len(cleaned) == 2 and cleaned.isalpha():
+        return upper
+    return cleaned
+
+
+def is_overseas(country: Any) -> bool:
+    """True when a country value is a foreign (non-US, non-territory) location.
+
+    Unknown or empty countries are treated as domestic so US locality pay and
+    US-geography scoring are never stripped on a guess. US territories
+    (PR, GU, AS, MP, VI) are domestic.
+    """
+    code = normalize_country(country)
+    if not code:
+        return False
+    upper = code.upper()
+    if upper == "US" or upper in _US_TERRITORY_TOKENS:
+        return False
+    return True
+
+
 def _series_text(value: Any) -> str | None:
     text = _clean(value)
     if text is None:
@@ -2577,6 +2666,37 @@ def _seed_core_codes(conn: sqlite3.Connection) -> None:
         """,
         code_rows,
     )
+
+
+def _backfill_jobs_country(conn: sqlite3.Connection) -> None:
+    """Populate the denormalized jobs.country from the primary job location.
+
+    Existing rows predate the country column; default to "US" when no location
+    country is recorded (the corpus is overwhelmingly domestic). Values are
+    canonicalized via normalize_country so search-sourced ISO codes and
+    historic-sourced country names collapse to one form.
+    """
+    rows = conn.execute(
+        """
+        SELECT j.id AS id, (
+            SELECT jl.country
+            FROM job_locations jl
+            WHERE jl.job_id = j.id
+              AND jl.country IS NOT NULL
+              AND TRIM(jl.country) != ''
+            ORDER BY jl.id
+            LIMIT 1
+        ) AS loc_country
+        FROM jobs j
+        WHERE j.country IS NULL OR TRIM(j.country) = ''
+        """
+    ).fetchall()
+    updates = [
+        (normalize_country(row["loc_country"]) or "US", row["id"])
+        for row in rows
+    ]
+    if updates:
+        conn.executemany("UPDATE jobs SET country=? WHERE id=?", updates)
 
 
 def _backfill_child_tables_from_jobs(conn: sqlite3.Connection) -> None:

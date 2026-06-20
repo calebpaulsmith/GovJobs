@@ -195,3 +195,55 @@ def test_job_from_historic_record_normalizes_puerto_rico():
         }
     )
     assert job["state"] == "PR"
+
+
+def test_job_from_search_item_emits_overseas_country_iso_code():
+    job = job_from_search_item(
+        {
+            "MatchedObjectId": "100",
+            "MatchedObjectDescriptor": {
+                "PositionID": "FSO-1",
+                "PositionTitle": "Foreign Service Officer",
+                "PositionLocation": [
+                    {
+                        "CityName": "Rome",
+                        "CountryCode": "IT",
+                        "CountrySubDivisionCode": "RM",
+                    }
+                ],
+                "PositionLocationDisplay": "Rome, Italy",
+            },
+        }
+    )
+    assert job["country"] == "IT"
+    assert job["city"] == "Rome"
+
+
+def test_job_from_historic_record_emits_country_from_name():
+    job = job_from_historic_record(
+        {
+            "usajobsControlNumber": "CN-1",
+            "announcementNumber": "AN-1",
+            "positionTitle": "Analyst",
+            "positionLocations": [
+                {"positionLocationCity": "Tokyo", "positionLocationCountry": "Japan"}
+            ],
+        }
+    )
+    assert job["country"] == "JP"
+
+
+def test_job_from_search_item_us_record_is_us():
+    job = job_from_search_item(
+        {
+            "MatchedObjectId": "9",
+            "MatchedObjectDescriptor": {
+                "PositionID": "P9",
+                "PositionLocation": [
+                    {"CityName": "Chicago", "CountryCode": "US", "CountrySubDivisionCode": "IL"}
+                ],
+            },
+        }
+    )
+    assert job["country"] == "US"
+    assert job["state"] == "IL"

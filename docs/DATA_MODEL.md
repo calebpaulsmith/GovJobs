@@ -39,8 +39,9 @@ Normalized announcement record (small fields only — long text lives in `job_te
 | salary_max | REAL | |
 | salary_type | TEXT | per-year / per-hour / etc. |
 | location_text | TEXT | original location string |
-| state | TEXT | 2-letter, normalized |
+| state | TEXT | 2-letter US subdivision when parseable; foreign subdivision code for overseas |
 | city | TEXT | |
+| country | TEXT | ISO alpha-2, canonicalized (`US`, `IT`, `JP`); `'US'` default. Denormalized from primary `job_locations.country`. Drives the Search country filter. US territories (PR/GU/AS/MP/VI) are domestic. |
 | remote_status | TEXT | `remote` \| `hybrid` \| `onsite` \| `unknown` |
 | telework_status | TEXT | |
 | open_date | TEXT | ISO date |
