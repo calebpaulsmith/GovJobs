@@ -184,3 +184,94 @@ def test_cost_of_living_returns_latest_year_when_unspecified(conn):
     )
     conn.commit()
     assert cost_of_living(conn, geo_type="state", geo_code="TX")["year"] == 2024
+
+
+# --- Overseas DSSR allowances (Stage 4) ------------------------------------
+from src.reference_data import (  # noqa: E402
+    overseas_compensation,
+    overseas_post_allowance,
+    spendable_income_for,
+)
+from src.database import utc_now  # noqa: E402
+
+
+def _seed_dssr(conn):
+    now = utc_now()
+    rows = [
+        # country_iso, country_name, post, hardship, danger, cola
+        ("IT", "ITALY", "Rome", 0.0, None, 30.0),
+        ("IT", "ITALY", "Other", 5.0, None, 25.0),
+        ("AF", "AFGHANISTAN", "Kabul", 35.0, 35.0, 0.0),
+    ]
+    for iso, name, post, h, d, c in rows:
+        conn.execute(
+            "INSERT INTO overseas_post_allowances (country_iso, country_name, "
+            "post_name, post_differential_pct, danger_pay_pct, "
+            "cola_pct_spendable_income, effective_date, source_url, imported_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (iso, name, post, h, d, c, "2026-06-14", "https://allowances.state.gov/", now),
+        )
+    conn.execute(
+        "INSERT INTO spendable_income (salary_min, salary_max, family_size, "
+        "annual_spendable_income, effective_date, source_url, imported_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (100000, 105999, 1, 37200, "2023-01-01", "https://allowances.state.gov/x.docx", now),
+    )
+    conn.commit()
+
+
+def test_overseas_post_allowance_match_precision(conn):
+    _seed_dssr(conn)
+    exact = overseas_post_allowance(conn, "IT", "Rome")
+    assert exact["match"] == "post" and exact["post_name"] == "Rome"
+    # Unknown city in a known country falls back to the "Other" country row.
+    fallback = overseas_post_allowance(conn, "IT", "Nowheresville")
+    assert fallback["match"] == "country" and fallback["post_name"] == "Other"
+    # Unknown country -> no match.
+    assert overseas_post_allowance(conn, "ZZ", "Atlantis") is None
+
+
+def test_spendable_income_lookup(conn):
+    _seed_dssr(conn)
+    row = spendable_income_for(conn, 100000, family_size=1)
+    assert row["annual_spendable_income"] == 37200
+    # Below the published table -> None (caller must withhold the COLA estimate).
+    assert spendable_income_for(conn, 1000, family_size=1) is None
+    assert spendable_income_for(conn, None) is None
+
+
+def test_overseas_compensation_rome_breakdown(conn):
+    _seed_dssr(conn)
+    comp = overseas_compensation(conn, country="IT", city="Rome", base_salary=100000)
+    assert comp["matched_post"]["match"] == "post"
+    cola = next(l for l in comp["lines"] if l["dssr"] == "DSSR 220")
+    assert cola["pct"] == 30.0
+    assert cola["amount"] == pytest.approx(11160.0)  # 30% of 37,200 spendable
+    assert cola["estimated"] is True
+    assert comp["estimated_total"] == pytest.approx(111160.0)
+
+
+def test_overseas_compensation_kabul_exact_percent_of_base(conn):
+    _seed_dssr(conn)
+    comp = overseas_compensation(conn, country="AF", city="Kabul", base_salary=100000)
+    amounts = {l["dssr"]: l["amount"] for l in comp["lines"]}
+    assert amounts["DSSR 500"] == pytest.approx(35000.0)  # hardship, % of base
+    assert amounts["DSSR 650"] == pytest.approx(35000.0)  # danger, % of base
+    assert amounts["DSSR 220"] == pytest.approx(0.0)      # cola 0%
+    assert comp["estimated_total"] == pytest.approx(170000.0)
+
+
+def test_overseas_compensation_withholds_cola_dollars_when_salary_below_table(conn):
+    _seed_dssr(conn)
+    comp = overseas_compensation(conn, country="IT", city="Rome", base_salary=1000)
+    cola = next(l for l in comp["lines"] if l["dssr"] == "DSSR 220")
+    assert cola["amount"] is None  # withheld, not guessed
+    assert any("withheld" in n for n in comp["notes"])
+
+
+def test_overseas_compensation_unmatched_post_is_base_only(conn):
+    _seed_dssr(conn)
+    comp = overseas_compensation(conn, country="ZZ", city="Atlantis", base_salary=100000)
+    assert comp["matched_post"] is None
+    assert comp["lines"] == []
+    assert any("not matched" in n for n in comp["notes"])

@@ -7,7 +7,7 @@ import streamlit as st
 from config import load_config
 from src.usajobs_current_api import import_search
 from src.database import is_overseas
-from src.reference_data import OVERSEAS_PAY_CONTEXT
+from src.reference_data import OVERSEAS_PAY_CONTEXT, overseas_compensation
 from src.ui_data import (
     app_connection,
     country_options,
@@ -143,12 +143,69 @@ if not df.empty:
                 with st.expander("Duties", expanded=False):
                     st.write(detail["duties"])
             if is_overseas(detail.get("country")):
-                with st.expander("Deep research — overseas location context", expanded=False):
+                with st.expander("Deep research — overseas pay & location context", expanded=True):
                     st.write(f"**Country:** {detail.get('country')}")
                     st.write(
                         f"**Duty station:** {detail.get('city') or '—'}, "
                         f"{detail.get('state') or '—'}"
                     )
+                    base = detail.get("salary_min") or detail.get("salary_max")
+                    comp = overseas_compensation(
+                        conn,
+                        country=detail.get("country"),
+                        city=detail.get("city"),
+                        base_salary=base,
+                    )
+
+                    def _money(value: object) -> str:
+                        return f"${float(value):,.0f}" if value is not None else "—"
+
+                    if comp["matched_post"] and comp["lines"]:
+                        mp = comp["matched_post"]
+                        precision = (
+                            "exact post" if mp["match"] == "post"
+                            else "country-level (approximate)"
+                        )
+                        st.caption(
+                            f"Matched DSSR post: **{mp['post_name']}, "
+                            f"{mp['country_name']}** · {precision}"
+                        )
+                        table = [{
+                            "Component": "GS base pay (USD)",
+                            "Rate": "no US locality overseas",
+                            "Annual $": _money(base),
+                            "Source": "OPM GS base table",
+                        }]
+                        for line in comp["lines"]:
+                            amt = line["amount"]
+                            label = f"{line['label']} ({line['dssr']})"
+                            if line.get("estimated") and amt:
+                                label += " — est."
+                            table.append({
+                                "Component": label,
+                                "Rate": f"{line['pct']:.0f}% {line['basis']}",
+                                "Annual $": _money(amt) if amt is not None else "withheld",
+                                "Source": line["source_url"],
+                            })
+                        table.append({
+                            "Component": "Estimated total (annual)",
+                            "Rate": "base + allowances",
+                            "Annual $": _money(comp["estimated_total"]),
+                            "Source": "—",
+                        })
+                        st.dataframe(table, use_container_width=True, hide_index=True)
+                        for note in comp["notes"]:
+                            st.caption(f"⚠️ {note}")
+                        st.caption(
+                            "Hardship & danger pay are exact % of base. The COLA "
+                            "dollar figure is an estimate assuming a single filer "
+                            "(family size 1) and varies with salary and family "
+                            "size per DSSR 229. Rates effective "
+                            f"{comp['lines'][0].get('effective_date') or 'see source'}."
+                        )
+                    else:
+                        for note in comp["notes"]:
+                            st.caption(f"⚠️ {note}")
                     st.caption(OVERSEAS_PAY_CONTEXT)
             if detail.get("url"):
                 st.link_button("Open USAJOBS", detail["url"])
