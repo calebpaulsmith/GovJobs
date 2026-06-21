@@ -627,6 +627,18 @@ DSSR 229 Annual Spendable Income by salary band × family size — turns a COLA 
 | source_url | TEXT | spendable-income .docx |
 | imported_at | TEXT | |
 
+### `country_centroids`
+
+Foreign country centroids (ISO alpha-2 → lat/lon), seeded at `init_schema` from the `COUNTRY_CENTROIDS` dict (Google DSPL canonical countries, Apache-2.0). The **last-resort coordinate fallback** so overseas postings that arrive without USAJOBS coords still plot on the public-map bundle, labeled `geo_quality='country_centroid'` (approximate). US is intentionally excluded (domestic rows resolve via state centroids); keyed by country so a country code never collides with a US state code.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| country_iso | TEXT PK | ISO alpha-2 |
+| latitude | REAL | |
+| longitude | REAL | |
+| name | TEXT | |
+| source | TEXT | `google_dspl` |
+
 ---
 
 ## Migrations

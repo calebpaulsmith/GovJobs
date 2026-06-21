@@ -722,3 +722,23 @@ def test_ensure_column_is_noop_when_present_and_adds_when_missing(tmp_path):
     _ensure_column(conn, "jobs", "tmp_probe_col", "TEXT")  # new -> added
     cols2 = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     assert "tmp_probe_col" in cols2
+
+
+def test_country_centroids_seeded_foreign_only(tmp_path):
+    """Stage 5'.1: foreign country centroids seed for the overseas map fallback."""
+    from src.database import connect, init_schema
+    conn = connect(tmp_path / "cc.sqlite")
+    init_schema(conn)
+    n = conn.execute("SELECT COUNT(*) FROM country_centroids").fetchone()[0]
+    assert n > 200  # the full Google DSPL list, not a stub
+    it = conn.execute(
+        "SELECT latitude, longitude FROM country_centroids WHERE country_iso='IT'"
+    ).fetchone()
+    assert it is not None and 35 < it["latitude"] < 48
+    # US is intentionally absent — domestic rows resolve via state centroids.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM country_centroids WHERE country_iso='US'"
+    ).fetchone()[0] == 0
+    # Idempotent re-init.
+    init_schema(conn)
+    assert conn.execute("SELECT COUNT(*) FROM country_centroids").fetchone()[0] == n

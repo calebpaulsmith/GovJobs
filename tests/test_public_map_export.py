@@ -26,6 +26,7 @@ from src.public_map_export import (
     geocoding_summary,
     job_details,
     jobs_geojson,
+    open_postings_features,
     manifest,
     opm_state_aggregates,
     unmatched_locations,
@@ -928,3 +929,94 @@ def test_job_details_carries_historical_badge(conn):
                           announcement_number="SOLO-1", url="https://www.usajobs.gov/job/230000001"))
     solo_id = conn.execute("SELECT id FROM jobs WHERE position_id = 'SOLO-1'").fetchone()[0]
     assert job_details(conn)[str(solo_id)]["historical_badge"] is None
+
+
+# --- Overseas on the website map (Stage 5'.1) ------------------------------
+from src.database import utc_now  # noqa: E402
+
+
+def _seed_dssr_rome(conn):
+    """Minimal DSSR rows so overseas_pay has something to compute."""
+    now = utc_now()
+    conn.execute(
+        "INSERT INTO overseas_post_allowances (country_iso, country_name, "
+        "post_name, post_differential_pct, danger_pay_pct, "
+        "cola_pct_spendable_income, effective_date, source_url, imported_at) "
+        "VALUES ('IT','ITALY','Rome',0.0,NULL,30.0,'2026-06-14','x',?)",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO spendable_income (salary_min, salary_max, family_size, "
+        "annual_spendable_income, effective_date, source_url, imported_at) "
+        "VALUES (100000,105999,1,37200,'2023-01-01','x',?)",
+        (now,),
+    )
+    conn.commit()
+
+
+def _overseas_job(**overrides):
+    base = _job(
+        usajobs_control_number="200000001",
+        position_id="STATE-ROME-1",
+        announcement_number="STATE-ROME-1",
+        title="Management Analyst",
+        agency="Department of State",
+        agency_code="ST",
+        country="IT",
+        city="Rome",
+        state="",
+        location_text="Rome, Italy",
+        salary_min=100000,
+        salary_max=120000,
+        url="https://www.usajobs.gov/job/200000001",
+        locations=[{"city": "Rome", "state": "", "country": "IT", "location_text": "Rome, Italy"}],
+    )
+    base.update(overrides)
+    return base
+
+
+def test_overseas_job_without_coords_plots_at_country_centroid(conn):
+    upsert_job(conn, _overseas_job())
+    feats = open_postings_features(conn)
+    assert len(feats) == 1
+    props = feats[0]["properties"]
+    assert props["country"] == "IT"
+    assert props["geo_quality"] == "country_centroid"
+    lon, lat = feats[0]["geometry"]["coordinates"]
+    assert 6 < lon < 19 and 35 < lat < 48  # somewhere in Italy
+
+
+def test_us_job_marker_carries_country_and_stays_source(conn):
+    upsert_job(conn, _job(country="US", locations=[
+        {"city": "Chicago", "state": "IL", "country": "US",
+         "latitude": 41.85, "longitude": -87.65, "location_text": "Chicago, IL"}]))
+    feats = open_postings_features(conn)
+    props = feats[0]["properties"]
+    assert props["country"] == "US"
+    assert props["geo_quality"] == "source"
+
+
+def test_overseas_job_detail_has_dssr_breakdown(conn):
+    _seed_dssr_rome(conn)
+    upsert_job(conn, _overseas_job())
+    details = job_details(conn)
+    detail = next(iter(details.values()))
+    op = detail["overseas_pay"]
+    assert op is not None
+    assert op["matched_post"]["post_name"] == "Rome"
+    cola = next(l for l in op["lines"] if l["dssr"] == "DSSR 220")
+    assert cola["amount"] == 11160.0  # 30% of 37,200 spendable
+    assert cola["estimated"] is True
+
+
+def test_us_job_detail_has_no_overseas_pay(conn):
+    upsert_job(conn, _job(country="US"))
+    details = job_details(conn)
+    assert next(iter(details.values()))["overseas_pay"] is None
+
+
+def test_geocoding_summary_counts_country_centroid(conn):
+    upsert_job(conn, _overseas_job())
+    summary = geocoding_summary(conn)
+    assert summary["country_centroid_matches"] == 1
+    assert summary["unmatched"] == 0
