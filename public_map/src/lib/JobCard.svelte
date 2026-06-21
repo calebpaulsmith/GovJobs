@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { loadJobDetails, loadPayTables, type JobDetails, type PayGrid, type PayTables } from './data';
+	import { overseasPayDisplay } from './overseasPay';
 	import { gradeRange, money, propString, salaryRange, urgencyBadge } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
 	import { jobProfile } from './jobProfile.svelte';
@@ -240,6 +241,34 @@
 				{/each}
 			</ul>
 		{/if}
+		{#if detail.overseas_pay}
+			{@const op = overseasPayDisplay(detail.overseas_pay)}
+			<h3>
+				Overseas pay
+				<span class="pay-status pay-status-overseas" title="GS base salary plus State Dept DSSR allowances. US locality pay does not apply overseas.">GS base + DSSR</span>
+				<InfoTooltip title="How overseas pay works" align="end">
+					<span>US-fed jobs abroad keep GS base pay in USD with no US locality pay. State Dept DSSR allowances add on: hardship differential and danger pay are exact % of base; the post (COLA) allowance is a % of spendable income, so its dollar value is an estimate (single filer) that varies with family size.</span>
+					<span class="src">Source: allowances.state.gov (DSSR), pre-computed at export time.</span>
+				</InfoTooltip>
+			</h3>
+			{#if op.matchLabel}<p class="note overseas-match">Matched post: {op.matchLabel}</p>{/if}
+			<table>
+				<tbody>
+					<tr><th>GS base pay (USD)</th><td>{op.baseAmount}</td></tr>
+					{#each op.lines as line (line.label)}
+						<tr>
+							<th>{line.label}<br /><span class="overseas-rate">{line.rate}</span></th>
+							<td class:overseas-withheld={line.withheld}>
+								{line.amount}
+								<a class="src-link" href={line.sourceUrl} target="_blank" rel="noreferrer noopener" title="DSSR source">↗</a>
+							</td>
+						</tr>
+					{/each}
+					<tr class="overseas-total"><th>Estimated total (annual)</th><td>{op.totalAmount}</td></tr>
+				</tbody>
+			</table>
+			{#each op.notes as note (note)}<p class="note overseas-note">⚠️ {note}</p>{/each}
+		{:else}
 		{@const lookup = payLookup(detail)}
 		{@const status = payStatus(detail)}
 		{@const rows = tableRows(detail)}
@@ -280,6 +309,7 @@
 				</InfoTooltip>
 			</p>
 		{/if}
+		{/if}
 	{/if}
 
 	<PostingIntelligence jobProperties={properties} />
@@ -313,6 +343,14 @@
 	.pay-status-exact { background: rgba(80, 180, 120, 0.18); border: 1px solid #4f9f6a; color: var(--c-success, #9be0b4); }
 	.pay-status-approx { background: rgba(220, 160, 50, 0.18); border: 1px solid #b48a3a; color: var(--c-warn, #f0c878); }
 	.pay-status-snap { background: rgba(140, 140, 160, 0.16); border: 1px solid #6a6a82; color: var(--c-muted, #94a3b8); }
+	.pay-status-overseas { background: rgba(224, 164, 77, 0.18); border: 1px solid #c08a3a; color: #e7b870; }
+	.overseas-match { margin: 0.35rem 0 0.1rem; font-size: 11px; color: var(--c-muted, #94a3b8); }
+	.overseas-rate { display: block; font-weight: 400; font-size: 10px; color: var(--c-muted, #94a3b8); text-transform: none; letter-spacing: 0; }
+	.overseas-withheld { color: var(--c-warn, #f0c878); font-style: italic; }
+	.overseas-total th, .overseas-total td { border-top: 1px solid var(--c-border, #3a4556); font-weight: 700; }
+	.overseas-note { margin-top: 0.3rem; color: var(--c-warn, #f0c878); }
+	.src-link { margin-left: 0.25rem; color: var(--c-accent, #7bd0f2); text-decoration: none; font-size: 11px; }
+	.src-link:hover { text-decoration: underline; }
 	.pay-missing { padding: 0.55rem 0.65rem; border: 1px dashed var(--c-border, #4a5a72); border-radius: 6px; }
 	.missing-reason { display: inline-block; margin-top: 0.15rem; color: var(--c-muted, #94a3b8); font-style: italic; }
 	.admin-link { display: inline-block; margin-top: 0.3rem; color: var(--c-accent, #7bd0f2); text-decoration: none; font-weight: 600; }
