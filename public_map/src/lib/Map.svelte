@@ -613,8 +613,11 @@
 				`<div class="ff-tip-meta">click to list all postings</div>`;
 		}
 		const title = String(props.title ?? '').trim() || 'Posting';
+		const approx = String(props.geo_quality ?? '') === 'country_centroid'
+			? `<div class="ff-tip-meta ff-tip-approx">approximate — country centroid, not the duty station</div>`
+			: '';
 		return `<div class="ff-tip-title">${escapeHtml(title)}</div>` +
-			(label ? `<div class="ff-tip-meta">${escapeHtml(label)}</div>` : '');
+			(label ? `<div class="ff-tip-meta">${escapeHtml(label)}</div>` : '') + approx;
 	}
 
 	function dominantLocationLabel(items: { properties: Record<string, unknown> | null }[]): string {
@@ -1127,5 +1130,9 @@
 		color: var(--c-muted, #94a3b8);
 		margin-top: 0.15rem;
 		font-size: 11px;
+	}
+
+	:global(.ff-hover-popup .ff-tip-approx) {
+		color: #e0a44d;
 	}
 </style>

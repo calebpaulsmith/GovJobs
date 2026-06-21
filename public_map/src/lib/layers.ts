@@ -281,11 +281,24 @@ export function addAllLayers(map: MaplibreMap, metricKey: MetricKey): void {
 			['<=', ['coalesce', ['get', 'stack_count'], 1], 1]
 		],
 		paint: {
-			'circle-color': '#7bd0f2',
+			// Overseas postings placed only at a country centroid (no exact duty
+			// station) render amber and slightly translucent so they read as
+			// "approximate" and never get mistaken for a precise US marker.
+			'circle-color': [
+				'case',
+				['==', ['get', 'geo_quality'], 'country_centroid'],
+				'#e0a44d',
+				'#7bd0f2'
+			],
 			'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 5, 3, 7, 4, 9, 6, 14, 8, 19, 10],
 			'circle-stroke-color': '#0a0f1a',
 			'circle-stroke-width': 1,
-			'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.85, 9, 0.95]
+			'circle-opacity': [
+				'case',
+				['==', ['get', 'geo_quality'], 'country_centroid'],
+				0.7,
+				['interpolate', ['linear'], ['zoom'], 3, 0.85, 9, 0.95]
+			]
 		}
 	});
 
