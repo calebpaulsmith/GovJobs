@@ -21,8 +21,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from src.database import is_overseas
 from src.pay_calculator import calculate_job_pay_table
-from src.reference_data import REST_OF_US_CODE
+from src.reference_data import REST_OF_US_CODE, overseas_compensation
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +71,18 @@ def _marker_dataset(
             j.url             AS url,
             jl.city           AS jl_city,
             jl.state          AS jl_state,
+            jl.country        AS jl_country,
             jl.location_text  AS jl_location_text,
             jl.remote_indicator AS jl_remote_indicator,
             jl.latitude       AS jl_lat,
             jl.longitude      AS jl_lon,
-            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat) AS lat,
-            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon) AS lon,
+            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat, country_lookup.latitude) AS lat,
+            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon, country_lookup.longitude) AS lon,
             CASE
                 WHEN jl.latitude IS NOT NULL THEN 'source'
                 WHEN city_lookup.lat IS NOT NULL THEN city_lookup.geo_quality
                 WHEN state_lookup.lat IS NOT NULL THEN state_lookup.geo_quality
+                WHEN country_lookup.latitude IS NOT NULL THEN 'country_centroid'
                 ELSE NULL
             END AS geo_quality,
             city_lookup.county_fips AS county_fips,
@@ -93,6 +96,8 @@ def _marker_dataset(
         LEFT JOIN locations_geocoded state_lookup
             ON state_lookup.city = ''
             AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN country_centroids country_lookup
+            ON country_lookup.country_iso = UPPER(TRIM(COALESCE(jl.country, '')))
         LEFT JOIN counties ON counties.fips = city_lookup.county_fips
         LEFT JOIN locality_pay_counties lpc
             ON lpc.county_fips = city_lookup.county_fips
@@ -127,6 +132,7 @@ def _marker_dataset(
                 "close_date": row["close_date"],
                 "city": row["jl_city"],
                 "state": (row["jl_state"] or "").upper() or None,
+                "country": (row["jl_country"] or "").upper() or None,
                 "geo_quality": row["geo_quality"],
                 "lat": lat,
                 "lon": lon,
@@ -168,6 +174,7 @@ def _feature_from_marker(marker: dict[str, Any]) -> dict[str, Any]:
             "close_date": marker["close_date"],
             "city": marker["city"],
             "state": marker["state"],
+            "country": marker["country"],
             "locality_code": marker["locality_code"],
             "geo_quality": marker["geo_quality"],
         },
@@ -230,12 +237,14 @@ def recently_closed_features(
             j.close_date      AS close_date,
             jl.city           AS jl_city,
             jl.state          AS jl_state,
-            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat) AS lat,
-            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon) AS lon,
+            jl.country        AS jl_country,
+            COALESCE(jl.latitude, city_lookup.lat, state_lookup.lat, country_lookup.latitude) AS lat,
+            COALESCE(jl.longitude, city_lookup.lon, state_lookup.lon, country_lookup.longitude) AS lon,
             CASE
                 WHEN jl.latitude IS NOT NULL THEN 'source'
                 WHEN city_lookup.lat IS NOT NULL THEN city_lookup.geo_quality
                 WHEN state_lookup.lat IS NOT NULL THEN state_lookup.geo_quality
+                WHEN country_lookup.latitude IS NOT NULL THEN 'country_centroid'
                 ELSE NULL
             END AS geo_quality,
             lpc.locality_code AS locality_code,
@@ -248,6 +257,8 @@ def recently_closed_features(
         LEFT JOIN locations_geocoded state_lookup
             ON state_lookup.city = ''
             AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN country_centroids country_lookup
+            ON country_lookup.country_iso = UPPER(TRIM(COALESCE(jl.country, '')))
         LEFT JOIN locality_pay_counties lpc
             ON lpc.county_fips = city_lookup.county_fips
             AND lpc.year = ?
@@ -278,6 +289,7 @@ def recently_closed_features(
                 "close_date": row["close_date"],
                 "city": row["jl_city"],
                 "state": (row["jl_state"] or "").upper() or None,
+                "country": (row["jl_country"] or "").upper() or None,
                 "geo_quality": row["geo_quality"],
                 "lat": float(row["lat"]),
                 "lon": float(row["lon"]),
@@ -624,6 +636,7 @@ def job_details(
             j.open_date     AS open_date,
             j.close_date    AS close_date,
             j.hiring_paths  AS hiring_paths,
+            j.country       AS country,
             j.url           AS url
         FROM jobs j
         WHERE j.source LIKE 'usajobs%'
@@ -706,6 +719,19 @@ def job_details(
             grade_low=row["grade_low"],
             grade_high=row["grade_high"],
         )
+        # Overseas US-fed posts: GS base + State Dept DSSR allowances
+        # (hardship/danger = % of base; COLA = % of spendable income, flagged).
+        # Reuse the single source of truth in reference_data so the website and
+        # the dashboard render identical, traceable numbers. None for US rows.
+        overseas_pay = None
+        if is_overseas(row["country"]):
+            overseas_pay = overseas_compensation(
+                conn,
+                country=row["country"],
+                city=first_loc.get("city"),
+                base_salary=_round_or_none(row["salary_min"])
+                or _round_or_none(row["salary_max"]),
+            )
         text = text_by_job.get(job_id, {})
         details[str(job_id)] = {
             "id": job_id,
@@ -728,6 +754,7 @@ def job_details(
             "locality_code": first_locality_by_job.get(job_id),
             "locations": locations,
             "pay_grid": pay_grid,
+            "overseas_pay": overseas_pay,
             "summary_excerpt": text.get("summary_excerpt"),
             "qualifications_excerpt": text.get("qualifications_excerpt"),
             "historical_badge": badges.get(job_id),
@@ -888,7 +915,13 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
             SUM(CASE
                     WHEN jl.latitude IS NULL
                      AND city_lookup.lat IS NULL
-                     AND state_lookup.lat IS NULL THEN 1 ELSE 0 END) AS unmatched,
+                     AND state_lookup.lat IS NULL
+                     AND country_lookup.latitude IS NOT NULL THEN 1 ELSE 0 END) AS country_centroid_matches,
+            SUM(CASE
+                    WHEN jl.latitude IS NULL
+                     AND city_lookup.lat IS NULL
+                     AND state_lookup.lat IS NULL
+                     AND country_lookup.latitude IS NULL THEN 1 ELSE 0 END) AS unmatched,
             COUNT(*) AS total
         FROM jobs j
         JOIN job_locations jl ON jl.job_id = j.id
@@ -898,6 +931,8 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
         LEFT JOIN locations_geocoded state_lookup
             ON state_lookup.city = ''
             AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN country_centroids country_lookup
+            ON country_lookup.country_iso = UPPER(TRIM(COALESCE(jl.country, '')))
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
         """
@@ -906,6 +941,7 @@ def geocoding_summary(conn: sqlite3.Connection) -> dict[str, int]:
         "source_coords": int(row["source_coords"] or 0),
         "city_matches": int(row["city_matches"] or 0),
         "state_matches": int(row["state_matches"] or 0),
+        "country_centroid_matches": int(row["country_centroid_matches"] or 0),
         "unmatched": int(row["unmatched"] or 0),
         "total": int(row["total"] or 0),
     }
@@ -943,11 +979,14 @@ def unmatched_locations(
         LEFT JOIN locations_geocoded state_lookup
             ON state_lookup.city = ''
             AND state_lookup.state = UPPER(TRIM(COALESCE(jl.state, '')))
+        LEFT JOIN country_centroids country_lookup
+            ON country_lookup.country_iso = UPPER(TRIM(COALESCE(jl.country, '')))
         WHERE j.source LIKE 'usajobs%'
           AND (j.close_date IS NULL OR j.close_date >= date('now'))
           AND jl.latitude IS NULL
           AND city_lookup.lat IS NULL
           AND state_lookup.lat IS NULL
+          AND country_lookup.latitude IS NULL
         GROUP BY location, norm_state, norm_city
         ORDER BY posting_count DESC, location
         LIMIT ?

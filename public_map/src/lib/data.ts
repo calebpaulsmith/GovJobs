@@ -70,6 +70,30 @@ export interface PayGrid {
 	missing_reason?: string | null;
 }
 
+// Overseas US-fed pay (DSSR), precomputed at export from
+// reference_data.overseas_compensation so the website and dashboard show the
+// same traceable numbers. Present only on overseas postings; null for US.
+export interface OverseasPayLine {
+	label: string;
+	dssr: string;
+	pct: number | null;
+	basis: string;
+	amount: number | null; // null = withheld (e.g. salary outside the table)
+	estimated: boolean;
+	assumption?: string;
+	source_url: string;
+	effective_date?: string | null;
+}
+
+export interface OverseasPay {
+	base_salary: number | null;
+	matched_post: { country_name?: string | null; post_name?: string | null; match?: string | null } | null;
+	lines: OverseasPayLine[];
+	estimated_total: number | null;
+	notes: string[];
+	family_size: number;
+}
+
 export interface JobDetails {
 	id: number;
 	title: string;
@@ -93,6 +117,8 @@ export interface JobDetails {
 	locality_code?: string | null;
 	locations?: JobLocation[];
 	pay_grid?: PayGrid | null;
+	// Overseas US-fed pay breakdown (DSSR); null/undefined for US postings.
+	overseas_pay?: OverseasPay | null;
 	// D.5.28: <=200-char previews from job_text. Omitted (undefined) or null
 	// when the announcement-text importer hasn't pulled this posting yet.
 	summary_excerpt?: string | null;
