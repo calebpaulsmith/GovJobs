@@ -40,6 +40,15 @@ export interface SeriesOption {
 	postings: number;
 }
 
+// Country catalog (USAJOBS country code + display name + posting count),
+// emitted by scripts/export_public_map.py as countries.json. Feeds the country
+// scope multi-select for overseas US-fed jobs. "US" is included for domestic.
+export interface CountryOption {
+	code: string;
+	name: string;
+	postings: number;
+}
+
 export interface ZipCentroid {
 	zip: string;
 	lat: number;
@@ -100,6 +109,9 @@ export interface JobDetails {
 	agency?: string | null;
 	department?: string | null;
 	agency_code?: string | null;
+	// USAJOBS country code denormalized at export ("US" domestic; "IT", "JP", …
+	// overseas). Drives the country scope filter on the Browse list path.
+	country?: string | null;
 	series?: string | null;
 	pay_plan?: string | null;
 	grade_low?: string | null;
@@ -146,6 +158,7 @@ export interface CostOfLiving {
 let jobDetailsCache: Record<string, JobDetails> | null = null;
 let agencyOptionsCache: AgencyOption[] | null = null;
 let seriesOptionsCache: SeriesOption[] | null = null;
+let countryOptionsCache: CountryOption[] | null = null;
 let payTablesCache: PayTables | null = null;
 let jobDetailsIndexCache: Record<string, JobDetails> | null = null;
 let zipCentroidsCache: ZipCentroid[] | null = null;
@@ -287,6 +300,18 @@ export async function loadSeriesOptions(): Promise<SeriesOption[]> {
 		postings: Number(option.postings ?? 0)
 	}));
 	return seriesOptionsCache;
+}
+
+// Country catalog for the country scope multi-select, emitted as countries.json.
+// Like series, which countries are *offered* in the dropdown is derived live
+// from the loaded jobs; this list supplies display names + global counts.
+export async function loadCountryOptions(): Promise<CountryOption[]> {
+	countryOptionsCache ??= (await fetchJson<CountryOption[]>('countries.json', [])).map((option) => ({
+		code: String(option.code ?? '').toUpperCase(),
+		name: option.name ?? String(option.code ?? ''),
+		postings: Number(option.postings ?? 0)
+	}));
+	return countryOptionsCache;
 }
 
 export async function loadJobDetailsIndex(): Promise<Record<string, JobDetails>> {

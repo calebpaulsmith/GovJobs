@@ -740,6 +740,7 @@ def job_details(
             "department": row["department"],
             "agency_code": row["agency_code"],
             "series": row["series"],
+            "country": (row["country"] or "US").upper(),
             "pay_plan": row["pay_plan"],
             "grade_low": row["grade_low"],
             "grade_high": row["grade_high"],
@@ -865,6 +866,49 @@ def _agency_aliases(conn: sqlite3.Connection) -> dict[str, list[str]]:
         if alias not in bucket:
             bucket.append(alias)
     return aliases
+
+
+def country_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Distinct posting countries with counts and display names.
+
+    Mirrors ``agency_options`` / ``series_options`` so the website's country
+    multi-select is fed the same way (D.5 overseas filter). ``code`` is the
+    USAJOBS country code denormalized onto ``jobs.country`` (``'US'`` for
+    domestic, backfilled in schema v12); ``name`` comes from the
+    ``country_centroids`` reference table when present, falling back to the
+    code so an unknown country still appears as a distinct chip rather than
+    collapsing into a mystery bucket.
+    """
+    has_centroids = _table_exists(conn, "country_centroids")
+    name_select = (
+        "COALESCE(cc.name, j.country) AS name" if has_centroids else "j.country AS name"
+    )
+    join = (
+        "LEFT JOIN country_centroids cc ON UPPER(cc.country_iso) = UPPER(j.country)"
+        if has_centroids
+        else ""
+    )
+    rows = conn.execute(
+        f"""
+        SELECT UPPER(j.country) AS code, {name_select}, COUNT(DISTINCT j.id) AS postings
+        FROM jobs j
+        {join}
+        WHERE j.source LIKE 'usajobs%'
+          AND (j.close_date IS NULL OR j.close_date >= date('now'))
+          AND j.country IS NOT NULL
+          AND TRIM(j.country) <> ''
+        GROUP BY UPPER(j.country)
+        ORDER BY postings DESC, code
+        """
+    ).fetchall()
+    return [
+        {
+            "code": row["code"],
+            "name": row["name"] or row["code"],
+            "postings": int(row["postings"]),
+        }
+        for row in rows
+    ]
 
 
 def series_options(conn: sqlite3.Connection) -> list[dict[str, Any]]:

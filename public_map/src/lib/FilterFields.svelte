@@ -14,7 +14,7 @@
 	import { onMount } from 'svelte';
 	import { mapState } from './store.svelte';
 	import { DEFAULT_FILTERS, activeFilterCount, type JobFilters } from './filters';
-	import { loadAgencyOptions, loadSeriesOptions, type AgencyOption } from './data';
+	import { loadAgencyOptions, loadSeriesOptions, loadCountryOptions, type AgencyOption, type CountryOption } from './data';
 	import {
 		payPlanFacet,
 		hiringPathFacet,
@@ -37,6 +37,7 @@
 
 	let agencyOptions = $state<AgencyOption[]>([]);
 	let seriesLabels = $state<Record<string, string>>({});
+	let countryOptions = $state<CountryOption[]>([]);
 
 	onMount(() => {
 		void loadAgencyOptions().then((options) => {
@@ -46,6 +47,9 @@
 			const labels: Record<string, string> = {};
 			for (const option of options) labels[option.code] = option.label;
 			seriesLabels = labels;
+		});
+		void loadCountryOptions().then((options) => {
+			countryOptions = options.filter((option) => option.code);
 		});
 	});
 
@@ -68,6 +72,21 @@
 			.sort((a, b) => b.count - a.count)
 	);
 
+	// Country uses the full catalog (countries.json already lists only countries
+	// with open postings), labeled "Italy (IT)". Most users never touch it; it's
+	// the scope control for overseas US-fed jobs.
+	const countryFacetOptions = $derived<FacetOption[]>(
+		countryOptions
+			.filter((o) => o.code)
+			.map((o) => ({
+				value: o.code,
+				label: o.name && o.name !== o.code ? `${o.name} (${o.code})` : o.code,
+				count: o.postings,
+				keywords: [o.code, o.name].join(' ')
+			}))
+			.sort((a, b) => b.count - a.count)
+	);
+
 	const payPlanOptions = $derived(payPlanFacet(jobs, mapState.filters));
 	const hiringPathOptions = $derived(hiringPathFacet(jobs, mapState.filters));
 	const seriesOptions = $derived(seriesFacet(jobs, mapState.filters, seriesLabels));
@@ -75,6 +94,11 @@
 	function agencyLabel(code: string): string {
 		const upper = code.toUpperCase();
 		const opt = agencyOptions.find((o) => (o.code ?? '').toUpperCase() === upper);
+		return opt?.name ?? code;
+	}
+	function countryLabel(code: string): string {
+		const upper = code.toUpperCase();
+		const opt = countryOptions.find((o) => o.code.toUpperCase() === upper);
 		return opt?.name ?? code;
 	}
 	function seriesLabel(code: string): string {
@@ -93,6 +117,7 @@
 			series: [...(patch.series ?? mapState.filters.series)],
 			payPlans: [...(patch.payPlans ?? mapState.filters.payPlans)],
 			hiringPaths: [...(patch.hiringPaths ?? mapState.filters.hiringPaths)],
+			countries: [...(patch.countries ?? mapState.filters.countries)],
 			geographies: [...(patch.geographies ?? mapState.filters.geographies)]
 		};
 	}
@@ -101,7 +126,7 @@
 		patchFilters({ [key]: value } as Partial<JobFilters>);
 	}
 
-	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths';
+	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths' | 'countries';
 	function addValue(key: ListKey, value: string) {
 		const current = mapState.filters[key];
 		if (!value || current.includes(value)) return;
@@ -118,6 +143,7 @@
 			series: [],
 			payPlans: [],
 			hiringPaths: [],
+			countries: [],
 			geographies: []
 		};
 	}
@@ -171,6 +197,21 @@
 			onRemove={(v) => removeValue('agencies', v)}
 		/>
 	</div>
+
+	{#if countryFacetOptions.length > 1}
+		<div class="facet">
+			<MultiSelect
+				label="Country"
+				selected={mapState.filters.countries}
+				options={countryFacetOptions}
+				chipLabel={countryLabel}
+				placeholder="Italy, Japan, US…"
+				emptyHint="Pick a country to scope to overseas US-fed jobs."
+				onAdd={(v) => addValue('countries', v)}
+				onRemove={(v) => removeValue('countries', v)}
+			/>
+		</div>
+	{/if}
 
 	{#if mapState.filters.geographies.length > 0}
 		<div class="geo-chips">

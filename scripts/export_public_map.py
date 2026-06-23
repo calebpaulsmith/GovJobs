@@ -35,6 +35,7 @@ from src.public_map_export import (  # noqa: E402
     metros_geojson,
     opm_state_aggregates,
     pay_tables,
+    country_options,
     series_options,
     states_geojson,
     zip_centroids_payload,
@@ -83,6 +84,7 @@ def main() -> int:
         opm = opm_state_aggregates(conn)
         agencies = agency_options(conn)
         series = series_options(conn)
+        countries = country_options(conn)
         states = states_geojson(conn, repo_root=REPO, year=year)
         localities = localities_geojson(conn, repo_root=REPO, year=year)
         counties = counties_geojson(conn, repo_root=REPO, year=year)
@@ -154,6 +156,7 @@ def main() -> int:
         "opm_states.json": opm,
         "agencies.json": agencies,
         "series.json": series,
+        "countries.json": countries,
         "states.geojson": states,
         "localities.geojson": localities,
         "counties.geojson": counties,

@@ -10,7 +10,7 @@
 	import { activeFilterCount, DEFAULT_FILTERS, type JobFilters } from './filters';
 	import { payPlanLabel, hiringPathLabel } from './filterFacets';
 	import { LAYOUT_SLOTS, slotAttr } from './layout';
-	import { loadAgencyOptions, type AgencyOption } from './data';
+	import { loadAgencyOptions, loadCountryOptions, type AgencyOption, type CountryOption } from './data';
 	import { RADIUS_OPTIONS } from './geo';
 
 	// `docked` renders the strip in normal flow (inside a parent surface like
@@ -19,15 +19,24 @@
 	let { docked = false }: { docked?: boolean } = $props();
 
 	let agencyOptions = $state<AgencyOption[]>([]);
+	let countryOptions = $state<CountryOption[]>([]);
 
 	onMount(() => {
 		void loadAgencyOptions().then((opts) => {
 			agencyOptions = opts.filter((o) => o.code);
 		});
+		void loadCountryOptions().then((opts) => {
+			countryOptions = opts.filter((o) => o.code);
+		});
 	});
 
 	function agencyName(code: string): string {
 		const opt = agencyOptions.find((o) => (o.code ?? '').toUpperCase() === code.toUpperCase());
+		return opt?.name ?? code;
+	}
+
+	function countryName(code: string): string {
+		const opt = countryOptions.find((o) => o.code.toUpperCase() === code.toUpperCase());
 		return opt?.name ?? code;
 	}
 
@@ -55,6 +64,7 @@
 			series: [...mapState.filters.series],
 			payPlans: [...mapState.filters.payPlans],
 			hiringPaths: [...mapState.filters.hiringPaths],
+			countries: [...mapState.filters.countries],
 			geographies: [...mapState.filters.geographies],
 			radii: [...mapState.filters.radii]
 		};
@@ -88,7 +98,7 @@
 		rebuildFilters();
 	}
 
-	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths' | 'geographies';
+	type ListKey = 'agencies' | 'series' | 'payPlans' | 'hiringPaths' | 'countries' | 'geographies';
 	function removeValue(key: ListKey, value: string): void {
 		mapState.filters[key] = mapState.filters[key].filter((v) => v !== value);
 		rebuildFilters();
@@ -144,6 +154,15 @@
 					<span class="chip-label">{agencyName(code)}</span>
 					<span class="x" aria-hidden="true">×</span>
 					<span class="sr">Remove {agencyName(code)}</span>
+				</button>
+			{/each}
+
+			{#each mapState.filters.countries as code (code)}
+				<button type="button" class="chip ctry" onclick={() => removeValue('countries', code)}>
+					<span class="chip-tag">Country</span>
+					<span class="chip-label">{countryName(code)}</span>
+					<span class="x" aria-hidden="true">×</span>
+					<span class="sr">Remove {countryName(code)}</span>
 				</button>
 			{/each}
 
