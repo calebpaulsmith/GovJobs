@@ -45,6 +45,20 @@ describe('matchesJobDetail', () => {
 		expect(matchesJobDetail(job(), filters())).toBe(true);
 	});
 
+	it('matches countries by code, case-insensitive, with US as the default', () => {
+		// A job with no country is treated as domestic ("US").
+		expect(matchesJobDetail(job(), filters({ countries: ['US'] }))).toBe(true);
+		expect(matchesJobDetail(job(), filters({ countries: ['IT'] }))).toBe(false);
+		expect(matchesJobDetail(job({ country: 'IT' }), filters({ countries: ['IT'] }))).toBe(true);
+		expect(matchesJobDetail(job({ country: 'it' }), filters({ countries: ['IT'] }))).toBe(true);
+		expect(matchesJobDetail(job({ country: 'IT' }), filters({ countries: ['US'] }))).toBe(false);
+	});
+
+	it('ORs within the country facet', () => {
+		expect(matchesJobDetail(job({ country: 'JP' }), filters({ countries: ['IT', 'JP'] }))).toBe(true);
+		expect(matchesJobDetail(job({ country: 'FR' }), filters({ countries: ['IT', 'JP'] }))).toBe(false);
+	});
+
 	it('matches agencies by code, not display text', () => {
 		expect(matchesJobDetail(job(), filters({ agencies: ['HSCB'] }))).toBe(true);
 		expect(matchesJobDetail(job(), filters({ agencies: ['NN15'] }))).toBe(false);
@@ -188,6 +202,14 @@ describe('normalizeFilters migration', () => {
 		expect(f.payPlans).toEqual([]);
 		expect(f.hiringPaths).toEqual([]);
 	});
+	it('defaults countries to [] (non-destructive saved-search v3→v4 / pre-country URL upgrade)', () => {
+		// A pre-country saved search or share URL has no `countries`; loading it
+		// must not throw and must leave the scope unfiltered.
+		expect(normalizeFilters({}).countries).toEqual([]);
+		// Singular `country` (and lowercase) is accepted and uppercased.
+		expect(normalizeFilters({ country: 'it' }).countries).toEqual(['IT']);
+		expect(normalizeFilters({ countries: ['IT', 'it', 'JP'] }).countries).toEqual(['IT', 'JP']);
+	});
 });
 
 describe('URL round-trip', () => {
@@ -210,6 +232,13 @@ describe('URL round-trip', () => {
 		expect(params.getAll('series')).toEqual(['0301', '0610']);
 		expect(params.getAll('payPlan')).toEqual(['GS', 'WG']);
 		expect(params.getAll('hiringPath')).toEqual(['public']);
+	});
+	it('round-trips country codes as repeated keys (uppercased)', () => {
+		const params = new URLSearchParams();
+		writeFiltersToSearchParams(params, { ...DEFAULT_FILTERS, countries: ['IT', 'JP'] });
+		expect(params.getAll('country')).toEqual(['IT', 'JP']);
+		const back = filtersFromSearchParams(new URLSearchParams('country=it&country=jp'));
+		expect(back.countries).toEqual(['IT', 'JP']);
 	});
 });
 
@@ -307,7 +336,7 @@ describe('ungeocodedFilteredDetails', () => {
 	const details: Record<string, JobDetails> = {
 		'1': job({ id: 1, agency_code: 'HSCB' }),
 		'2': job({ id: 2, agency_code: 'HSCB' }),
-		'3': job({ id: 3, agency_code: 'HSCB', title: 'Overseas analyst' }),
+		'3': job({ id: 3, agency_code: 'HSCB', title: 'Overseas analyst', country: 'IT' }),
 		'4': job({ id: 4, agency_code: 'NASA', title: 'Remote scientist', remote_status: 'remote' })
 	};
 
@@ -336,6 +365,13 @@ describe('ungeocodedFilteredDetails', () => {
 		const f = filters({ agencies: ['NASA'], geographies: ['state:TX'] });
 		const ids = ungeocodedFilteredDetails(details, markers, f).map((j) => j.id);
 		expect(ids).toEqual([4]);
+	});
+
+	it('keeps the country filter (categorical, not geographic) on off-map jobs', () => {
+		// The whole point of country being a non-geographic filter: an overseas
+		// posting with no map coordinates is still reachable by country scope.
+		const ids = ungeocodedFilteredDetails(details, markers, filters({ countries: ['IT'] })).map((j) => j.id);
+		expect(ids).toEqual([3]);
 	});
 
 	it('handles null/empty inputs', () => {

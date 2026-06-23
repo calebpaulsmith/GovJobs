@@ -21,6 +21,7 @@ from src.public_map_export import (
     historical_badges,
     agency_options,
     closed_jobs_geojson,
+    country_options,
     current_reference_year,
     federal_properties_geojson,
     geocoding_summary,
@@ -1020,3 +1021,30 @@ def test_geocoding_summary_counts_country_centroid(conn):
     summary = geocoding_summary(conn)
     assert summary["country_centroid_matches"] == 1
     assert summary["unmatched"] == 0
+
+
+def test_job_detail_carries_country(conn):
+    upsert_job(conn, _overseas_job())
+    upsert_job(conn, _job(country="US"))
+    details = job_details(conn)
+    by_title = {d["title"]: d for d in details.values()}
+    assert by_title["Management Analyst"]["country"] == "IT"
+    # US postings carry an explicit 'US' so a ['US'] filter matches them.
+    assert all(
+        d["country"] == "US"
+        for t, d in by_title.items()
+        if t != "Management Analyst"
+    )
+
+
+def test_country_options_counts_and_names(conn):
+    upsert_job(conn, _overseas_job())
+    upsert_job(conn, _job(country="US"))
+    opts = country_options(conn)
+    by_code = {o["code"]: o for o in opts}
+    assert by_code["IT"]["postings"] == 1
+    assert by_code["US"]["postings"] == 1
+    # Name resolves from country_centroids when present, else falls back to code.
+    assert by_code["IT"]["name"]  # non-empty
+    # Sorted by postings desc — both have 1 here, so just assert presence + shape.
+    assert {"code", "name", "postings"} <= set(opts[0].keys())

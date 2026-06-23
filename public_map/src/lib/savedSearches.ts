@@ -10,11 +10,12 @@ import type { AddressTarget, MapViewport } from './store.svelte';
 export const SAVED_SEARCHES_KEY = 'fedfinder.public_map.saved_searches.v1';
 // v2 (D.5.30) adds radius chips to each saved search's filters. v3 (D.5.28
 // toolbar hoist) adds the in-list toolbar (`list`: search / sort / facets).
-// Both migrations are non-destructive: older stores load with the missing
-// fields at their defaults (`normalizeFilters` → radii [], missing `list` →
+// v4 (overseas) adds the `countries` scope filter. All migrations are
+// non-destructive: older stores load with the missing fields at their defaults
+// (`normalizeFilters` → radii [] / countries [], missing `list` →
 // DEFAULT_LIST_TOOLBAR via `normalizeListToolbar`).
-export const SAVED_SEARCHES_SCHEMA_VERSION = 3;
-const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2, 3]);
+export const SAVED_SEARCHES_SCHEMA_VERSION = 4;
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2, 3, 4]);
 
 export interface SavedSearch {
 	id: string;

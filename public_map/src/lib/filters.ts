@@ -21,6 +21,14 @@ export interface JobFilters {
 	remote: 'any' | 'remote' | 'hybrid' | 'onsite';
 	hiringPaths: string[];
 	payPlans: string[];
+	// Country scope (overseas US-fed jobs). Codes are the USAJOBS country code
+	// denormalized onto `jobs.country` ("US" for domestic; "IT", "JP", … for
+	// overseas). Multiple codes OR within the facet and AND with the rest — same
+	// contract as `agencies`. NOTE: country is a *categorical* filter, NOT a
+	// geographic chip — it is matched independently and is deliberately NOT part
+	// of the geographies/radii OR group, so it still narrows ungeocoded overseas
+	// postings (which have no map coordinates). See `ungeocodedFilteredDetails`.
+	countries: string[];
 	// Geography chips: "state:IL", "locality:DC", etc. Multiple chips are ORed.
 	geographies: string[];
 	// Radius chips (D.5.30): "within N mi of (lng,lat)". Per CLAUDE.md invariant
@@ -41,6 +49,7 @@ export const DEFAULT_FILTERS: JobFilters = {
 	remote: 'any',
 	hiringPaths: [],
 	payPlans: [],
+	countries: [],
 	geographies: [],
 	radii: [],
 	postedWithin: ''
@@ -56,6 +65,7 @@ export const FILTER_PARAM_KEYS = [
 	'remote',
 	'hiringPath',
 	'payPlan',
+	'country',
 	'geo',
 	'radius',
 	'posted'
@@ -80,6 +90,7 @@ export function activeFilterCount(filters: JobFilters): number {
 	if (filters.remote !== 'any') count += 1;
 	if (filters.hiringPaths.length > 0) count += 1;
 	if (filters.payPlans.length > 0) count += 1;
+	if (filters.countries.length > 0) count += 1;
 	if (filters.geographies.length > 0) count += 1;
 	if (filters.radii.length > 0) count += 1;
 	if (filters.postedWithin) count += 1;
@@ -167,6 +178,7 @@ export function parseHiringPaths(raw: unknown): string[] {
 // legacy single string, or the URL-style alias key (`agency`/`geo`).
 type NormalizeInput = Partial<Omit<JobFilters, 'series' | 'hiringPaths' | 'payPlans' | 'radii'>> & {
 	agency?: string | string[];
+	country?: string | string[];
 	geo?: string | string[];
 	series?: string | string[];
 	hiringPaths?: string | string[];
@@ -198,6 +210,9 @@ export function normalizeFilters(input: NormalizeInput): JobFilters {
 		remote,
 		hiringPaths: normalizeCodeList(input.hiringPaths ?? input.hiringPath, 'lower'),
 		payPlans: normalizeCodeList(input.payPlans ?? input.payPlan, 'upper'),
+		// Country codes are uppercased + deduped like agency codes (ISO-ish, e.g.
+		// "it" -> "IT"); reuse normalizeAgencyCodes for that exact behavior.
+		countries: normalizeAgencyCodes(input.countries ?? input.country),
 		geographies: rawGeos.filter((g) => g && g.includes(':')),
 		radii: normalizeRadiiInput(input.radii, input.radius),
 		postedWithin
@@ -223,6 +238,7 @@ export function filtersFromSearchParams(params: URLSearchParams): JobFilters {
 		remote: (params.get('remote') as JobFilters['remote'] | null) ?? 'any',
 		hiringPaths: params.getAll('hiringPath'),
 		payPlans: params.getAll('payPlan'),
+		countries: params.getAll('country'),
 		geographies: params.getAll('geo'),
 		radius: params.getAll('radius'),
 		postedWithin: (params.get('posted') as PostedWithin | null) ?? ''
@@ -239,6 +255,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	params.delete('remote');
 	params.delete('hiringPath');
 	params.delete('payPlan');
+	params.delete('country');
 	params.delete('geo');
 	params.delete('radius');
 	params.delete('posted');
@@ -252,6 +269,7 @@ export function writeFiltersToSearchParams(params: URLSearchParams, filters: Job
 	if (filters.remote !== 'any') params.set('remote', filters.remote);
 	for (const path of filters.hiringPaths) params.append('hiringPath', path);
 	for (const plan of filters.payPlans) params.append('payPlan', plan.toUpperCase());
+	for (const country of filters.countries) params.append('country', country);
 	for (const geo of filters.geographies) params.append('geo', geo);
 	for (const chip of filters.radii) params.append('radius', radiusToParam(chip));
 	if (filters.postedWithin) params.set('posted', filters.postedWithin);
@@ -280,6 +298,7 @@ export function matchesJobFeature(
 
 	if (filters.keyword && !containsAnyText(combined, filters.keyword)) return false;
 	if (filters.agencies.length > 0 && !agencyMatches(combined, filters.agencies)) return false;
+	if (filters.countries.length > 0 && !countryMatches(combined.country, filters.countries)) return false;
 	// Geography chips + radius chips are one OR group (invariant #17).
 	{
 		const geoOk = filters.geographies.length > 0 && geographyMatches(combined, filters.geographies);
@@ -327,6 +346,14 @@ function containsAnyText(props: FilterableProps, needle: string): boolean {
 function agencyMatches(props: FilterableProps, agencies: string[]): boolean {
 	const agencyCode = String(props.agency_code ?? '').toUpperCase().trim();
 	return agencies.includes(agencyCode);
+}
+
+// Country is a categorical OR-within-facet match. A missing/blank country is
+// treated as domestic ("US") — the exporter backfills `jobs.country` to "US",
+// but a marker feature may omit it, so default here too.
+function countryMatches(value: unknown, countries: string[]): boolean {
+	const code = String(value ?? 'US').toUpperCase().trim() || 'US';
+	return countries.includes(code);
 }
 
 // The combined location constraint: when geography chips and/or radius chips
@@ -453,6 +480,7 @@ export function matchesJobDetail(
 		const code = String(job.agency_code ?? '').toUpperCase().trim();
 		if (!filters.agencies.includes(code)) return false;
 	}
+	if (filters.countries.length > 0 && !countryMatches(job.country, filters.countries)) return false;
 	// Geography chips + radius chips are one OR group (invariant #17). The
 	// deduplicated jobs_detail.json has no coordinates, so the caller passes a
 	// posting-id → coords index built from jobs.geojson (see geo.coordsByJobId).

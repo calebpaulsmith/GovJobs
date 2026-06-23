@@ -55,6 +55,11 @@ describe('viewState round-trip', () => {
 		expect(out.scroll).toBeCloseTo(0.42, 3);
 	});
 
+	it('round-trips the country scope filter', () => {
+		const out = roundTrip(view({ filters: filters({ countries: ['IT', 'JP'] }) }));
+		expect(out.filters.countries).toEqual(['IT', 'JP']);
+	});
+
 	it('omits defaults — default metric, dark theme, and empty extras stay out of the URL', () => {
 		const qs = viewToParamString(view({ metric: 'postings', theme: 'dark' }));
 		expect(qs).not.toContain('metric=');
