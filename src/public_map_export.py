@@ -1196,6 +1196,12 @@ def manifest(
         "posting_coverage": posting_coverage_summary(
             conn, job_count=job_count, feature_count=feature_count
         ),
+        # D.5.27 (ADR-0032): the Localities screen ships its V1 (rollup table +
+        # drill-in) entirely from existing bundle data (localities.geojson +
+        # jobs_detail.json), so the capability flag is unconditionally true once
+        # this exporter version runs. V1.1 (state tax / broadband / airport
+        # signals) will add a separate localities_screen_v1_1 flag.
+        "localities_screen_v1": True,
     }
 
 

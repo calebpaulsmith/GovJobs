@@ -526,6 +526,8 @@ def test_manifest_records_geocoding_summary_and_opm_label(conn):
     assert "data_sources" in man
     assert man["posting_coverage"]["scope"] == "local_static_snapshot"
     assert man["posting_coverage"]["job_count"] == 2
+    # D.5.27: the Localities screen V1 capability flag ships with this exporter.
+    assert man["localities_screen_v1"] is True
 
 
 def test_posting_coverage_summary_explains_local_snapshot_scope(conn):
