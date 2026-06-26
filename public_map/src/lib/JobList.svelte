@@ -441,6 +441,16 @@
 	}
 
 	// --- rich-mode helpers (ported from browse/+page.svelte) ---
+	// ADR-0032 §9: an "anywhere remote" posting can be re-designated to a
+	// specific duty station after hire, which changes locality pay. Surface that
+	// next to such rows so the Localities drill-in doesn't imply the locality is
+	// fixed. "Anywhere remote" is remote_status === 'remote' (matches
+	// locationLabel); 'hybrid'/'onsite' have a real duty station.
+	const REDESIGNATION_NOTE =
+		'Duty station may be assigned later; locality pay follows the eventual assignment.';
+	function isAnywhereRemote(remote: unknown): boolean {
+		return String(remote ?? '').toLowerCase() === 'remote';
+	}
 	function locationLabel(job: JobDetails): string {
 		if (String(job.remote_status ?? '').toLowerCase() === 'remote') return 'Anywhere remote';
 		const locs = job.locations ?? [];
@@ -684,6 +694,9 @@
 										{job.qualifications_excerpt}
 									</p>
 								{/if}
+								{#if isAnywhereRemote(job.remote_status)}
+									<p class="redesignation-note">{REDESIGNATION_NOTE}</p>
+								{/if}
 								<div class="row-foot">
 									<span class="pay">{salaryRange(job.salary_min, job.salary_max, job.salary_type)}</span>
 									<div class="row-actions">
@@ -728,6 +741,9 @@
 									<span>{salaryRange(detail?.salary_min ?? props.salary_min, detail?.salary_max ?? props.salary_max, detail?.salary_type)}</span>
 									<span>{String(detail?.remote_status ?? props.remote_status ?? 'Remote unknown')}</span>
 								</div>
+								{#if isAnywhereRemote(detail?.remote_status ?? props.remote_status)}
+									<p class="redesignation-note">{REDESIGNATION_NOTE}</p>
+								{/if}
 								<div class="row-meta">
 									<span>Closes {String(detail?.close_date ?? props.close_date ?? '-')}</span>
 									<span>{propString(props, 'city')}, {propString(props, 'state', '')}</span>
@@ -1147,6 +1163,13 @@
 		font-size: 12px;
 		line-height: 1.4;
 		color: var(--c-text-2, #cfd9e6);
+	}
+	.redesignation-note {
+		margin: 0.3rem 0 0;
+		font-size: 11px;
+		line-height: 1.35;
+		color: var(--c-warn, #f0c878);
+		font-style: italic;
 	}
 	.row-excerpt.quals {
 		color: var(--c-muted, #94a3b8);

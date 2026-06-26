@@ -132,7 +132,7 @@
 		<nav class="modes" aria-label="View mode">
 			<span class="mode active">Browse</span>
 			<a class="mode" href="/map">Map only</a>
-			<span class="mode disabled" aria-disabled="true" title="Coming soon">Localities</span>
+			<a class="mode" href="/localities">Localities</a>
 		</nav>
 		<ShareLinkButton />
 		<button type="button" class="saved-btn" onclick={() => (mapState.savedDrawerOpen = true)} aria-label="Open saved">
@@ -254,10 +254,6 @@
 	.mode.active {
 		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
 		color: var(--c-accent, #7bd0f2);
-	}
-	.mode.disabled {
-		color: var(--c-faint, #64748b);
-		cursor: not-allowed;
 	}
 	.saved-btn {
 		margin-left: auto;
