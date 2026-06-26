@@ -343,7 +343,7 @@
 	.pay-status-exact { background: rgba(80, 180, 120, 0.18); border: 1px solid #4f9f6a; color: var(--c-success, #9be0b4); }
 	.pay-status-approx { background: rgba(220, 160, 50, 0.18); border: 1px solid #b48a3a; color: var(--c-warn, #f0c878); }
 	.pay-status-snap { background: rgba(140, 140, 160, 0.16); border: 1px solid #6a6a82; color: var(--c-muted, #94a3b8); }
-	.pay-status-overseas { background: rgba(224, 164, 77, 0.18); border: 1px solid #c08a3a; color: #e7b870; }
+	.pay-status-overseas { background: rgba(224, 164, 77, 0.18); border: 1px solid var(--c-warn-border, #c08a3a); color: var(--c-warn, #f0c878); }
 	.overseas-match { margin: 0.35rem 0 0.1rem; font-size: 11px; color: var(--c-muted, #94a3b8); }
 	.overseas-rate { display: block; font-weight: 400; font-size: 10px; color: var(--c-muted, #94a3b8); text-transform: none; letter-spacing: 0; }
 	.overseas-withheld { color: var(--c-warn, #f0c878); font-style: italic; }

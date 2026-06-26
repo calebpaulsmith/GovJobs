@@ -1133,6 +1133,6 @@
 	}
 
 	:global(.ff-hover-popup .ff-tip-approx) {
-		color: #e0a44d;
+		color: var(--c-warn, #f0c878);
 	}
 </style>
