@@ -12,11 +12,23 @@
 	import { mapState } from '$lib/store.svelte';
 	import { loadJobs, loadJobDetailsIndex } from '$lib/data';
 	import LocalityRollup from '$lib/LocalityRollup.svelte';
+	import LocalityMiniMap from '$lib/LocalityMiniMap.svelte';
 	import ActiveFilterStrip from '$lib/ActiveFilterStrip.svelte';
 	import FilterSheet from '$lib/FilterSheet.svelte';
 
 	const THEME_KEY = 'fedfinder.public_map.theme.v1';
 	let loading = $state(true);
+
+	// Selection shared by the rollup table and the paired map (row ↔ polygon
+	// highlight is two-way). Reassign a fresh Set on each toggle so both
+	// consumers re-derive.
+	let selected = $state<Set<string>>(new Set());
+	function toggleLocality(code: string) {
+		const next = new Set(selected);
+		if (next.has(code)) next.delete(code);
+		else next.add(code);
+		selected = next;
+	}
 
 	onMount(async () => {
 		if (!browser) return;
@@ -75,7 +87,10 @@
 		{#if loading}
 			<p class="loading" role="status">Loading postings…</p>
 		{:else}
-			<LocalityRollup />
+			{#key mapState.theme}
+				<LocalityMiniMap {selected} onToggle={toggleLocality} />
+			{/key}
+			<LocalityRollup {selected} onToggle={toggleLocality} />
 		{/if}
 	</main>
 

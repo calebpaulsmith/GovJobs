@@ -91,18 +91,37 @@ try {
 		`single-row click drills into one locality (${JSON.stringify(f.geographies)})`
 	);
 
-	// 7) Remote-only preset toggles the remote filter and re-tallies.
+	// 7) Paired map renders; GS purchasing-power column toggles; map→row select.
 	await page.goto(`${BASE}/localities`, { waitUntil: 'networkidle', timeout: 30000 });
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
-	await page.locator('.preset').click();
+	await page.waitForSelector('.mini .canvas canvas', { timeout: 20000 });
+	check(true, 'paired LocalityMiniMap renders a canvas');
+
+	const gsHeader = page.locator('.rollup th', { hasText: 'GS-13 real pay' });
+	check((await gsHeader.count()) === 0, 'GS purchasing-power column is hidden by default');
+	await page.locator('.preset', { hasText: 'GS purchasing power' }).click();
+	await page.waitForTimeout(200);
+	check((await gsHeader.count()) === 1, 'GS toggle shows the GS-13 real pay column');
+	await page.locator('.preset', { hasText: 'GS purchasing power' }).click();
+	await page.waitForTimeout(200);
+	check((await gsHeader.count()) === 0, 'GS toggle hides the column again');
+	// (Two-way highlight: the rollup table and the map share one `selected` Set,
+	// so selecting rows highlights polygons and clicking polygons checks rows.
+	// We don't pixel-click a polygon here — the map center sits over "Rest of US",
+	// which has no polygon, so an arbitrary-pixel click is environment-fragile.)
+
+	// 8) Remote-only preset toggles the remote filter and re-tallies.
+	await page.goto(`${BASE}/localities`, { waitUntil: 'networkidle', timeout: 30000 });
+	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
+	await page.locator('.preset', { hasText: 'Remote-only' }).click();
 	await page.waitForTimeout(200);
 	f = await filters();
 	check(f.remote === 'remote', 'Remote-only preset sets filters.remote = remote');
 	check(
-		(await page.locator('.preset.on').count()) === 1,
+		(await page.locator('.preset.on', { hasText: 'Remote-only' }).count()) === 1,
 		'Remote-only preset shows its active (✓) state'
 	);
-	await page.locator('.preset').click();
+	await page.locator('.preset', { hasText: 'Remote-only' }).click();
 	await page.waitForTimeout(200);
 	f = await filters();
 	check(f.remote === 'any', 'clicking Remote-only again clears it');
