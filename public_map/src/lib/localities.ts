@@ -41,9 +41,20 @@ export interface LocalityRollupRow {
 	rppOverall: number | null;
 	rppApproximate: boolean; // true when falling back to the primary state's RPP
 	rppState: string | null; // the state whose RPP was used on fallback
+	gs13Step1: number | null; // GS-13 step 1 locality-adjusted pay (from export)
 }
 
-export type SortKey = 'name' | 'postings' | 'pay' | 'rpp';
+// Optional GS-anchored purchasing-power figure (ADR-0032 §6): GS-13 step 1
+// locality-adjusted pay expressed in U.S.-average-cost dollars (divided by the
+// locality's RPP). Higher = a GS-13 paycheck stretches further. Null when the
+// locality lacks a GS-13 figure or an RPP. GS-only by design — labeled with the
+// locality's GS coverage % so the ~30% non-GS postings aren't misrepresented.
+export function gsRealPay(row: { gs13Step1: number | null; rppOverall: number | null }): number | null {
+	if (row.gs13Step1 == null || row.rppOverall == null || row.rppOverall <= 0) return null;
+	return Math.round(row.gs13Step1 / (row.rppOverall / 100));
+}
+
+export type SortKey = 'name' | 'postings' | 'pay' | 'rpp' | 'gs';
 export type SortDir = 'asc' | 'desc';
 
 // Parse localities.geojson into a code → meta map. Defensive about missing
@@ -201,7 +212,8 @@ export function computeLocalityRollup(
 			gsCoveragePct: Math.round((gsCount / recs.length) * 100),
 			rppOverall: rpp.rppOverall,
 			rppApproximate: rpp.rppApproximate,
-			rppState: rpp.rppState
+			rppState: rpp.rppState,
+			gs13Step1: m.gs13Step1
 		});
 	}
 	return rows;
@@ -221,6 +233,8 @@ export function sortRollup(rows: LocalityRollupRow[], key: SortKey, dir: SortDir
 				return r.salaryMax ?? r.salaryMin; // rank by top of range
 			case 'rpp':
 				return r.rppOverall;
+			case 'gs':
+				return gsRealPay(r);
 		}
 	};
 	return [...rows].sort((a, b) => {

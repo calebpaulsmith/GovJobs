@@ -5,6 +5,7 @@ import {
 	sortRollup,
 	rollupTotals,
 	formatPayPlanMix,
+	gsRealPay,
 	type LocalityRollupRow
 } from './localities';
 import { DEFAULT_FILTERS, type JobFilters } from './filters';
@@ -123,6 +124,7 @@ describe('computeLocalityRollup', () => {
 		const dcb = rows.find((r) => r.code === 'DCB')!;
 		expect(dcb.rppOverall).toBe(112.3);
 		expect(dcb.rppApproximate).toBe(false);
+		expect(dcb.gs13Step1).toBe(130000); // carried from locality meta for the GS column
 		const sea = rows.find((r) => r.code === 'SEA')!;
 		expect(sea.rppOverall).toBe(108.0); // fell back to WA state RPP
 		expect(sea.rppApproximate).toBe(true);
@@ -132,9 +134,9 @@ describe('computeLocalityRollup', () => {
 
 describe('sortRollup', () => {
 	const rows: LocalityRollupRow[] = [
-		{ code: 'A', name: 'Alpha', postings: 5, salaryMin: 50, salaryMax: 100, payPlanMix: [], gsCount: 5, gsCoveragePct: 100, rppOverall: 110, rppApproximate: false, rppState: null },
-		{ code: 'B', name: 'Bravo', postings: 20, salaryMin: 60, salaryMax: 200, payPlanMix: [], gsCount: 10, gsCoveragePct: 50, rppOverall: null, rppApproximate: false, rppState: null },
-		{ code: 'C', name: 'Charlie', postings: 12, salaryMin: 40, salaryMax: 150, payPlanMix: [], gsCount: 12, gsCoveragePct: 100, rppOverall: 95, rppApproximate: true, rppState: 'TX' }
+		{ code: 'A', name: 'Alpha', postings: 5, salaryMin: 50, salaryMax: 100, payPlanMix: [], gsCount: 5, gsCoveragePct: 100, rppOverall: 110, rppApproximate: false, rppState: null, gs13Step1: 130000 },
+		{ code: 'B', name: 'Bravo', postings: 20, salaryMin: 60, salaryMax: 200, payPlanMix: [], gsCount: 10, gsCoveragePct: 50, rppOverall: null, rppApproximate: false, rppState: null, gs13Step1: null },
+		{ code: 'C', name: 'Charlie', postings: 12, salaryMin: 40, salaryMax: 150, payPlanMix: [], gsCount: 12, gsCoveragePct: 100, rppOverall: 95, rppApproximate: true, rppState: 'TX', gs13Step1: 120000 }
 	];
 
 	it('sorts postings descending by default order', () => {
@@ -149,6 +151,23 @@ describe('sortRollup', () => {
 	it('sorts nulls last regardless of direction', () => {
 		expect(sortRollup(rows, 'rpp', 'asc').map((r) => r.code)).toEqual(['C', 'A', 'B']); // B(null) last
 		expect(sortRollup(rows, 'rpp', 'desc').map((r) => r.code)).toEqual(['A', 'C', 'B']); // B(null) still last
+	});
+	it('sorts by GS purchasing power (real pay), nulls last', () => {
+		// A: 130000/1.10 = 118181; C: 120000/0.95 = 126316; B: null.
+		expect(sortRollup(rows, 'gs', 'desc').map((r) => r.code)).toEqual(['C', 'A', 'B']);
+	});
+});
+
+describe('gsRealPay', () => {
+	it('expresses GS-13 pay in U.S.-average-cost dollars (pay ÷ RPP/100)', () => {
+		expect(gsRealPay({ gs13Step1: 130000, rppOverall: 100 })).toBe(130000);
+		expect(gsRealPay({ gs13Step1: 130000, rppOverall: 110 })).toBe(118182);
+		expect(gsRealPay({ gs13Step1: 120000, rppOverall: 95 })).toBe(126316);
+	});
+	it('returns null when GS-13 pay or RPP is missing', () => {
+		expect(gsRealPay({ gs13Step1: null, rppOverall: 100 })).toBeNull();
+		expect(gsRealPay({ gs13Step1: 130000, rppOverall: null })).toBeNull();
+		expect(gsRealPay({ gs13Step1: 130000, rppOverall: 0 })).toBeNull();
 	});
 });
 

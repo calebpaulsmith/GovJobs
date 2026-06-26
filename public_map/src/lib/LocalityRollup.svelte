@@ -21,12 +21,17 @@
 		sortRollup,
 		rollupTotals,
 		formatPayPlanMix,
+		gsRealPay,
 		type LocalityMeta,
 		type LocalityRollupRow,
 		type SortKey,
 		type SortDir
 	} from './localities';
 	import InfoTooltip from './InfoTooltip.svelte';
+
+	// Selection is owned by the parent route so the paired LocalityMiniMap and
+	// this table share one set (row ↔ polygon highlight is two-way).
+	let { selected, onToggle }: { selected: Set<string>; onToggle: (code: string) => void } = $props();
 
 	let meta = $state<Map<string, LocalityMeta>>(new Map());
 	let stateRpp = $state<Record<string, StateRpp>>({});
@@ -38,7 +43,9 @@
 
 	let sortKey = $state<SortKey>('postings');
 	let sortDir = $state<SortDir>('desc');
-	let selected = $state<Set<string>>(new Set());
+	// Opt-in GS-anchored purchasing-power column (ADR-0032 §2/§6), off by default
+	// because it only applies to GS postings (~70%).
+	let showGs = $state(false);
 
 	const rows = $derived(
 		sortRollup(
@@ -75,13 +82,14 @@
 		// `selected` is keyed by code, independent of row order, so it survives.
 	}
 
-	function toggleRow(code: string) {
-		const next = new Set(selected);
-		if (next.has(code)) next.delete(code);
-		else next.add(code);
-		selected = next;
+	function toggleGs() {
+		showGs = !showGs;
+		// Don't leave the table sorted by a now-hidden column.
+		if (!showGs && sortKey === 'gs') {
+			sortKey = 'postings';
+			sortDir = 'desc';
+		}
 	}
-
 	function toggleRemotePreset() {
 		mapState.filters = {
 			...mapState.filters,
@@ -145,16 +153,28 @@
 				<span class="src">Source: open USAJOBS postings in the current bundle, grouped by locality_code.</span>
 			</InfoTooltip>
 		</div>
-		<button
-			type="button"
-			class="preset"
-			class:on={remoteOnly}
-			onclick={toggleRemotePreset}
-			aria-pressed={remoteOnly}
-			title="Show only remote-eligible postings"
-		>
-			{remoteOnly ? '✓ Remote-only' : 'Remote-only'}
-		</button>
+		<div class="toggles">
+			<button
+				type="button"
+				class="preset"
+				class:on={showGs}
+				onclick={toggleGs}
+				aria-pressed={showGs}
+				title="Show a GS-13 purchasing-power column (GS postings only)"
+			>
+				{showGs ? '✓ GS purchasing power' : 'GS purchasing power'}
+			</button>
+			<button
+				type="button"
+				class="preset"
+				class:on={remoteOnly}
+				onclick={toggleRemotePreset}
+				aria-pressed={remoteOnly}
+				title="Show only remote-eligible postings"
+			>
+				{remoteOnly ? '✓ Remote-only' : 'Remote-only'}
+			</button>
+		</div>
 	</div>
 
 	{#if rows.length === 0}
@@ -207,6 +227,21 @@
 								<span class="src">Source: BEA Regional Price Parities (cost_of_living_index).</span>
 							</InfoTooltip>
 						</th>
+						{#if showGs}
+							<th class="num">
+								<button type="button" class="sort" onclick={() => setSort('gs')}>GS-13 real pay{sortIndicator('gs')}</button>
+								<InfoTooltip title="GS-13 purchasing power" align="end">
+									<span
+										>GS-13 step 1 locality-adjusted pay expressed in U.S.-average-cost dollars —
+										i.e. pay ÷ (RPP ÷ 100). Higher means a GS-13 paycheck stretches further.
+										<strong>GS-only</strong>: each row shows what share of its postings are GS, since
+										non-GS plans aren't on the GS table.</span
+									>
+									<span class="formula">real_pay = gs13_step1_locality ÷ (RPP ÷ 100)</span>
+									<span class="src">Source: OPM GS table × locality % (export), BEA RPP. Reuses the same GS pay figure shown on the map.</span>
+								</InfoTooltip>
+							</th>
+						{/if}
 					</tr>
 				</thead>
 				<tbody>
@@ -216,7 +251,7 @@
 								<input
 									type="checkbox"
 									checked={selected.has(r.code)}
-									onchange={() => toggleRow(r.code)}
+									onchange={() => onToggle(r.code)}
 									aria-label="Select {r.name}"
 								/>
 							</td>
@@ -236,6 +271,13 @@
 								{r.rppOverall == null ? '—' : r.rppOverall.toFixed(1)}
 								{#if r.rppApproximate}<span class="approx" title={r.rppState ? `From ${r.rppState} state RPP` : 'Approximate'}>approx</span>{/if}
 							</td>
+							{#if showGs}
+								{@const gp = gsRealPay(r)}
+								<td class="num">
+									{gp == null ? '—' : fmtMoney(gp)}
+									{#if gp != null}<span class="gs-cov" title="Share of this locality's postings on a GS plan">GS {r.gsCoveragePct}%</span>{/if}
+								</td>
+							{/if}
 						</tr>
 					{/each}
 				</tbody>
@@ -275,6 +317,11 @@
 	}
 	.summary strong {
 		color: var(--c-text, #e5edf5);
+	}
+	.toggles {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
 	}
 	.preset {
 		appearance: none;
@@ -428,5 +475,12 @@
 		margin-top: 0.3rem;
 		font-size: 10px;
 		color: var(--c-faint, #64748b);
+	}
+	.formula {
+		display: block;
+		margin-top: 0.3rem;
+		font-size: 10px;
+		font-family: ui-monospace, monospace;
+		color: var(--c-muted, #94a3b8);
 	}
 </style>
