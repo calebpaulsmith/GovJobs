@@ -12,7 +12,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { mapState } from './store.svelte';
-	import { loadLocalities, loadCostOfLiving } from './data';
+	import { loadLocalities, loadCostOfLiving, loadStateTax, type StateTax } from './data';
 	import { stateRppFromCol, type StateRpp } from './compensation';
 	import { writeFiltersToSearchParams } from './filters';
 	import {
@@ -35,11 +35,19 @@
 
 	let meta = $state<Map<string, LocalityMeta>>(new Map());
 	let stateRpp = $state<Record<string, StateRpp>>({});
+	let stateTax = $state<StateTax>({ by_state: {} });
 
 	onMount(() => {
 		void loadLocalities().then((fc) => (meta = localityMetaFromGeoJson(fc)));
 		void loadCostOfLiving().then((col) => (stateRpp = stateRppFromCol(col)));
+		void loadStateTax().then((t) => (stateTax = t));
 	});
+
+	// The tax column appears only when the state-tax ingest has populated the
+	// bundle (state_tax.json). Year/source for the column tooltip come from any
+	// entry (they share one study year).
+	const hasTax = $derived(Object.keys(stateTax.by_state).length > 0);
+	const taxMeta = $derived(Object.values(stateTax.by_state)[0] ?? null);
 
 	let sortKey = $state<SortKey>('postings');
 	let sortDir = $state<SortDir>('desc');
@@ -49,7 +57,10 @@
 
 	const rows = $derived(
 		sortRollup(
-			computeLocalityRollup(mapState.allJobs, mapState.allJobDetails, meta, mapState.filters, { stateRpp }),
+			computeLocalityRollup(mapState.allJobs, mapState.allJobDetails, meta, mapState.filters, {
+				stateRpp,
+				stateTax: stateTax.by_state
+			}),
 			sortKey,
 			sortDir
 		)
@@ -227,6 +238,19 @@
 								<span class="src">Source: BEA Regional Price Parities (cost_of_living_index).</span>
 							</InfoTooltip>
 						</th>
+						{#if hasTax}
+							<th class="num">
+								<button type="button" class="sort" onclick={() => setSort('tax')}>State tax{sortIndicator('tax')}</button>
+								<InfoTooltip title="State-local tax burden" align="end">
+									<span
+										>Total state-local taxes paid by a state's residents as a share of income
+										(Tax Foundation "Effective Tax Rate"). <strong>State-level only</strong> — shown
+										for the locality's primary state, so multi-state localities are approximate.</span
+									>
+									<span class="src">Source: Tax Foundation, State and Local Tax Burdens{#if taxMeta?.year} ({taxMeta.year}){/if}.</span>
+								</InfoTooltip>
+							</th>
+						{/if}
 						{#if showGs}
 							<th class="num">
 								<button type="button" class="sort" onclick={() => setSort('gs')}>GS-13 real pay{sortIndicator('gs')}</button>
@@ -271,6 +295,12 @@
 								{r.rppOverall == null ? '—' : r.rppOverall.toFixed(1)}
 								{#if r.rppApproximate}<span class="approx" title={r.rppState ? `From ${r.rppState} state RPP` : 'Approximate'}>approx</span>{/if}
 							</td>
+							{#if hasTax}
+								<td class="num">
+									{r.stateTaxPct == null ? '—' : `${r.stateTaxPct.toFixed(1)}%`}
+									{#if r.stateTaxState}<span class="gs-cov" title="State-level (primary state {r.stateTaxState})">state</span>{/if}
+								</td>
+							{/if}
 							{#if showGs}
 								{@const gp = gsRealPay(r)}
 								<td class="num">

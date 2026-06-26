@@ -42,6 +42,11 @@ export interface LocalityRollupRow {
 	rppApproximate: boolean; // true when falling back to the primary state's RPP
 	rppState: string | null; // the state whose RPP was used on fallback
 	gs13Step1: number | null; // GS-13 step 1 locality-adjusted pay (from export)
+	// D.5.27 V1.1: state-local tax burden (Tax Foundation effective rate, % of
+	// income) for the locality's primary state. State-level only — labeled as
+	// such in the UI (there is no locality-level tax burden).
+	stateTaxPct: number | null;
+	stateTaxState: string | null;
 }
 
 // Optional GS-anchored purchasing-power figure (ADR-0032 §6): GS-13 step 1
@@ -54,7 +59,7 @@ export function gsRealPay(row: { gs13Step1: number | null; rppOverall: number | 
 	return Math.round(row.gs13Step1 / (row.rppOverall / 100));
 }
 
-export type SortKey = 'name' | 'postings' | 'pay' | 'rpp' | 'gs';
+export type SortKey = 'name' | 'postings' | 'pay' | 'rpp' | 'gs' | 'tax';
 export type SortDir = 'asc' | 'desc';
 
 // Parse localities.geojson into a code → meta map. Defensive about missing
@@ -133,6 +138,9 @@ function resolveRpp(
 
 export interface RollupOptions {
 	stateRpp?: Record<string, StateRpp>;
+	// State-local tax burden by 2-letter state (Tax Foundation), resolved per
+	// locality via its primary state.
+	stateTax?: Record<string, { burden_pct: number | null; year?: number | null }>;
 }
 
 function numOrNull(v: unknown): number | null {
@@ -201,6 +209,10 @@ export function computeLocalityRollup(
 		}
 		const { mix, gsCount } = payPlanMix(recs);
 		const rpp = resolveRpp(m, stateRpp);
+		// State tax burden via the locality's primary state (state-level only).
+		const primaryState = localityPrimaryState(m.code, m.name);
+		const taxRow = primaryState ? opts.stateTax?.[primaryState] : undefined;
+		const stateTaxPct = taxRow?.burden_pct ?? null;
 		rows.push({
 			code,
 			name: m.name,
@@ -213,7 +225,9 @@ export function computeLocalityRollup(
 			rppOverall: rpp.rppOverall,
 			rppApproximate: rpp.rppApproximate,
 			rppState: rpp.rppState,
-			gs13Step1: m.gs13Step1
+			gs13Step1: m.gs13Step1,
+			stateTaxPct,
+			stateTaxState: stateTaxPct != null ? primaryState : null
 		});
 	}
 	return rows;
@@ -235,6 +249,8 @@ export function sortRollup(rows: LocalityRollupRow[], key: SortKey, dir: SortDir
 				return r.rppOverall;
 			case 'gs':
 				return gsRealPay(r);
+			case 'tax':
+				return r.stateTaxPct;
 		}
 	};
 	return [...rows].sort((a, b) => {

@@ -26,6 +26,10 @@ from scripts.ingest_locality_polygons import (
     import_polygons,
 )
 from scripts.ingest_state_polygons import import_states_from_geojson
+from scripts.ingest_state_tax_burden import (
+    SEED_CSV as STATE_TAX_SEED,
+    import_tax_burden_from_csv,
+)
 from src.database import connect, init_schema
 
 
@@ -375,6 +379,59 @@ def test_bea_rpp_csv_inserts_state_and_metro_rows(conn, tmp_path):
     ).fetchone()
     assert il["rpp_overall"] == pytest.approx(99.5)
     assert il["rpp_goods"] == pytest.approx(98.0)
+
+
+# ---------- D.5.27 V1.1: state-local tax burden ---------------------------
+
+
+def test_state_tax_burden_csv_inserts_skips_bad_and_upserts(conn, tmp_path):
+    csv_path = _write_csv(
+        tmp_path / "tax.csv",
+        rows=[
+            {"year": "2022", "state": "ny", "burden_pct": "15.9"},
+            {"year": "2022", "state": "AK", "burden_pct": "4.6%"},  # tolerant of % sign
+            {"year": "2022", "state": "ZZZ", "burden_pct": "9.0"},  # bad state skipped
+            {"year": "2022", "state": "CA", "burden_pct": ""},  # missing value skipped
+        ],
+        fieldnames=["year", "state", "burden_pct"],
+    )
+    written = import_tax_burden_from_csv(conn, input_path=csv_path, source="taxfoundation:burden")
+    assert written == 2
+    ny = conn.execute(
+        "SELECT burden_pct FROM state_tax_burden WHERE state='NY' AND year=2022"
+    ).fetchone()
+    assert ny["burden_pct"] == pytest.approx(15.9)
+    ak = conn.execute("SELECT burden_pct FROM state_tax_burden WHERE state='AK'").fetchone()
+    assert ak["burden_pct"] == pytest.approx(4.6)
+
+    # Re-import with a changed value upserts (no duplicate row).
+    csv2 = _write_csv(
+        tmp_path / "tax2.csv",
+        rows=[{"year": "2022", "state": "NY", "burden_pct": "16.5"}],
+        fieldnames=["year", "state", "burden_pct"],
+    )
+    import_tax_burden_from_csv(conn, input_path=csv2, source="taxfoundation:burden")
+    agg = conn.execute(
+        "SELECT COUNT(*) n, MAX(burden_pct) b FROM state_tax_burden WHERE state='NY'"
+    ).fetchone()
+    assert agg["n"] == 1
+    assert agg["b"] == pytest.approx(16.5)
+
+
+def test_state_tax_burden_seed_is_complete_and_accurate(conn):
+    written = import_tax_burden_from_csv(
+        conn, input_path=STATE_TAX_SEED, source="taxfoundation:burden"
+    )
+    assert written == 51  # 50 states + DC
+    vals = {
+        r["state"]: r["burden_pct"]
+        for r in conn.execute("SELECT state, burden_pct FROM state_tax_burden").fetchall()
+    }
+    # Spot-check known Tax Foundation Calendar Year 2022 effective tax rates.
+    assert vals["NY"] == pytest.approx(15.9)
+    assert vals["AK"] == pytest.approx(4.6)
+    assert vals["WY"] == pytest.approx(7.5)
+    assert vals["CA"] == pytest.approx(13.5)
 
 
 # ---------- D.5.10: Census ACS county rents -------------------------------

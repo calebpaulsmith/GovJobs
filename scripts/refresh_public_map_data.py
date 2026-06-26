@@ -237,6 +237,19 @@ def build_steps() -> list[Step]:
         )
     )
 
+    # D.5.27 V1.1: Tax Foundation state-local tax burden → state_tax_burden.
+    state_tax = os.environ.get("PUBLIC_MAP_STATE_TAX_CSV")
+    state_tax_args = [_python(), "scripts/ingest_state_tax_burden.py"]
+    if state_tax:
+        state_tax_args.extend(["--input", state_tax])
+    steps.append(
+        Step(
+            key="ingest_state_tax_burden",
+            label="State-local tax burden (Tax Foundation)",
+            args=state_tax_args,
+        )
+    )
+
     zip_centroids = os.environ.get("PUBLIC_MAP_ZIP_CENTROIDS")
     zip_args = [_python(), "scripts/ingest_zip_centroids.py"]
     if zip_centroids:

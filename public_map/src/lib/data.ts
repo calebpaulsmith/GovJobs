@@ -305,6 +305,23 @@ export async function loadSeriesOptions(): Promise<SeriesOption[]> {
 // Country catalog for the country scope multi-select, emitted as countries.json.
 // Like series, which countries are *offered* in the dropdown is derived live
 // from the loaded jobs; this list supplies display names + global counts.
+// State-local tax burden by state (Tax Foundation), emitted as state_tax.json
+// (D.5.27 V1.1). `{by_state: {ST: {burden_pct, year, source}}}`. Empty when the
+// ingest hasn't run — the Localities screen hides the column in that case.
+export interface StateTaxRow {
+	burden_pct: number | null;
+	year: number | null;
+	source?: string;
+}
+export interface StateTax {
+	by_state: Record<string, StateTaxRow>;
+}
+let stateTaxCache: StateTax | null = null;
+export async function loadStateTax(): Promise<StateTax> {
+	stateTaxCache ??= await fetchJson<StateTax>('state_tax.json', { by_state: {} });
+	return stateTaxCache;
+}
+
 export async function loadCountryOptions(): Promise<CountryOption[]> {
 	countryOptionsCache ??= (await fetchJson<CountryOption[]>('countries.json', [])).map((option) => ({
 		code: String(option.code ?? '').toUpperCase(),

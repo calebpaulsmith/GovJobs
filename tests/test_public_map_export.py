@@ -530,6 +530,25 @@ def test_manifest_records_geocoding_summary_and_opm_label(conn):
     assert man["localities_screen_v1"] is True
 
 
+def test_state_tax_burden_payload_keys_by_state_latest_year(conn):
+    from src.public_map_export import state_tax_burden
+
+    now = "2026-06-26T00:00:00Z"
+    conn.executemany(
+        "INSERT INTO state_tax_burden (year, state, burden_pct, source, imported_at) VALUES (?,?,?,?,?)",
+        [
+            (2021, "NY", 15.0, "taxfoundation:burden", now),
+            (2022, "NY", 15.9, "taxfoundation:burden", now),  # newer year wins
+            (2022, "WY", 7.5, "taxfoundation:burden", now),
+        ],
+    )
+    conn.commit()
+    payload = state_tax_burden(conn)
+    assert payload["by_state"]["NY"]["burden_pct"] == pytest.approx(15.9)
+    assert payload["by_state"]["NY"]["year"] == 2022
+    assert payload["by_state"]["WY"]["burden_pct"] == pytest.approx(7.5)
+
+
 def test_posting_coverage_summary_explains_local_snapshot_scope(conn):
     _seed_chicago(conn)
     upsert_job(conn, _job(source="usajobs_search", source_endpoint="/api/Search"))

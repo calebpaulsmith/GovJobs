@@ -1583,6 +1583,36 @@ def cost_of_living(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"by_state": by_state, "by_cbsa": by_cbsa, "by_county": by_county}
 
 
+def state_tax_burden(conn: sqlite3.Connection) -> dict[str, Any]:
+    """``{by_state}`` keyed by 2-letter state with the latest-year tax burden.
+
+    D.5.27 V1.1 signal: Tax Foundation state-local tax burden (effective tax
+    rate as a percent of income). State-level only — the Localities screen shows
+    it per locality via the locality's primary state and labels it accordingly.
+    Empty ``by_state`` when the ingest hasn't run (the website hides the column).
+    """
+    if not _table_exists(conn, "state_tax_burden"):
+        return {"by_state": {}}
+    rows = conn.execute(
+        """
+        SELECT year, state, burden_pct, source
+        FROM state_tax_burden
+        ORDER BY state, year DESC
+        """
+    ).fetchall()
+    by_state: dict[str, Any] = {}
+    for row in rows:
+        code = (row["state"] or "").strip().upper()
+        if not code or code in by_state:
+            continue
+        by_state[code] = {
+            "burden_pct": _round_or_none(row["burden_pct"]),
+            "year": int(row["year"]),
+            "source": row["source"],
+        }
+    return {"by_state": by_state}
+
+
 def zip_centroids_payload(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Return static ZIP/ZCTA centroids for offline ZIP search."""
     if not _table_exists(conn, "zip_centroids"):
