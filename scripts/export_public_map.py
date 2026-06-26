@@ -25,6 +25,7 @@ from src.public_map_export import (  # noqa: E402
     agency_options,
     closed_jobs_geojson,
     cost_of_living,
+    state_tax_burden,
     counties_geojson,
     current_reference_year,
     federal_properties_geojson,
@@ -91,6 +92,7 @@ def main() -> int:
         metros = metros_geojson(conn, repo_root=REPO, year=year)
         pay_tables_payload = pay_tables(conn)
         col_payload = cost_of_living(conn)
+        state_tax_payload = state_tax_burden(conn)
         zip_centroids = zip_centroids_payload(conn)
         federal_properties = federal_properties_geojson(conn)
         layer_counts = {
@@ -163,6 +165,7 @@ def main() -> int:
         "metros.geojson": metros,
         "pay_tables.json": pay_tables_payload,
         "cost_of_living.json": col_payload,
+        "state_tax.json": state_tax_payload,
         "zip_centroids.json": zip_centroids,
         "federal_properties.geojson": federal_properties,
     }

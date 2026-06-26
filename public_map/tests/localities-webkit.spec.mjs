@@ -9,6 +9,8 @@
 //   node tests/localities-webkit.spec.mjs
 
 import { webkit, devices } from 'playwright';
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
 const out = (...a) => console.log('[wk-localities]', ...a);
@@ -16,6 +18,27 @@ let failures = 0;
 const check = (cond, msg) => {
 	out(`${cond ? 'PASS' : 'FAIL'} — ${msg}`);
 	if (!cond) failures++;
+};
+
+// Fixture: the dev bundle has no state_tax.json (the scheduled refresh emits
+// it). Serve one built from the checked-in seed for this run so the D.5.27 V1.1
+// "State tax" column renders; back up/restore any existing file. (WebKit doesn't
+// intercept same-origin /data/* via ctx.route, so a real served file is needed.)
+const TAX_PATH = fileURLToPath(new URL('../static/data/state_tax.json', import.meta.url));
+const SEED = fileURLToPath(new URL('../../data/external/state_tax_burden/2022.csv', import.meta.url));
+const taxHad = existsSync(TAX_PATH);
+const taxBackup = taxHad ? readFileSync(TAX_PATH) : null;
+{
+	const by_state = {};
+	for (const line of readFileSync(SEED, 'utf8').trim().split('\n').slice(1)) {
+		const [year, state, pct] = line.split(',');
+		by_state[state.toUpperCase()] = { burden_pct: Number(pct), year: Number(year), source: 'taxfoundation:burden' };
+	}
+	writeFileSync(TAX_PATH, JSON.stringify({ by_state }));
+}
+const restoreTax = () => {
+	if (taxHad) writeFileSync(TAX_PATH, taxBackup);
+	else rmSync(TAX_PATH, { force: true });
 };
 
 const browser = await webkit.launch();
@@ -49,6 +72,14 @@ try {
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
 	const rowCount = await page.locator('.rollup tbody tr').count();
 	check(rowCount > 0, `rollup renders rows (${rowCount} localities)`);
+
+	// 2b) D.5.27 V1.1: the State tax column renders from the fixture, with values.
+	check(
+		(await page.locator('.rollup th', { hasText: 'State tax' }).count()) === 1,
+		'State tax column renders when state_tax.json is present'
+	);
+	const taxCells = await page.locator('.rollup tbody tr td.num').filter({ hasText: '%' }).count();
+	check(taxCells > 0, `at least one locality shows a state-tax % value (${taxCells} cells)`);
 
 	// 3) Default sort is posting-count descending.
 	const postingsAt = async (i) =>
@@ -127,6 +158,7 @@ try {
 	check(f.remote === 'any', 'clicking Remote-only again clears it');
 } finally {
 	await browser.close();
+	restoreTax();
 }
 
 out(failures === 0 ? 'ALL PASSED' : `${failures} FAILURE(S)`);

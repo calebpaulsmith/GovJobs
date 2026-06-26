@@ -155,6 +155,19 @@ Pay plans beyond GS. Started in V1 with the largest-by-headcount plans, then inc
 - **Limitations**: BEA does not publish locality-pay-area-level RPP. We average across constituent metros for the locality popup; the popup labels this as approximate. C2ER reserved as a paid backup with finer granularity.
 - **Default seed (per ADR-0027)**: `data/external/bea_rpp/2023.csv` (curated, checked in). 51 rows covering all 50 states + DC for the 2023 RPP vintage (most recent published as of 2026-05). Replace when BEA releases a newer vintage.
 
+### `state_tax_burden`
+
+- **Source**: Tax Foundation, "State and Local Tax Burdens" — total state-local taxes paid by a state's residents as a share of state income (their "Effective Tax Rate" column). Free, official, public.
+  - URL: <https://taxfoundation.org/data/all/state/tax-burden-by-state-2022/>
+  - Format: HTML report (per-state table). No stable CSV download — the seed was transcribed from the source table.
+- **Lands in**: `state_tax_burden` rows (`year`, `state`, `burden_pct`, `source`). 51 rows (50 states + DC).
+- **Ingest**: `scripts/ingest_state_tax_burden.py` (self-bootstrapping per ADR-0027).
+- **Exporter**: `state_tax_burden()` → `state_tax.json` (`{by_state}`, latest year per state). Consumed by the Localities screen's "State tax" column (D.5.27 V1.1).
+- **Refresh**: annual (Tax Foundation publishes a new edition each year). Replace the seed with the newer year's table.
+- **Verification**: NY/CT/HI highest (~14–16%); AK/WY/TN lowest (~4.6–7.6%). Last verified against the source: 2026-06-26 (CY2022 edition).
+- **Limitations**: state-level only — there is no locality-level tax burden. The Localities screen shows it via each locality's primary state and labels multi-state localities approximate.
+- **Default seed (per ADR-0027)**: `data/external/state_tax_burden/2022.csv` (curated, checked in; Tax Foundation Calendar Year 2022).
+
 ### `c2er_cost_index` (paid backup, not active)
 
 - **Source**: Council for Community and Economic Research, Cost of Living Index. ~$200/yr.

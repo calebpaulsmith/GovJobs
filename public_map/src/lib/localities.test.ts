@@ -130,13 +130,25 @@ describe('computeLocalityRollup', () => {
 		expect(sea.rppApproximate).toBe(true);
 		expect(sea.rppState).toBe('WA');
 	});
+
+	it('resolves state tax burden via the locality primary state (state-level)', () => {
+		const stateTax = { WA: { burden_pct: 10.7, year: 2022 } };
+		const rows = computeLocalityRollup(jobs, details, meta, filters(), { stateTax });
+		const sea = rows.find((r) => r.code === 'SEA')!;
+		expect(sea.stateTaxPct).toBe(10.7);
+		expect(sea.stateTaxState).toBe('WA');
+		// No tax data for DCB's primary state in this fixture → null, not fabricated.
+		const dcb = rows.find((r) => r.code === 'DCB')!;
+		expect(dcb.stateTaxPct).toBeNull();
+		expect(dcb.stateTaxState).toBeNull();
+	});
 });
 
 describe('sortRollup', () => {
 	const rows: LocalityRollupRow[] = [
-		{ code: 'A', name: 'Alpha', postings: 5, salaryMin: 50, salaryMax: 100, payPlanMix: [], gsCount: 5, gsCoveragePct: 100, rppOverall: 110, rppApproximate: false, rppState: null, gs13Step1: 130000 },
-		{ code: 'B', name: 'Bravo', postings: 20, salaryMin: 60, salaryMax: 200, payPlanMix: [], gsCount: 10, gsCoveragePct: 50, rppOverall: null, rppApproximate: false, rppState: null, gs13Step1: null },
-		{ code: 'C', name: 'Charlie', postings: 12, salaryMin: 40, salaryMax: 150, payPlanMix: [], gsCount: 12, gsCoveragePct: 100, rppOverall: 95, rppApproximate: true, rppState: 'TX', gs13Step1: 120000 }
+		{ code: 'A', name: 'Alpha', postings: 5, salaryMin: 50, salaryMax: 100, payPlanMix: [], gsCount: 5, gsCoveragePct: 100, rppOverall: 110, rppApproximate: false, rppState: null, gs13Step1: 130000, stateTaxPct: 9.0, stateTaxState: 'VA' },
+		{ code: 'B', name: 'Bravo', postings: 20, salaryMin: 60, salaryMax: 200, payPlanMix: [], gsCount: 10, gsCoveragePct: 50, rppOverall: null, rppApproximate: false, rppState: null, gs13Step1: null, stateTaxPct: null, stateTaxState: null },
+		{ code: 'C', name: 'Charlie', postings: 12, salaryMin: 40, salaryMax: 150, payPlanMix: [], gsCount: 12, gsCoveragePct: 100, rppOverall: 95, rppApproximate: true, rppState: 'TX', gs13Step1: 120000, stateTaxPct: 13.0, stateTaxState: 'NY' }
 	];
 
 	it('sorts postings descending by default order', () => {
@@ -155,6 +167,10 @@ describe('sortRollup', () => {
 	it('sorts by GS purchasing power (real pay), nulls last', () => {
 		// A: 130000/1.10 = 118181; C: 120000/0.95 = 126316; B: null.
 		expect(sortRollup(rows, 'gs', 'desc').map((r) => r.code)).toEqual(['C', 'A', 'B']);
+	});
+	it('sorts by state tax burden, nulls last', () => {
+		expect(sortRollup(rows, 'tax', 'desc').map((r) => r.code)).toEqual(['C', 'A', 'B']);
+		expect(sortRollup(rows, 'tax', 'asc').map((r) => r.code)).toEqual(['A', 'C', 'B']);
 	});
 });
 
