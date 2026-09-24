@@ -3,14 +3,16 @@
 
 	Below 1024 px the full-screen map is the home surface. A left-edge
 	"Filters" pill opens the shared FilterSheet (same fields as /map, one
-	mapState.filters store). Tapping a state / locality / county / marker opens
-	the bottom sheet (BrowseSheet) to that area's card; swiping/segmenting to
-	"Postings" shows the shared JobList. "Saved" in the masthead opens the
+	mapState.filters store). The bottom sheet (BrowseSheet) holds the
+	Postings list; tapping a job opens its card over the list, and tapping a
+	state / locality / county / metro narrows the list to it with an
+	"Analyze this area →" link — area metrics live on /analysis (ADR-0039).
+	"Saved" in the masthead opens the
 	SavedDrawer (job lists + saved postings).
 
 	At ≥ 1024 px (BROWSE_MOSAIC.minWidth) the same two sheet panels render
 	simultaneously in a CSS grid instead of the sheet: map top-left (context),
-	BrowseHerePanel top-right, BrowsePostingsPanel across the bottom (the work
+	BrowseJobPanel (job details) top-right, BrowsePostingsPanel across the bottom (the work
 	surface). Proportions per the rev-2 desktop mock — see layout.ts.
 
 	Spec: public_map/mocks/browse/ (rev 2), ADR-0033.
@@ -27,7 +29,7 @@
 	import Map from '$lib/Map.svelte';
 	import FilterSheet from '$lib/FilterSheet.svelte';
 	import BrowseSheet from '$lib/BrowseSheet.svelte';
-	import BrowseHerePanel from '$lib/BrowseHerePanel.svelte';
+	import BrowseJobPanel from '$lib/BrowseJobPanel.svelte';
 	import BrowsePostingsPanel from '$lib/BrowsePostingsPanel.svelte';
 	import SavedDrawer from '$lib/SavedDrawer.svelte';
 	import BuildStamp from '$lib/BuildStamp.svelte';
@@ -132,7 +134,7 @@
 		<nav class="modes" aria-label="View mode">
 			<span class="mode active">Browse</span>
 			<a class="mode map-only" href="/map">Map only</a>
-			<a class="mode" href="/localities">Localities</a>
+			<a class="mode" href="/analysis">Analysis</a>
 		</nav>
 		<ShareLinkButton />
 		<button type="button" class="saved-btn" onclick={() => (mapState.savedDrawerOpen = true)} aria-label="Open saved">
@@ -189,7 +191,7 @@
 		</div>
 		{#if isDesktop}
 			<aside class="here-pane" aria-label="Area details">
-				<BrowseHerePanel />
+				<BrowseJobPanel emptyHint />
 			</aside>
 			<section class="list-pane" aria-label="Postings">
 				<BrowsePostingsPanel />

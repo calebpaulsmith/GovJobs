@@ -1,7 +1,9 @@
 <!--
 	BrowsePostingsPanel — the "Postings" content for /browse, shared by two
 	hosts: BrowseSheet (mobile bottom sheet, < 1024 px) and the desktop
-	mosaic's bottom pane (≥ 1024 px).
+	mosaic's bottom pane (≥ 1024 px). Browse is the find-jobs surface
+	(ADR-0039): a list narrowed to a tapped area offers "Analyze this area →"
+	to the Analysis screen rather than showing area metrics here.
 
 	The D.6.1 task spine: the docked ActiveFilterStrip, an Edit button (opens
 	the shared FilterSheet), and a Save-search button sit directly above the
@@ -19,6 +21,8 @@
 	import { createSavedSearch, loadSavedSearches, saveSavedSearches } from './savedSearches';
 	import ActiveFilterStrip from './ActiveFilterStrip.svelte';
 	import JobList from './JobList.svelte';
+	import BrowseWelcome from './BrowseWelcome.svelte';
+	import { areaParamForListScope } from './analysisArea';
 
 	// Default Postings scope when the user hasn't tapped a polygon or cluster
 	// yet. Filters by what's currently visible on the map.
@@ -29,6 +33,12 @@
 	};
 
 	let scroller = $state<HTMLElement | null>(null);
+
+	// ADR-0039: a list narrowed to a tapped state / locality / county / metro
+	// links over to the Analysis screen for that same area.
+	const analyzeParam = $derived(
+		mapState.listView ? areaParamForListScope(mapState.listView.scope, mapState.listView.code) : null
+	);
 
 	function onScroll() {
 		const el = scroller;
@@ -91,8 +101,12 @@
 </script>
 
 <div class="postings" bind:this={scroller} onscroll={onScroll}>
+	<BrowseWelcome />
 	<div class="scoped-head">
 		<p class="eyebrow">Postings in {mapState.listView?.label ?? 'this area'}</p>
+		{#if analyzeParam}
+			<a class="analyze-link" href={`/analysis?area=${encodeURIComponent(analyzeParam)}`}>Analyze this area →</a>
+		{/if}
 		{#if mapState.listView}
 			<button type="button" class="clear-scope" onclick={() => (mapState.listView = null)} aria-label="Clear scope">
 				× show this area
@@ -128,7 +142,7 @@
 			<button type="button" class="head-btn" onclick={cancelSaveSearch}>Cancel</button>
 		</div>
 	{/if}
-	<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} toolbar />
+	<JobList listView={mapState.listView ?? DEFAULT_VIEWPORT_SCOPE} toolbar keepScopeOnPick />
 </div>
 
 <style>
@@ -155,6 +169,17 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.analyze-link {
+		flex-shrink: 0;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--c-accent, #7bd0f2);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.analyze-link:hover {
+		text-decoration: underline;
 	}
 	.clear-scope {
 		appearance: none;

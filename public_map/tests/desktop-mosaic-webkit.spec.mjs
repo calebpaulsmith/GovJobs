@@ -51,7 +51,7 @@ check(await page.locator('.content.mosaic').isVisible(), 'content renders in mos
 check(await page.locator('.here-pane').isVisible(), 'Here pane renders');
 check(await page.locator('.list-pane').isVisible(), 'Postings pane renders');
 check(
-	(await page.locator('aside[aria-label="Area and postings"]').count()) === 0,
+	(await page.locator('aside[aria-label="Postings"]').count()) === 0,
 	'BrowseSheet is not mounted on desktop'
 );
 
@@ -67,27 +67,18 @@ check(!overlaps(hereBox, listBox), 'Here pane and Postings pane do not overlap')
 check(mapBox && hereBox && mapBox.x < hereBox.x, 'map is left of the Here pane');
 check(listBox && mapBox && listBox.y > mapBox.y, 'Postings pane sits below the top band');
 
-// 2) Nothing selected → Here pane shows the SmallestAreaCard fallback
-// (the first-run welcome card may sit above it — both are fine).
-await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
-check(await page.locator('.here-pane section.tab-here').isVisible(), 'Here pane shows SmallestAreaCard when nothing is selected');
-
-// D.5.28 area pulse: once the bundle loads, the band computes client-side and
-// flips from placeholder to live; the Open-postings cell shows a real count.
-await page.waitForSelector('.here-pane .pulse-band[data-status="live"]', { timeout: 30000 }).catch(() => {});
+// 2) Nothing selected → the job pane prompts for a job and points area
+// questions at Analysis (ADR-0039: area metrics moved to /analysis).
+await page.waitForSelector('.here-pane .empty', { timeout: 15000 });
 check(
-	(await page.locator('.here-pane .pulse-band').getAttribute('data-status')) === 'live',
-	'pulse band is live (computed from the bundle, not placeholder)'
-);
-const openCell = await page.locator('.here-pane .pulse-cell .pulse-value').first().innerText();
-check(/^[\d,]+$/.test(openCell.trim()), `Open-postings pulse cell shows a number (${openCell.trim()})`);
-const pulseInStore = await page.evaluate(
-	async () => (await import('/src/lib/store.svelte.ts')).mapState.areaPulse
+	(await page.locator('.here-pane .empty h2').innerText()) === 'Job details',
+	'job pane shows the "Job details" prompt when nothing is selected'
 );
 check(
-	pulseInStore !== null && typeof pulseInStore.openPostings === 'number',
-	'mapState.areaPulse is published for the JobList annotation'
+	(await page.locator('.here-pane .empty a[href="/analysis"]').count()) === 1,
+	'the prompt links to Analysis for area metrics'
 );
+check((await page.locator('.here-pane section.tab-here').count()) === 0, 'no area-metrics card in the Browse job pane');
 
 // Wait for the postings list to populate (jobs.geojson is large).
 await page.waitForSelector('.list-pane .row', { timeout: 30000 });
@@ -135,7 +126,7 @@ check(
 await page.setViewportSize({ width: 800, height: 900 });
 await page.waitForTimeout(600);
 check(
-	await page.locator('aside[aria-label="Area and postings"]').isVisible().catch(() => false),
+	await page.locator('aside[aria-label="Postings"]').isVisible().catch(() => false),
 	'shrinking below 1024px mounts the BrowseSheet'
 );
 check((await page.locator('.here-pane').count()) === 0, 'panes unmount below the breakpoint');

@@ -55,11 +55,9 @@ let radii = await readRadii();
 check(radii.length === 1 && radii[0].miles === 50 && radii[0].includeRemote === true,
 	`committing a geocode result adds one 50 mi radius chip (${JSON.stringify(radii)})`);
 
-// Open the Postings panel so the docked chip strip + list are visible.
+// Open the sheet (Postings-only since ADR-0039) so the chip strip + list are visible.
 await page.locator('.grabber').click();
 await page.waitForTimeout(700);
-await page.locator('.seg button', { hasText: 'Postings' }).click();
-await page.waitForTimeout(500);
 
 const chip = page.locator('.chip.radius').first();
 check(await chip.isVisible().catch(() => false), 'radius chip renders in the Postings panel chip strip');

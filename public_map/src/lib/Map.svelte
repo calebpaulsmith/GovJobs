@@ -55,6 +55,10 @@
 	let map: MaplibreMap | null = null;
 	let mounted = false;
 	let allStates: FeatureCollection | null = null;
+	// Full county / metro geometries by code, so a polygon tap can scope the
+	// Postings list by point-in-polygon (rendered features are tile-clipped).
+	let countyGeometry = new Map<string, GeoJSON.Geometry | null>();
+	let metroGeometry = new Map<string, GeoJSON.Geometry | null>();
 	let allJobs: FeatureCollection | null = null;
 	let allClosedJobs: FeatureCollection | null = null;
 	let jobDetails: Record<string, JobDetails> = {};
@@ -148,6 +152,8 @@
 
 				mapState.manifest = manifest as Manifest | null;
 				allStates = cloneCollection(states);
+				countyGeometry = new Map(counties.features.map((f) => [String(f.properties?.fips ?? ''), f.geometry]));
+				metroGeometry = new Map(metros.features.map((f) => [String(f.properties?.cbsa_code ?? ''), f.geometry]));
 				allJobs = jobs;
 				allClosedJobs = closedJobs;
 				jobDetails = details;
@@ -469,7 +475,6 @@
 					if (browseMode) {
 						applyClusterIdsListView(m, feature);
 						autoOpenBrowseSheet();
-						mapState.browseSheetPage = 'list';
 					}
 					zoomIntoCluster(m, feature);
 					return;
@@ -481,7 +486,6 @@
 						// from the same-coord siblings.
 						applyMarkerStackIdsListView(feature);
 						autoOpenBrowseSheet();
-						mapState.browseSheetPage = 'list';
 						return;
 					}
 					openMarkerStack(feature);
@@ -703,12 +707,14 @@
 			case LAYER_IDS.countiesOutline: {
 				const code = propStr('fips') || propStr('state');
 				const name = propStr('name') || code;
-				return code ? { scope: 'county', code, label: name } : null;
+				const st = propStr('state');
+				const label = st ? `${name} County, ${st}` : name;
+				return code ? { scope: 'county', code, label, geometry: countyGeometry.get(code) ?? null } : null;
 			}
 			case LAYER_IDS.metrosOutline: {
 				const code = propStr('cbsa_code') || propStr('code');
 				const name = propStr('name') || code;
-				return code ? { scope: 'cbsa', code, label: name } : null;
+				return code ? { scope: 'cbsa', code, label: name, geometry: metroGeometry.get(code) ?? null } : null;
 			}
 			default:
 				return null;
@@ -785,7 +791,6 @@
 
 	function autoOpenBrowseSheet(): void {
 		if (!browseMode) return;
-		mapState.browseSheetPage = 'here';
 		mapState.browseSheetExpanded = true;
 	}
 

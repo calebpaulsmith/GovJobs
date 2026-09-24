@@ -3,7 +3,7 @@
 	SavedTab (saved Job Lists + saved/hidden/viewed-closed postings), relocated
 	from the old dock tab to a masthead button per the map-as-home redesign.
 	Controlled by mapState.savedDrawerOpen. "Show jobs" inside SavedTab routes to
-	the bottom sheet's Postings page and closes the drawer.
+	the bottom sheet's Postings list and closes the drawer.
 -->
 <script lang="ts">
 	import { fly, fade } from 'svelte/transition';
@@ -16,7 +16,10 @@
 
 	function viewList() {
 		mapState.savedDrawerOpen = false;
-		mapState.browseSheetPage = 'list';
+		// The sheet is Postings-only (ADR-0039): close any open job card so
+		// the list is what shows.
+		mapState.selectedFeature = null;
+		mapState.jobStack = null;
 		mapState.browseSheetExpanded = true;
 	}
 </script>

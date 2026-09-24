@@ -76,6 +76,8 @@ class MapState {
 	// vs. open-full (near-full height for scrolling through the whole list).
 	browseSheetExpanded = $state<boolean>(false);
 	browseSheetFull = $state<boolean>(false);
+	// Legacy (pre-ADR-0039 the sheet had Here/Postings pages). The sheet is
+	// Postings-only now; kept so saved state and older callers stay harmless.
 	browseSheetPage = $state<'here' | 'list'>('list');
 	// Browse map: Saved drawer (job lists + saved/hidden/viewed jobs).
 	savedDrawerOpen = $state<boolean>(false);
@@ -166,6 +168,9 @@ export interface ListView {
 	label: string;
 	// Used only when scope === 'ids'. Job IDs (stringified) to include.
 	ids?: Set<string>;
+	// County / CBSA scopes (ADR-0039): the area's full polygon. Jobs carry no
+	// county FIPS or CBSA code, so those lists match by point-in-polygon.
+	geometry?: GeoJSON.Geometry | null;
 }
 
 export interface FocusedArea {

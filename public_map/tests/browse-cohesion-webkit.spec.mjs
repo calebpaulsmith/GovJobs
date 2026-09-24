@@ -1,6 +1,6 @@
 // WebKit smoke test for the D.6 mobile-cohesion surfaces (ADR-0035).
 // Verifies, on the real iOS Safari engine, that from /browse alone a user can:
-//   1. see the first-run welcome card on the Here panel,
+//   1. see the first-run welcome card at the top of the Postings list (ADR-0039),
 //   2. see active-filter chips + Edit (opens FilterSheet) on the Postings panel,
 //   3. save the current search by name (lands in localStorage saved_searches),
 //   4. open "Go to" and geocode a ZIP offline (zip_centroids path, no network),
@@ -42,20 +42,18 @@ await page.waitForSelector('canvas.mapboxgl-canvas, canvas.maplibregl-canvas', {
 await page.waitForFunction(() => !!window.__ffMap?.getSource?.('jobs'), { timeout: 30000 }).catch(() => {});
 await page.waitForTimeout(500);
 
-// ── 1) Welcome card on first run (Here panel) ────────────────────────────
+// ── 1) Welcome card on first run (top of the Postings list, ADR-0039) ──
 await page.locator('.grabber').click();
 await page.waitForTimeout(900);
-await page.locator('.seg button', { hasText: 'Here' }).click();
-await page.waitForTimeout(400);
-const welcomeVisible = await page.locator('.welcome').isVisible().catch(() => false);
-check(welcomeVisible, 'first-run welcome card renders on the Here panel');
+const welcomeVisible = await page.locator('.sheet .welcome').isVisible().catch(() => false);
+check(welcomeVisible, 'first-run welcome card renders at the top of the Postings list');
 
-// Welcome's "See postings list" flips to Postings and dismisses.
-await page.locator('.welcome-btn', { hasText: 'See postings list' }).click();
-await page.waitForTimeout(400);
-const onList = await page.evaluate(async () => (await import('/src/lib/store.svelte.ts')).mapState.browseSheetPage);
+// Dismissing it persists.
+await page.locator('.welcome-close').click();
+await page.waitForTimeout(300);
 const flagSet = await page.evaluate(() => localStorage.getItem('fedfinder.public_map.browse_welcome.v1'));
-check(onList === 'list' && flagSet === '1', 'welcome action flips to Postings and persists dismissal');
+const gone = !(await page.locator('.sheet .welcome').isVisible().catch(() => false));
+check(gone && flagSet === '1', 'dismissing the welcome card hides it and persists dismissal');
 
 // ── 2) Task spine: chip strip + Edit on the Postings panel ───────────────
 const stripVisible = await page.locator('.filters-row .strip').isVisible().catch(() => false);

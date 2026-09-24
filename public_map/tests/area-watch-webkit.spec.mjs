@@ -1,4 +1,4 @@
-// WebKit (real iOS Safari engine) test for the Here card's "What to watch"
+// WebKit (real iOS Safari engine) test for the Analysis card's "What to watch"
 // note (D.5.28 / ADR-0036 — AreaWatchNote, deterministic + keyless).
 //
 //  - Click-to-load: no /api/job-history fetch happens before the toggle is
@@ -107,15 +107,15 @@ await ctx.route(/events\.mapbox\.com/, (r) => r.fulfill({ status: 204, body: '' 
 
 const page = await ctx.newPage();
 
-await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.goto(`${BASE}/analysis?area=nationwide`, { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForSelector('canvas.mapboxgl-canvas, canvas.maplibregl-canvas', { timeout: 30000 });
-await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
+await page.waitForSelector('section.area-analysis', { timeout: 15000 });
 
 // ---------------------------------------------------------------------------
 // 1) Click-to-load: collapsed by default, zero fetches before the click.
 // ---------------------------------------------------------------------------
-const watchToggle = page.locator('.here-pane .watch .toggle');
-check(await watchToggle.isVisible(), 'What-to-watch toggle renders on the Here card');
+const watchToggle = page.locator('section.area-analysis .watch .toggle');
+check(await watchToggle.isVisible(), 'What-to-watch toggle renders on the Analysis card');
 let calls = await page.evaluate(() => window.__historyCalls.length);
 check(calls === 0, `no /api/job-history fetch before the toggle is clicked (${calls})`);
 
@@ -123,22 +123,22 @@ check(calls === 0, `no /api/job-history fetch before the toggle is clicked (${ca
 // 2) Open → one fetch pinned to 3yr; deterministic claims + withheld reason.
 // ---------------------------------------------------------------------------
 await watchToggle.click();
-await page.waitForSelector('.here-pane .watch .lines', { timeout: 10000 });
+await page.waitForSelector('section.area-analysis .watch .lines', { timeout: 10000 });
 const callUrls = await page.evaluate(() => window.__historyCalls);
 check(callUrls.length === 1, `exactly one fetch after opening (${callUrls.length})`);
 check(callUrls[0]?.includes('window=3yr'), `fetch pinned to the 3yr window (${callUrls[0]})`);
-const lines = await page.locator('.here-pane .watch .lines').innerText();
+const lines = await page.locator('section.area-analysis .watch .lines').innerText();
 check(
 	lines.includes('on pace with the prior 12 months (34)'),
 	`year-over-year line renders (${lines.split('\n')[0]})`
 );
 check(lines.includes('historically peaked in March'), 'seasonal peak line names March');
-const withheld = await page.locator('.here-pane .watch .withheld').innerText();
+const withheld = await page.locator('section.area-analysis .watch .withheld').innerText();
 check(
 	withheld.includes('Typical posting window withheld') && withheld.includes('only 3'),
 	`thin posting-window claim is withheld with its reason (${withheld})`
 );
-const basis = await page.locator('.here-pane .watch .basis').innerText();
+const basis = await page.locator('section.area-analysis .watch .basis').innerText();
 check(basis.includes('102 HistoricJoa postings'), `basis line states the sample (${basis})`);
 
 // ---------------------------------------------------------------------------
@@ -148,10 +148,10 @@ await page.evaluate(async () => {
 	const m = (await import('/src/lib/store.svelte.ts')).mapState;
 	m.filters = { ...m.filters, agencies: ['HSCB'] };
 });
-await page.waitForSelector('.here-pane .watch .stale', { timeout: 10000 });
+await page.waitForSelector('section.area-analysis .watch .stale', { timeout: 10000 });
 calls = await page.evaluate(() => window.__historyCalls.length);
 check(calls === 1, `stale notice appears without an auto-refetch (${calls} calls)`);
-await page.locator('.here-pane .watch .stale button').click();
+await page.locator('section.area-analysis .watch .stale button').click();
 await page.waitForTimeout(600);
 const lastUrl = await page.evaluate(() => window.__historyCalls.at(-1));
 calls = await page.evaluate(() => window.__historyCalls.length);
@@ -161,36 +161,36 @@ check(
 	`reload carries the new agency chip on the 3yr window (${lastUrl})`
 );
 check(
-	(await page.locator('.here-pane .watch .stale').count()) === 0,
+	(await page.locator('section.area-analysis .watch .stale').count()) === 0,
 	'stale notice clears after reload'
 );
 
 // ---------------------------------------------------------------------------
 // 4) Upstream failure → explicit unavailable message, no claims.
 // ---------------------------------------------------------------------------
-await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
-await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
+await page.goto(`${BASE}/analysis?area=nationwide`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.waitForSelector('section.area-analysis', { timeout: 15000 });
 await page.evaluate(() => {
 	window.__historyMode = 'fail';
 });
-await page.locator('.here-pane .watch .toggle').click();
-await page.waitForSelector('.here-pane .watch .error', { timeout: 10000 });
-const errText = await page.locator('.here-pane .watch .error').innerText();
+await page.locator('section.area-analysis .watch .toggle').click();
+await page.waitForSelector('section.area-analysis .watch .error', { timeout: 10000 });
+const errText = await page.locator('section.area-analysis .watch .error').innerText();
 check(
 	errText.includes('What-to-watch unavailable'),
 	`failure renders an explicit message (${errText})`
 );
 check(
-	(await page.locator('.here-pane .watch .lines').count()) === 0,
+	(await page.locator('section.area-analysis .watch .lines').count()) === 0,
 	'no claims are fabricated on failure'
 );
 
 // ---------------------------------------------------------------------------
 // 5) Reactivity survives: the toggle still collapses after the sequence.
 // ---------------------------------------------------------------------------
-await page.locator('.here-pane .watch .toggle').click();
+await page.locator('section.area-analysis .watch .toggle').click();
 check(
-	(await page.locator('.here-pane .watch .body').count()) === 0,
+	(await page.locator('section.area-analysis .watch .body').count()) === 0,
 	'toggle still collapses the panel after the full sequence'
 );
 
