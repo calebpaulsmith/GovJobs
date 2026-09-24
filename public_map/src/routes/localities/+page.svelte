@@ -61,7 +61,7 @@
 		<span class="brand">FedFinder</span>
 		<nav class="modes" aria-label="View mode">
 			<a class="mode" href="/browse">Browse</a>
-			<a class="mode" href="/map">Map only</a>
+			<a class="mode map-only" href="/map">Map only</a>
 			<span class="mode active" aria-current="page">Localities</span>
 		</nav>
 		<button type="button" class="theme-btn" onclick={toggleTheme} aria-label="Toggle light or dark mode">
@@ -137,6 +137,15 @@
 	.mode.active {
 		background: var(--c-accent-bg-strong, rgba(123, 208, 242, 0.18));
 		color: var(--c-accent, #7bd0f2);
+	}
+	/* No Map-only mode on mobile (operator decision 2026-09-24): below the
+	   desktop-mosaic breakpoint (layout.ts BROWSE_MOSAIC.minWidth = 1024)
+	   Browse is already map-first, so the pill only crowded the masthead.
+	   /map itself still resolves for existing links. */
+	@media (max-width: 1023.98px) {
+		.mode.map-only {
+			display: none;
+		}
 	}
 	.theme-btn {
 		margin-left: auto;
