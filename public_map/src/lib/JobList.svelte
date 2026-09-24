@@ -4,10 +4,10 @@
 	- Scoped mode (`/map`'s FeaturePanel): pass `listView`. The list is scoped
 	  to a polygon (state, locality, county, CBSA), honors the active filter
 	  chips, works from jobs.geojson features + loadJobDetailsIndex(), and
-	  paginates 20/page with a prev/next pager.
+	  paginates 50/page with a prev/next pager.
 	- Rich mode (`/browse`'s List tab): pass `richMode` and no `listView`. The
 	  list works from the deduplicated jobs_detail.json (one row per posting),
-	  excludes hidden jobs, paginates 25/page with a "show more" button, and
+	  excludes hidden jobs, paginates 50/page with a "show more" button, and
 	  each row has working Save/Hide actions.
 -->
 <script lang="ts">
@@ -99,11 +99,12 @@
 		else scopedSortKey = v;
 	}
 
-	// Scoped pager (prev/next, 20/page).
+	// Scoped pager (prev/next, 50/page — operator asked for more per page,
+	// 2026-09-24; was 20).
 	let page = $state(0);
-	const PAGE_SIZE = 20;
-	// Rich pager (incremental "show more", 25/page).
-	const RICH_PAGE = 25;
+	const PAGE_SIZE = 50;
+	// Rich pager (incremental "show more", 50/page; was 25).
+	const RICH_PAGE = 50;
 	let visibleCount = $state(RICH_PAGE);
 
 	// --- in-list toolbar state (PR C of D.5.28, hoisted to mapState.list) ---
@@ -113,6 +114,19 @@
 	let listSearchDraft = $state('');
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
 	const listSearch = $derived(showToolbar ? mapState.list.search : '');
+	// iOS Safari: opening the keyboard scrolls the page, and closing it can
+	// leave that scroll behind. /browse is `position: fixed; inset: 0`, so the
+	// leftover offset shoves the bottom of the sheet — and the pager — off
+	// screen. Snap it back when the search box loses focus, and let the
+	// keyboard's Search/Return key dismiss the keyboard.
+	function onListSearchBlur() {
+		if (typeof window !== 'undefined' && (window.scrollY !== 0 || window.scrollX !== 0)) {
+			window.scrollTo(0, 0);
+		}
+	}
+	function onListSearchKey(e: KeyboardEvent) {
+		if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+	}
 	function onListSearch(value: string) {
 		listSearchDraft = value;
 		if (searchTimer) clearTimeout(searchTimer);
@@ -433,11 +447,27 @@
 		if (mapState.hoveredJobId === id) mapState.hoveredJobId = null;
 	}
 
+	// Page changes jump back to the top of the list — otherwise pressing Next
+	// on the bottom pager leaves you at the bottom of the new page.
+	let listEl = $state<HTMLElement | null>(null);
+	function scrollListToTop() {
+		let el = listEl?.parentElement ?? null;
+		while (el) {
+			const oy = getComputedStyle(el).overflowY;
+			if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) {
+				el.scrollTop = 0;
+				return;
+			}
+			el = el.parentElement;
+		}
+	}
 	function prevPage() {
 		page = Math.max(0, pageSafe - 1);
+		scrollListToTop();
 	}
 	function nextPage() {
 		page = Math.min(totalPages - 1, pageSafe + 1);
+		scrollListToTop();
 	}
 
 	// --- rich-mode helpers (ported from browse/+page.svelte) ---
@@ -485,7 +515,7 @@
 	const scopedReady = $derived(richMode || !!listView);
 </script>
 
-<section class="job-list" class:rich={richMode}>
+<section class="job-list" class:rich={richMode} bind:this={listEl}>
 	{#if !scopedReady}
 		<!-- Scoped mode with no listView: render nothing. -->
 	{:else}
@@ -516,6 +546,8 @@
 							placeholder="Search within results…"
 							value={listSearchDraft}
 							oninput={(e) => onListSearch(e.currentTarget.value)}
+							onblur={onListSearchBlur}
+							onkeydown={onListSearchKey}
 							aria-label="Search within results"
 						/>
 						<label class="sort">
@@ -566,6 +598,8 @@
 							placeholder="Search within results…"
 							value={listSearchDraft}
 							oninput={(e) => onListSearch(e.currentTarget.value)}
+							onblur={onListSearchBlur}
+							onkeydown={onListSearchKey}
 							aria-label="Search within results"
 						/>
 						<label class="sort">
@@ -600,6 +634,16 @@
 						<span class="count">
 							<strong>{totalCount.toLocaleString()}</strong> of {toolbarDenominator.toLocaleString()} postings
 						</span>
+						{#if !richMode && totalPages > 1}
+							<!-- Compact pager up top, next to the count, so paging never
+							     depends on reaching the bottom of the list (on iPhone the
+							     bottom pager can end up clipped or 50 rows away). -->
+							<span class="mini-pager" role="group" aria-label="Posting list pages (top)">
+								<button type="button" onclick={prevPage} disabled={pageSafe === 0} aria-label="Previous page">‹</button>
+								<span class="page-indicator">{pageStart + 1}–{pageEnd}</span>
+								<button type="button" onclick={nextPage} disabled={pageSafe >= totalPages - 1} aria-label="Next page">›</button>
+							</span>
+						{/if}
 						{#if mapState.areaPulse?.annotation}
 							<!-- D.5.28: one-line historical context ("↑ 23% above the
 							     trailing-90-day average…"). Hidden until a data slice
@@ -962,8 +1006,10 @@
 		color: var(--c-text, #e5edf5);
 		border: 1px solid var(--c-border-input, #2c4870);
 		border-radius: 4px;
-		padding: 0.25rem 0.6rem;
-		font-size: 11px;
+		/* Thumb-sized on touch screens. */
+		min-height: 2.25rem;
+		padding: 0.35rem 0.9rem;
+		font-size: 12px;
 		cursor: pointer;
 	}
 	.pager button:hover:not(:disabled) {
@@ -971,6 +1017,29 @@
 		color: var(--c-accent, #7bd0f2);
 	}
 	.pager button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.mini-pager {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex-shrink: 0;
+		margin-left: auto;
+	}
+	.mini-pager button {
+		appearance: none;
+		min-width: 2rem;
+		min-height: 2rem;
+		background: var(--c-row-bg, rgba(20, 32, 50, 0.55));
+		color: var(--c-text, #e5edf5);
+		border: 1px solid var(--c-border-input, #2c4870);
+		border-radius: 999px;
+		font-size: 14px;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.mini-pager button:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
