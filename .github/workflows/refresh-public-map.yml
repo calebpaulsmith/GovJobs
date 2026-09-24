@@ -7,9 +7,14 @@ name: Refresh public map
 
 on:
   schedule:
-    # Every day at 09:00 UTC (~04:00 ET / 05:00 EDT). Adjust if you want a
-    # different cadence; cron is in UTC. Use https://crontab.guru to validate.
-    - cron: '0 9 * * *'
+    # Every day at 05:00 US Central (America/Chicago). GitHub cron is UTC-only
+    # and has no daylight-saving awareness, so we register both candidate UTC
+    # times and the `gate` job below lets exactly one of them through:
+    #   10:00 UTC = 05:00 CDT (second Sunday of March → first Sunday of Nov)
+    #   11:00 UTC = 05:00 CST (rest of the year)
+    # If you change these, update the matching strings in the `gate` job.
+    - cron: '0 10 * * *'
+    - cron: '0 11 * * *'
 
   workflow_dispatch:
     inputs:
@@ -32,7 +37,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Picks the one scheduled run that is 05:00 in Chicago today. The decision
+  # keys off *which* cron fired plus Chicago's current UTC offset — not the
+  # wall-clock hour at run time — so a run GitHub starts late (scheduled runs
+  # are often delayed under load) still goes ahead instead of being skipped.
+  # Manual runs (workflow_dispatch) always go ahead.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          offset="$(TZ=America/Chicago date +%z)"
+          run=false
+          if [ "$EVENT" != "schedule" ]; then
+            run=true
+          elif [ "$SCHEDULE" = "0 10 * * *" ] && [ "$offset" = "-0500" ]; then
+            run=true   # daylight time: 10:00 UTC is 05:00 CDT
+          elif [ "$SCHEDULE" = "0 11 * * *" ] && [ "$offset" = "-0600" ]; then
+            run=true   # standard time: 11:00 UTC is 05:00 CST
+          fi
+          echo "event=$EVENT schedule='$SCHEDULE' chicago_offset=$offset run=$run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   refresh:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

@@ -74,8 +74,8 @@ const sheetRect = () =>
 
 // Drag the grabber by issuing pointer events (the grabber listens to generic
 // pointerdown/move/up; mouse-driven pointer events exercise the same path).
-async function dragGrabber(deltaY, steps = 10) {
-	const g = await page.locator('.grabber').boundingBox();
+async function dragGrabber(deltaY, steps = 10, selector = '.grabber') {
+	const g = await page.locator(selector).boundingBox();
 	const cx = g.x + g.width / 2;
 	const cy = g.y + g.height / 2;
 	await page.mouse.move(cx, cy);
@@ -92,6 +92,23 @@ out('--- initial ---');
 const s0 = await readState();
 const r0 = await sheetRect();
 out('state:', JSON.stringify(s0), 'rect:', JSON.stringify(r0));
+
+// 0) The grab handle is a comfortable thumb target (>= 44px tall, full width).
+const gb0 = await page.locator('.grabber').boundingBox();
+check(gb0 && gb0.height >= 43.5, `grabber is a >=44px touch target (got ${gb0?.height})`);
+
+// 0b) The collapsed peek bar is also a drag handle: drag it up → sheet opens,
+// then drag the grabber back down → collapsed again.
+await dragGrabber(-Math.round(r0.parentH * 0.45), 10, '.peek');
+{
+	const sp = await readState();
+	check(sp.expanded, 'dragging the collapsed peek bar up opens the sheet');
+}
+await dragGrabber(Math.round(r0.parentH * 1.1));
+{
+	const sp = await readState();
+	check(!sp.expanded && !sp.full, 'drag the grabber down re-collapses before the tap checks');
+}
 
 // 1) Tap the grabber → expand to the half (partway) detent. The 220ms CSS
 // height transition starts only after the panel content mounts (the first-run
@@ -142,14 +159,14 @@ const marker = await page.evaluate(() => {
 		.layers.filter((l) => l.id === 'job-markers' || l.id === 'job-markers-stack')
 		.map((l) => l.id);
 	const rendered = m.queryRenderedFeatures(undefined, { layers });
-	// Skip markers that project behind the collapsed bottom sheet (~3.6rem)
+	// Skip markers that project behind the collapsed bottom sheet (84px)
 	// or the masthead — a tap there hits the sheet's peek bar, not the map,
 	// and the check would mis-read that as a freeze.
 	const h = m.getCanvas().clientHeight;
 	for (const f of rendered) {
 		if (f.geometry?.type !== 'Point') continue;
 		const p = m.project(f.geometry.coordinates);
-		if (p.y > h - 80 || p.y < 60) continue;
+		if (p.y > h - 104 || p.y < 60) continue;
 		return { x: Math.round(p.x), y: Math.round(p.y) };
 	}
 	return null;

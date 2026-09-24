@@ -92,6 +92,12 @@
 	let grabStartY = 0;
 	let grabStartH = 0;
 	let grabMoved = false;
+	// Mirrors `grabbing` for the template: highlights the grip while held.
+	let grabActive = $state(false);
+
+	// Collapsed detent height in px: 44px grabber + 40px peek bar. Must match
+	// `.sheet { height }` below.
+	const COLLAPSED_PX = 84;
 
 	function detents() {
 		// The sheet is position:absolute, so its CSS `%` heights resolve
@@ -101,11 +107,12 @@
 		const parentH =
 			sheetEl?.offsetParent?.getBoundingClientRect().height ??
 			(browser ? window.innerHeight : 800);
-		return { collapsed: 3.6 * 16, half: parentH * 0.5, full: parentH * 0.92 };
+		return { collapsed: COLLAPSED_PX, half: parentH * 0.5, full: parentH * 0.92 };
 	}
 
 	function onGrabPointerDown(e: PointerEvent) {
 		grabbing = true;
+		grabActive = true;
 		grabMoved = false;
 		grabStartY = e.clientY;
 		grabStartH = sheetEl?.getBoundingClientRect().height ?? detents().collapsed;
@@ -121,6 +128,7 @@
 	function onGrabPointerUp(e: PointerEvent) {
 		if (!grabbing) return;
 		grabbing = false;
+		grabActive = false;
 		(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
 		const moved = grabMoved;
 		const h = dragH ?? grabStartH;
@@ -156,6 +164,7 @@
 	}
 	function onGrabPointerCancel() {
 		grabbing = false;
+		grabActive = false;
 		dragH = null;
 	}
 	// Keyboard a11y: the grabber has no onclick (see onGrabPointerUp), so wire
@@ -168,7 +177,10 @@
 	}
 
 	// Render the panels while open OR mid-drag (so dragging up from collapsed
-	// reveals content immediately instead of an empty growing box).
+	// reveals content immediately instead of an empty growing box). The peek
+	// bar stays mounted until the sheet is actually expanded — a drag can
+	// start on it, and unmounting the pointer target mid-drag would drop the
+	// gesture (no pointerup → sheet stuck at the drag height).
 	const showContent = $derived(mapState.browseSheetExpanded || dragH !== null);
 
 	// --- horizontal swipe between the two pages ---
@@ -235,6 +247,7 @@
 	<button
 		type="button"
 		class="grabber"
+		class:held={grabActive}
 		onpointerdown={onGrabPointerDown}
 		onpointermove={onGrabPointerMove}
 		onpointerup={onGrabPointerUp}
@@ -245,6 +258,24 @@
 	>
 		<span class="grip" aria-hidden="true"></span>
 	</button>
+
+	{#if !mapState.browseSheetExpanded}
+		<!-- The peek bar is a second, bigger drag handle: same pointer handlers
+		     as the grabber (tap toggles in pointerup, so no onclick — see
+		     onGrabPointerUp for the WebKit synthetic-click reason). -->
+		<button
+			type="button"
+			class="peek"
+			onpointerdown={onGrabPointerDown}
+			onpointermove={onGrabPointerMove}
+			onpointerup={onGrabPointerUp}
+			onpointercancel={onGrabPointerCancel}
+			onkeydown={onGrabKey}
+		>
+			<span class="peek-label">{peekLabel}</span>
+			<span class="peek-hint">tap or drag up ▴</span>
+		</button>
+	{/if}
 
 	{#if showContent}
 		<div class="pager-head">
@@ -290,12 +321,8 @@
 				</div>
 			</div>
 		</div>
-	{:else}
-		<button type="button" class="peek" onclick={toggleExpanded}>
-			<span class="peek-label">{peekLabel}</span>
-			<span class="peek-hint">tap to browse ▴</span>
-		</button>
 	{/if}
+
 </aside>
 
 <style>
@@ -310,7 +337,10 @@
 		   captures taps even while sitting over the interactive map canvas. */
 		z-index: 20;
 		pointer-events: auto;
-		height: 3.6rem;
+		/* Collapsed detent: the 44px grabber plus the peek bar. Keep in sync
+		   with COLLAPSED_PX in the script. px, not rem: the root font size is
+		   not 16px, so rem here drifted from the drag math. */
+		height: 84px;
 		display: flex;
 		flex-direction: column;
 		background: var(--c-panel, rgba(14, 23, 38, 0.98));
@@ -341,24 +371,39 @@
 		appearance: none;
 		flex-shrink: 0;
 		width: 100%;
+		/* 44px: Apple's minimum comfortable thumb target. The old ~17px strip
+		   was hard to catch; the grip stays small visually but the whole band
+		   is grabbable. */
+		min-height: 44px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: transparent;
 		border: none;
-		padding: 0.5rem 0 0.3rem;
+		padding: 0;
 		cursor: grab;
 		/* Own vertical gestures so dragging the grabber resizes the sheet
 		   instead of scrolling the page/panel underneath. */
 		touch-action: none;
 	}
-	.grabber:active {
+	.grabber:active,
+	.grabber.held {
 		cursor: grabbing;
 	}
 	.grip {
 		display: block;
-		width: 2.5rem;
-		height: 4px;
-		margin: 0 auto;
+		width: 3rem;
+		height: 6px;
 		border-radius: 999px;
-		background: var(--c-border-input, #2c4870);
+		/* Muted text colour (not the border colour) so the handle reads
+		   clearly against the panel in both themes. */
+		background: var(--c-muted, #8aa0b8);
+		transition: width 150ms ease, background 150ms ease;
+	}
+	.grabber.held .grip,
+	.grabber:focus-visible .grip {
+		width: 4rem;
+		background: var(--c-accent, #7bd0f2);
 	}
 	.pager-head {
 		flex-shrink: 0;
@@ -436,7 +481,9 @@
 	}
 	.peek {
 		appearance: none;
-		flex: 1;
+		/* Fixed height (84px collapsed − 44px grabber) so it keeps its place
+		   above the revealed panels during a drag from collapsed. */
+		flex: 0 0 40px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -445,7 +492,9 @@
 		background: transparent;
 		border: none;
 		padding: 0 0.95rem 0.5rem;
-		cursor: pointer;
+		cursor: grab;
+		/* Drags on the peek bar resize the sheet, like the grabber. */
+		touch-action: none;
 		color: var(--c-text, #e5edf5);
 	}
 	.peek-label {
