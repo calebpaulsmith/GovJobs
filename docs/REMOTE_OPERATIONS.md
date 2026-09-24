@@ -6,7 +6,7 @@ How to keep the public map fresh without sitting at your laptop.
 
 ## TL;DR
 
-1. The map auto-refreshes **daily at 09:00 UTC** via GitHub Actions.
+1. The map auto-refreshes **daily at 05:00 US Central** (America/Chicago, DST-aware) via GitHub Actions. GitHub may start scheduled runs late under load.
 2. You can trigger an extra refresh from your phone in three taps via the GitHub mobile app.
 3. Cowork (Claude on phone) is the right tool for ad-hoc work like fixing bugs or trying new features remotely; routine refreshes should stay on GitHub Actions.
 
@@ -30,7 +30,7 @@ That's it for setup. The workflow file is already committed at `.github/workflow
 
 | Step | What happens | Where it runs |
 |---|---|---|
-| 1 | GitHub fires the cron at 09:00 UTC | GitHub Actions runner (Ubuntu) |
+| 1 | GitHub fires the cron at 05:00 Central (10:00 UTC in CDT / 11:00 UTC in CST; a `gate` job lets exactly one through) | GitHub Actions runner (Ubuntu) |
 | 2 | Reference data refreshes (states, counties, locality pay, BEA RPP, agency codes) | Runner |
 | 3 | Federal-wide USAJOBS Search import (up to 50 pages = 25,000 postings) | Runner → USAJOBS API |
 | 4 | Bundle re-exported to `public_map/static/data/` | Runner |
@@ -103,14 +103,19 @@ In the GitHub mobile app: navigate to **Code → Commits**, find the last good c
 
 ## Tuning the cron
 
-To change the schedule, edit `.github/workflows/refresh-public-map.yml`, line `- cron: '0 9 * * *'`:
+The schedule is **05:00 America/Chicago**. GitHub cron is UTC-only, so the
+workflow registers two crons — `'0 10 * * *'` (05:00 CDT) and `'0 11 * * *'`
+(05:00 CST) — and the `gate` job runs the refresh only for the one that matches
+Chicago's current UTC offset. Manual runs always go ahead.
 
-| Cron | Cadence |
-|---|---|
-| `'0 9 * * *'` | daily at 09:00 UTC (default) |
-| `'0 9,21 * * *'` | twice daily, 09:00 and 21:00 UTC |
-| `'0 */6 * * *'` | every 6 hours |
-| `'0 9 * * 1-5'` | weekdays only at 09:00 UTC |
+To pick a different local hour, change **both** cron lines in
+`.github/workflows/refresh-public-map.yml` *and* the matching `SCHEDULE`
+strings in the `gate` job (CDT = local + 5 h, CST = local + 6 h in UTC).
+
+Caveat: GitHub treats `schedule` as best-effort. Through September 2026 the old
+09:00 UTC cron started 4–6.5 hours late every day. If the refresh must land
+at 05:00 on the dot, an external scheduler (e.g. a Cloudflare Worker cron that
+calls `workflow_dispatch`) is the reliable fix.
 
 Validate at <https://crontab.guru>.
 
