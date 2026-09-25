@@ -1,4 +1,4 @@
-// WebKit (real iOS Safari engine) test for the Here card's 12-month posting
+// WebKit (real iOS Safari engine) test for the Analysis card's 12-month posting
 // volume sparkline (D.5.28 — AreaTrendSparkline).
 //
 //  - Click-to-load: no /api/job-history fetch happens before the toggle is
@@ -77,15 +77,15 @@ await ctx.route(/events\.mapbox\.com/, (r) => r.fulfill({ status: 204, body: '' 
 
 const page = await ctx.newPage();
 
-await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.goto(`${BASE}/analysis?area=nationwide`, { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForSelector('canvas.mapboxgl-canvas, canvas.maplibregl-canvas', { timeout: 30000 });
-await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
+await page.waitForSelector('section.area-analysis', { timeout: 15000 });
 
 // ---------------------------------------------------------------------------
 // 1) Click-to-load: collapsed by default, zero fetches before the click.
 // ---------------------------------------------------------------------------
-const trendToggle = page.locator('.here-pane .trend .toggle');
-check(await trendToggle.isVisible(), 'trend toggle renders on the Here card');
+const trendToggle = page.locator('section.area-analysis .trend .toggle');
+check(await trendToggle.isVisible(), 'trend toggle renders on the Analysis card');
 let calls = await page.evaluate(() => window.__historyCalls.length);
 check(calls === 0, `no /api/job-history fetch before the toggle is clicked (${calls})`);
 
@@ -93,20 +93,20 @@ check(calls === 0, `no /api/job-history fetch before the toggle is clicked (${ca
 // 2) Open → one fetch, window=1yr, 13 zero-filled bars, honest summary.
 // ---------------------------------------------------------------------------
 await trendToggle.click();
-await page.waitForSelector('.here-pane .trend .spark', { timeout: 10000 });
+await page.waitForSelector('section.area-analysis .trend .spark', { timeout: 10000 });
 const callUrls = await page.evaluate(() => window.__historyCalls);
 check(callUrls.length === 1, `exactly one fetch after opening (${callUrls.length})`);
 check(
 	callUrls[0]?.includes('window=1yr'),
 	`fetch pinned to the 1yr window (${callUrls[0]})`
 );
-const barCount = await page.locator('.here-pane .trend .spark .bar').count();
+const barCount = await page.locator('section.area-analysis .trend .spark .bar').count();
 check(barCount === 13, `13 zero-filled monthly bars for a 1yr window (${barCount})`);
 const janTitle = await page
-	.locator('.here-pane .trend .spark .bar[title*="2026-01"]')
+	.locator('section.area-analysis .trend .spark .bar[title*="2026-01"]')
 	.getAttribute('title');
 check(janTitle === '2026-01: 12 postings', `bucketed month carries its count (${janTitle})`);
-const summary = await page.locator('.here-pane .trend .summary').innerText();
+const summary = await page.locator('section.area-analysis .trend .summary').innerText();
 check(summary.includes('42'), `summary shows the payload total (${summary.replace(/\n/g, ' ')})`);
 
 // ---------------------------------------------------------------------------
@@ -116,36 +116,36 @@ await page.evaluate(async () => {
 	const m = (await import('/src/lib/store.svelte.ts')).mapState;
 	m.filters = { ...m.filters, agencies: ['HSCB'] };
 });
-await page.waitForSelector('.here-pane .trend .stale', { timeout: 10000 });
+await page.waitForSelector('section.area-analysis .trend .stale', { timeout: 10000 });
 calls = await page.evaluate(() => window.__historyCalls.length);
 check(calls === 1, `stale notice appears without an auto-refetch (${calls} calls)`);
-await page.locator('.here-pane .trend .stale button').click();
+await page.locator('section.area-analysis .trend .stale button').click();
 await page.waitForTimeout(600);
 calls = await page.evaluate(() => window.__historyCalls.length);
 check(calls === 2, `Reload triggers exactly one more fetch (${calls} calls)`);
 const lastUrl = await page.evaluate(() => window.__historyCalls.at(-1));
 check(lastUrl?.includes('agency_code=HSCB'), `reload carries the new agency chip (${lastUrl})`);
-const slice = await page.locator('.here-pane .trend .slice').innerText();
+const slice = await page.locator('section.area-analysis .trend .slice').innerText();
 check(slice.includes('agency HSCB'), `slice caption names the loaded query (${slice.replace(/\n/g, ' ')})`);
 check(
-	(await page.locator('.here-pane .trend .stale').count()) === 0,
+	(await page.locator('section.area-analysis .trend .stale').count()) === 0,
 	'stale notice clears after reload'
 );
 
 // ---------------------------------------------------------------------------
 // 4) Upstream failure → explicit unavailable message, no bars.
 // ---------------------------------------------------------------------------
-await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
-await page.waitForSelector('.here-pane section.tab-here', { timeout: 15000 });
+await page.goto(`${BASE}/analysis?area=nationwide`, { waitUntil: 'networkidle', timeout: 60000 });
+await page.waitForSelector('section.area-analysis', { timeout: 15000 });
 await page.evaluate(() => {
 	window.__historyMode = 'fail';
 });
-await page.locator('.here-pane .trend .toggle').click();
-await page.waitForSelector('.here-pane .trend .error', { timeout: 10000 });
-const errText = await page.locator('.here-pane .trend .error').innerText();
+await page.locator('section.area-analysis .trend .toggle').click();
+await page.waitForSelector('section.area-analysis .trend .error', { timeout: 10000 });
+const errText = await page.locator('section.area-analysis .trend .error').innerText();
 check(errText.includes('Trend unavailable'), `failure renders an explicit message (${errText})`);
 check(
-	(await page.locator('.here-pane .trend .spark').count()) === 0,
+	(await page.locator('section.area-analysis .trend .spark').count()) === 0,
 	'no bars are fabricated on failure'
 );
 
@@ -153,9 +153,9 @@ check(
 // 5) Reactivity survives (no state_unsafe_mutation freeze): the toggle still
 //    collapses/expands after the whole sequence.
 // ---------------------------------------------------------------------------
-await page.locator('.here-pane .trend .toggle').click();
+await page.locator('section.area-analysis .trend .toggle').click();
 check(
-	(await page.locator('.here-pane .trend .body').count()) === 0,
+	(await page.locator('section.area-analysis .trend .body').count()) === 0,
 	'toggle still collapses the panel after the full sequence'
 );
 

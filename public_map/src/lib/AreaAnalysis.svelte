@@ -1,23 +1,33 @@
 <!--
-	SmallestAreaCard — the Here tab on /browse.
+	AreaAnalysis — the area metrics block on the Analysis screen (ADR-0039).
 
-	Renders context for the user's active geographic scope (locality > state >
-	Nationwide), a deterministic templated summary, four tap-to-expand metric
-	blocks (Postings / Workforce / Pay vs COL / Urgency), and an actions row.
+	Formerly the Browse "Here" tab (SmallestAreaCard). Browse is now for
+	finding jobs; this card analyzes ONE explicitly chosen area at any level
+	(nationwide / state / locality / metro / county) under the user's
+	non-geographic filters: a deterministic templated summary, the live pulse
+	band, four tap-to-expand metric blocks (Postings / Workforce / Pay vs COL /
+	Urgency), and the click-to-load trend + "What to watch" notes.
 
-	Pure helpers (resolveArea, urgencyCounts) live in ./areaCard.ts and are
-	unit-tested in ./areaCard.test.ts. This component composes them with the
-	loaded state/locality feature collections and the filter-aware job list.
-
-	Mock: public_map/mocks/browse/mobile-dock.html, <section class="tab tab-here">.
+	Scoping: the area replaces Browse's geography/radius chips
+	(analysisArea.ts::filtersForArea). Metro and county areas are scoped by
+	point-in-polygon over duty-station coordinates — postings without a
+	mappable duty station can't be placed and are named as excluded.
 -->
+<script lang="ts" module>
+	import { loadClosedJobs as loadClosedJobsRaw, type FeatureCollection as FC } from './data';
+	// The card remounts on every area switch; the closed-jobs overlay is a
+	// big file, so parse it once per page load, not once per switch.
+	let closedCache: Promise<FC> | null = null;
+	function loadClosedJobsOnce(): Promise<FC> {
+		closedCache ??= loadClosedJobsRaw();
+		return closedCache;
+	}
+</script>
+
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
 	import {
-		loadStates,
-		loadLocalities,
 		loadJobDetailsIndex,
-		loadClosedJobs,
+		loadJobs,
 		type FeatureCollection,
 		type JobDetails
 	} from './data';
@@ -25,28 +35,34 @@
 	import { mapState } from './store.svelte';
 	import { money, percent, propString } from './format';
 	import InfoTooltip from './InfoTooltip.svelte';
-	import { resolveArea, urgencyCounts, type ResolvedArea } from './areaCard';
+	import { urgencyCounts } from './areaCard';
 	import { computeAreaPulse } from './areaPulse';
+	import { coordsByJobId, pointInGeometry, geometryBbox } from './geo';
+	import {
+		filtersForArea,
+		jobIdsInArea,
+		needsPolygonScope,
+		type AnalysisArea
+	} from './analysisArea';
+	import type { TrendArea } from './areaTrend';
 	import AreaTrendSparkline from './AreaTrendSparkline.svelte';
 	import AreaWatchNote from './AreaWatchNote.svelte';
 
 	interface Props {
-		// Parent passes `() => (tab = 'list')`. Optional so the component is
-		// usable in isolation (e.g. tests, mock-data screens).
+		area: AnalysisArea;
+		/** Jump to Browse with the postings list scoped to this area. */
 		onViewList?: () => void;
 	}
 
-	let { onViewList }: Props = $props();
+	let { area, onViewList }: Props = $props();
 
-	let states = $state<FeatureCollection | null>(null);
-	let localities = $state<FeatureCollection | null>(null);
 	let jobIndex = $state<Record<string, JobDetails>>({});
+	let jobsGeo = $state<FeatureCollection | null>(null);
 	let closedJobs = $state<FeatureCollection | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	// Pay vs COL is open by default per the mock — meaningful default since
-	// the pay-vs-COL number is the headline value most users want to see.
+	// Pay vs COL is open by default — the headline value most users want.
 	type MetricKey = 'postings' | 'workforce' | 'paycol' | 'urgency';
 	let openMetric = $state<MetricKey | null>('paycol');
 
@@ -57,61 +73,81 @@
 	$effect(() => {
 		loading = true;
 		error = null;
-		Promise.all([loadStates(), loadLocalities(), loadJobDetailsIndex(), loadClosedJobs()])
-			.then(([s, l, idx, closed]) => {
-				states = s;
-				localities = l;
+		// Reuse the jobs collection the page already parsed into the shared
+		// store (tens of MB) — only fall back to fetching on a cold store.
+		const shared = mapState.allJobs;
+		const jobsPromise = shared && shared.features?.length ? Promise.resolve(shared) : loadJobs();
+		Promise.all([loadJobDetailsIndex(), jobsPromise, loadClosedJobsOnce()])
+			.then(([idx, jobs, closed]) => {
 				jobIndex = idx;
+				jobsGeo = jobs;
 				closedJobs = closed;
 			})
 			.catch((err) => (error = (err as Error).message))
 			.finally(() => (loading = false));
 	});
 
-	// --- area resolution + filter-aware job set -------------------------------
+	// --- area-scoped, filter-aware job sets ------------------------------------
 
-	const area = $derived<ResolvedArea>(resolveArea(mapState.filters, states, localities));
+	const areaFilters = $derived(filtersForArea(mapState.filters, area));
+	const polygonScoped = $derived(needsPolygonScope(area));
+	const coords = $derived(coordsByJobId(jobsGeo));
+	const idsInPolygon = $derived(polygonScoped ? jobIdsInArea(area, coords) : null);
 
-	// Posting + urgency counts must honor the WHOLE filter (geo + non-geo),
-	// because the area's pre-computed `postings` only counts by geography.
-	const filteredJobs = $derived<JobDetails[]>(
-		filterJobDetails(Object.values(jobIndex), mapState.filters)
-	);
+	const filteredJobs = $derived.by<JobDetails[]>(() => {
+		const base = filterJobDetails(Object.values(jobIndex), areaFilters);
+		const ids = idsInPolygon;
+		return ids ? base.filter((j) => ids.has(String(j.id))) : base;
+	});
 	const filteredJobCount = $derived(filteredJobs.length);
 	const urgency = $derived(urgencyCounts(filteredJobs));
 
-	// --- D.5.28 area pulse — live, computed from the bundle -------------------
-	// Headline numbers from the filtered open postings; the new-in-7d delta
-	// from the opening-rate baseline across open ∪ closed-within-90d postings
-	// (the closed overlay is the one historic slice the bundle ships, per
-	// invariant #22). Published to mapState.areaPulse so the JobList header
-	// annotation reads the same numbers this card shows.
-	const filteredClosed = $derived(
-		closedJobs ? filterJobs(closedJobs, mapState.filters, jobIndex).features : []
-	);
+	// Postings under the filter that have no mappable duty station — they
+	// can't be placed in a county/metro, so name them instead of hiding them.
+	const unplaceable = $derived.by(() => {
+		if (!polygonScoped) return 0;
+		let n = 0;
+		for (const job of filterJobDetails(Object.values(jobIndex), areaFilters)) {
+			if (!coords.has(String(job.id))) n += 1;
+		}
+		return n;
+	});
+
+	// Closed-within-90d features for the pulse baseline (invariant #22's one
+	// bundled historic slice), scoped the same way as the open postings.
+	const filteredClosed = $derived.by(() => {
+		if (!closedJobs) return [];
+		const feats = filterJobs(closedJobs, areaFilters, jobIndex).features;
+		if (!polygonScoped) return feats;
+		const geom = area.feature?.geometry;
+		const bbox = geometryBbox(geom);
+		if (!geom || !bbox) return [];
+		return feats.filter((f) => {
+			if (f.geometry?.type !== 'Point') return false;
+			const pt = f.geometry.coordinates as [number, number];
+			if (pt[0] < bbox[0] || pt[0] > bbox[2] || pt[1] < bbox[1] || pt[1] > bbox[3]) return false;
+			return pointInGeometry(pt, geom);
+		});
+	});
+
 	const pulse = $derived(
 		loading || error
 			? null
 			: computeAreaPulse(filteredJobs, filteredClosed, {
-					scope: area.scope,
-					code: area.scope === 'nationwide' ? '' : area.code,
+					scope: area.level,
+					code: area.code ?? '',
 					label: area.label
 				})
 	);
-	// Publish. This effect reads mapState (filters via the deriveds) and
-	// writes mapState.areaPulse back to the same proxy, so the write is
-	// wrapped in untrack (WebKit state_unsafe_mutation rule — CLAUDE.md).
-	$effect(() => {
-		const next = pulse;
-		untrack(() => {
-			mapState.areaPulse = next;
-		});
-	});
-	// The pulse describes THIS card's scope; when the card unmounts (a
-	// feature card replaces it, the sheet collapses) the context is gone —
-	// clear so the list annotation never shows a stale claim.
-	onDestroy(() => {
-		mapState.areaPulse = null;
+
+	// The trend/watch components take the Here card's area shape; county and
+	// metro pass their primary state (HistoricJoa has no finer filter).
+	const trendArea = $derived.by<TrendArea>(() => {
+		if (area.level === 'nationwide') return { scope: 'nationwide', code: null, label: 'Nationwide', feature: null };
+		if (area.level === 'state') return { scope: 'state', code: area.code ?? '', label: area.label, feature: area.feature };
+		if (area.level === 'locality')
+			return { scope: 'locality', code: area.code ?? '', label: area.label, feature: area.feature ?? { type: 'Feature', geometry: null, properties: {} } };
+		return { scope: area.level, code: area.code ?? '', label: area.label, primaryState: area.primaryState };
 	});
 
 	// --- area feature properties ----------------------------------------------
@@ -129,23 +165,23 @@
 		return propString(area.feature?.properties ?? null, key, '—');
 	}
 
+	const LEVEL_NOUN: Record<string, string> = {
+		nationwide: 'Nationwide',
+		state: 'State',
+		locality: 'Locality pay area',
+		metro: 'Metro area (CBSA)',
+		county: 'County'
+	};
+
 	// Subtitle composition — short fact line under the title.
 	const subtitle = $derived.by(() => {
-		if (area.scope === 'nationwide') {
-			return `${filteredJobCount.toLocaleString()} open postings matching the current filter`;
+		const parts: string[] = [LEVEL_NOUN[area.level] ?? area.level];
+		if (area.level !== 'nationwide' && area.code) parts.push(area.code);
+		if (area.level === 'locality') {
+			const counties = numProp('county_count');
+			if (counties !== null) parts.push(`${counties.toLocaleString()} counties`);
 		}
-		if (area.scope === 'state') {
-			const postings = numProp('postings');
-			const parts = [area.code];
-			if (postings !== null) parts.push(`${postings.toLocaleString()} open postings`);
-			return parts.join(' · ');
-		}
-		// locality
-		const postings = numProp('postings');
-		const counties = numProp('county_count');
-		const parts = [area.code];
-		if (postings !== null) parts.push(`${postings.toLocaleString()} open postings`);
-		if (counties !== null) parts.push(`${counties.toLocaleString()} counties`);
+		parts.push(`${filteredJobCount.toLocaleString()} open postings match your filters`);
 		return parts.join(' · ');
 	});
 
@@ -168,18 +204,18 @@
 	// clauses are skipped when the underlying value is unavailable.
 	const summary = $derived.by(() => {
 		const sentences: string[] = [];
-		const areaLabel = area.scope === 'nationwide' ? 'nationwide' : `in ${area.label}`;
+		const areaLabel = area.level === 'nationwide' ? 'nationwide' : `in ${area.label}`;
 		sentences.push(
-			`${filteredJobCount.toLocaleString()} open postings ${areaLabel} match the current filter.`
+			`${filteredJobCount.toLocaleString()} open postings ${areaLabel} match your filters.`
 		);
 		if (urgency.le3d > 0) {
 			sentences.push(`${urgency.le3d.toLocaleString()} close within 3 days.`);
 		}
-		const gs13 = numProp('gs13_step1_locality');
+		const gs13v = numProp('gs13_step1_locality');
 		const payCol = numProp('pay_vs_col');
-		if (gs13 !== null && payCol !== null && area.scope !== 'nationwide') {
+		if (gs13v !== null && payCol !== null && area.level !== 'nationwide') {
 			sentences.push(
-				`GS-13 step 1 here pays ${money(gs13)}, ${payCol.toFixed(1)} on the pay-vs-COL index (national average = 100).`
+				`GS-13 step 1 here pays ${money(gs13v)}, ${payCol.toFixed(1)} on the pay-vs-COL index (national average = 100).`
 			);
 		}
 		if (topAgencies.length > 0) {
@@ -192,28 +228,26 @@
 
 	const referenceYear = $derived(mapState.manifest?.reference_year ?? 2026);
 
-	// Pay vs COL — value + delta vs national 100.
+	// Pay vs COL — value + delta vs national 100. States, localities and
+	// counties carry it; metros only carry RPP.
 	const payVsCol = $derived(numProp('pay_vs_col'));
 	const payVsColDelta = $derived.by(() => {
 		if (payVsCol === null) return null;
 		return payVsCol - 100;
 	});
 
-	// Workforce — only meaningful at state scope (export's localities feature
-	// has no workforce property).
-	const workforce = $derived(area.scope === 'state' ? numProp('workforce') : null);
-	const accessions = $derived(area.scope === 'state' ? numProp('accessions') : null);
-	const separations = $derived(area.scope === 'state' ? numProp('separations') : null);
+	// Workforce — OPM FedScope is state-level only.
+	const workforce = $derived(area.level === 'state' ? numProp('workforce') : null);
+	const accessions = $derived(area.level === 'state' ? numProp('accessions') : null);
+	const separations = $derived(area.level === 'state' ? numProp('separations') : null);
 
-	// Locality pay adjustment — only on locality features.
-	const adjustmentPct = $derived(area.scope === 'locality' ? numProp('adjustment_pct') : null);
+	const adjustmentPct = $derived(area.level === 'locality' ? numProp('adjustment_pct') : null);
 	const gs13 = $derived(numProp('gs13_step1_locality'));
 	const rpp = $derived(numProp('rpp_overall'));
-	const localityCodeProp = $derived(area.scope === 'state' ? strProp('locality_code') : '');
+	const rppSource = $derived(area.level === 'county' ? strProp('rpp_overall_source') : '');
 
-	// Action button label scales with filteredJobCount.
 	const viewListLabel = $derived(
-		`View ${filteredJobCount.toLocaleString()} posting${filteredJobCount === 1 ? '' : 's'} →`
+		`See ${filteredJobCount.toLocaleString()} posting${filteredJobCount === 1 ? '' : 's'} in Browse →`
 	);
 
 	function fmtCount(n: number | null | undefined): string {
@@ -227,17 +261,23 @@
 	}
 </script>
 
-<section class="tab-here">
+<section class="tab-here area-analysis">
 	{#if loading}
-		<div class="eyebrow">Here</div>
-		<p class="muted">Loading area context…</p>
+		<div class="eyebrow">Analysis</div>
+		<p class="muted">Loading area data…</p>
 	{:else if error}
-		<div class="eyebrow">Here</div>
+		<div class="eyebrow">Analysis</div>
 		<p class="muted">Couldn't load area data: {error}</p>
 	{:else}
-		<div class="eyebrow">Here · smallest area containing the active filter</div>
+		<div class="eyebrow">Analysis · {LEVEL_NOUN[area.level] ?? area.level}</div>
 		<h2>{area.label}</h2>
 		<p class="subtitle">{subtitle}</p>
+		{#if unplaceable > 0}
+			<p class="scope-note">
+				{unplaceable.toLocaleString()} matching posting{unplaceable === 1 ? ' has' : 's have'} no mappable duty station and
+				can't be placed in a {area.level === 'metro' ? 'metro' : 'county'}, so {unplaceable === 1 ? 'it is' : 'they are'} not counted here.
+			</p>
+		{/if}
 
 		<!-- Deterministic, templated area summary — no LLM call, ever. -->
 		<div class="area-summary">
@@ -246,12 +286,8 @@
 		</div>
 
 		<!-- D.5.28 pulse band: four headline numbers with deltas vs. the
-		     trailing-90-day average. Reads mapState.areaPulse; until a data
-		     slice populates it (area_pulse.json / on-demand fetch — see
-		     ROADMAP "Data slices to investigate") it renders dashed-border
-		     placeholders, never fabricated numbers. -->
-		<!-- Reads the local `pulse` derived (not mapState.areaPulse) so this
-		     component never reads the field its own effect writes. -->
+		     trailing-90-day average, computed from the bundle for this area.
+		     Dashed placeholders while loading — never fabricated numbers. -->
 		<div class="pulse-band" data-status={pulse ? 'live' : 'placeholder'}>
 			{#each [
 				{ label: 'Open postings', value: pulse?.openPostings, deltaKey: 'openPostings' },
@@ -299,18 +335,14 @@
 						<span class="value">{fmtCount(filteredJobCount)}</span>
 					</div>
 					<dl class="detail-grid">
-						<dt>Matching current filter</dt>
+						<dt>Matching your filters</dt>
 						<dd>{fmtCount(filteredJobCount)}</dd>
 						<dt>Closing within 3 days</dt>
 						<dd>{fmtCount(urgency.le3d)}</dd>
 						<dt>Closing within 7 days</dt>
 						<dd>{fmtCount(urgency.le7d)}</dd>
-						<dt>Active geo chips</dt>
-						<dd>
-							{mapState.filters.geographies.length > 0
-								? mapState.filters.geographies.join(', ')
-								: '—'}
-						</dd>
+						<dt>Area</dt>
+						<dd>{area.label}</dd>
 						<dt>Active agency chips</dt>
 						<dd>
 							{mapState.filters.agencies.length > 0
@@ -318,12 +350,12 @@
 								: '—'}
 						</dd>
 					</dl>
-					<div class="detail-src">Source: USAJOBS /Search, current filter</div>
+					<div class="detail-src">Source: USAJOBS /Search, your filters, scoped to this area</div>
 					<div class="collapse-hint">▴ tap to collapse</div>
 				{:else}
 					<div class="label">Postings (open)</div>
 					<div class="value">{fmtCount(filteredJobCount)}</div>
-					<div class="delta">matching current filter</div>
+					<div class="delta">matching your filters</div>
 					<div class="expand-hint">▾ tap to expand</div>
 				{/if}
 			</button>
@@ -351,8 +383,8 @@
 					</dl>
 					<div class="detail-src">
 						Source: OPM FedScope — workforce counts, not postings.
-						{#if area.scope !== 'state'}
-							State-level only; not available for {area.scope === 'nationwide' ? 'the national view' : 'localities'}.
+						{#if area.level !== 'state'}
+							State-level only; not available for {area.level === 'nationwide' ? 'the national view' : `a ${LEVEL_NOUN[area.level]?.toLowerCase() ?? area.level}`} — switch to State to see it.
 						{/if}
 					</div>
 					<div class="collapse-hint">▴ tap to collapse</div>
@@ -360,7 +392,7 @@
 					<div class="label">Workforce</div>
 					<div class="value">{fmtCount(workforce)}</div>
 					<div class="delta">
-						{area.scope === 'state' ? 'civilian, OPM' : 'state-level only'}
+						{area.level === 'state' ? 'civilian, OPM' : 'state-level only'}
 					</div>
 					<div class="expand-hint">▾ tap to expand</div>
 				{/if}
@@ -386,14 +418,14 @@
 						{/if}
 					</div>
 					<dl class="detail-grid">
-						{#if area.scope === 'locality'}
+						{#if area.level === 'locality'}
 							<dt>Locality pay adjustment</dt>
 							<dd>{percent(adjustmentPct)}</dd>
 						{/if}
 						<dt>GS-13 step 1 ({referenceYear})</dt>
 						<dd>{money(gs13)}</dd>
 						<dt>BEA RPP (overall)</dt>
-						<dd>{rpp ?? '—'}</dd>
+						<dd>{rpp ?? '—'}{#if rppSource === 'county'} (county, ACS rent-derived){:else if rppSource === 'state'} (state fallback){/if}</dd>
 						<dt>Index formula</dt>
 						<dd class="formula">(locality pay ÷ national base) ÷ (RPP ÷ 100) × 100</dd>
 					</dl>
@@ -411,7 +443,7 @@
 					<div class="value">{fmtIndex(payVsCol)}</div>
 					<div class="delta {payVsColDelta !== null && payVsColDelta >= 0 ? 'up' : payVsColDelta !== null ? 'down' : ''}">
 						{#if payVsColDelta === null}
-							{area.scope === 'nationwide' ? 'area-level only' : '—'}
+							{area.level === 'nationwide' ? 'area-level only' : area.level === 'metro' ? 'not computed for metros' : '—'}
 						{:else}
 							{payVsColDelta >= 0 ? '↑' : '↓'} {Math.abs(payVsColDelta).toFixed(1)}
 							{payVsColDelta >= 0 ? 'above' : 'below'} national
@@ -442,7 +474,7 @@
 						<dt>Closing in ≤ 7 days</dt>
 						<dd>{fmtCount(urgency.le7d)}</dd>
 					</dl>
-					<div class="detail-src">Source: USAJOBS close_date on the current filter</div>
+					<div class="detail-src">Source: USAJOBS close_date, your filters, this area</div>
 					<div class="collapse-hint">▴ tap to collapse</div>
 				{:else}
 					<div class="label">Urgency</div>
@@ -456,18 +488,14 @@
 		<!-- D.5.28 volume sparkline: click-to-load 12-month HistoricJoa trend
 		     via the edge-cached /api/job-history Function (ADR-0029 / invariant
 		     #22 — on-demand, never bundled). -->
-		<AreaTrendSparkline {area} />
+		<AreaTrendSparkline area={trendArea} />
 
 		<!-- ADR-0036 "What to watch": deterministic, keyless 3-year context
 		     from the same Function. Click-to-load, like the sparkline. -->
-		<AreaWatchNote {area} />
+		<AreaWatchNote area={trendArea} />
 
 		{#if onViewList}
 			<div class="actions">
-				<!-- Deferred: "+ Save as Job List" button + provenance toast.
-				     The slot is preserved so Saved-tab work can drop in later.
-				     Hidden when the host passes no handler (desktop mosaic —
-				     the postings list is already on screen). -->
 				<button
 					type="button"
 					class="pill-btn primary"
@@ -479,16 +507,12 @@
 			</div>
 		{/if}
 
-		{#if area.scope === 'state' && localityCodeProp && localityCodeProp !== '—'}
-			<p class="note">Locality {localityCodeProp} covers the most counties of {area.code}.</p>
-		{/if}
 	{/if}
 </section>
 
 <style>
 	.tab-here {
 		padding: 0.9rem 1rem 1.2rem;
-		max-width: 36rem;
 		color: var(--c-text, #e5edf5);
 	}
 	.eyebrow {
@@ -512,6 +536,11 @@
 	.muted {
 		color: var(--c-muted, #94a3b8);
 		font-size: 12px;
+	}
+	.scope-note {
+		margin: -0.35rem 0 0.7rem;
+		color: var(--c-warn, #f5c451);
+		font-size: 11px;
 	}
 
 	.area-summary {
@@ -666,12 +695,6 @@
 	.pill-btn:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
-	}
-	.note {
-		margin: 0.7rem 0 0;
-		color: var(--c-muted, #94a3b8);
-		font-size: 11px;
-		line-height: 1.45;
 	}
 	/* D.5.28 pulse band. Dashed border + explicit caption while the data
 	   slice is absent (data-status="placeholder"). */

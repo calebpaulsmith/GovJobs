@@ -180,3 +180,83 @@ function coerceChip(raw: unknown): RadiusChip | null {
 		includeRemote: r.includeRemote !== false
 	};
 }
+
+// --- Point-in-polygon (ADR-0039 Analysis screen) --------------------------
+// Ray casting over GeoJSON Polygon / MultiPolygon rings, with holes. Used to
+// resolve "which county / metro / locality / state contains this point" on
+// the map-less Analysis screen, and to scope postings to a county or metro
+// polygon (jobs carry no county FIPS or CBSA code — only coordinates).
+
+type Ring = number[][];
+
+function pointInRing(lng: number, lat: number, ring: Ring): boolean {
+	let inside = false;
+	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+		const xi = ring[i][0];
+		const yi = ring[i][1];
+		const xj = ring[j][0];
+		const yj = ring[j][1];
+		if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+	}
+	return inside;
+}
+
+function pointInPolygonRings(lng: number, lat: number, rings: Ring[]): boolean {
+	if (!rings.length || !pointInRing(lng, lat, rings[0])) return false;
+	for (let h = 1; h < rings.length; h++) if (pointInRing(lng, lat, rings[h])) return false;
+	return true;
+}
+
+/** True when [lng, lat] lies inside a Polygon or MultiPolygon geometry. */
+export function pointInGeometry(point: [number, number], geometry: GeoJSON.Geometry | null | undefined): boolean {
+	if (!geometry) return false;
+	const [lng, lat] = point;
+	if (geometry.type === 'Polygon') return pointInPolygonRings(lng, lat, geometry.coordinates as Ring[]);
+	if (geometry.type === 'MultiPolygon') {
+		for (const poly of geometry.coordinates as Ring[][]) {
+			if (pointInPolygonRings(lng, lat, poly)) return true;
+		}
+	}
+	return false;
+}
+
+/** [minLng, minLat, maxLng, maxLat] of a Polygon / MultiPolygon, or null. */
+export function geometryBbox(geometry: GeoJSON.Geometry | null | undefined): [number, number, number, number] | null {
+	if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) return null;
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	const polys = (geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates) as Ring[][];
+	for (const poly of polys) {
+		for (const [x, y] of poly[0] ?? []) {
+			if (x < minX) minX = x;
+			if (y < minY) minY = y;
+			if (x > maxX) maxX = x;
+			if (y > maxY) maxY = y;
+		}
+	}
+	return Number.isFinite(minX) ? [minX, minY, maxX, maxY] : null;
+}
+
+/**
+ * A point guaranteed to lie inside the geometry (when one can be found):
+ * the bbox center if it is inside, else a scan of a coarse grid across the
+ * bbox. Used as the Analysis "anchor" when the user picks an area by name,
+ * so switching levels can find the enclosing area at the new level.
+ */
+export function interiorPoint(geometry: GeoJSON.Geometry | null | undefined): [number, number] | null {
+	const bbox = geometryBbox(geometry);
+	if (!bbox) return null;
+	const [x0, y0, x1, y1] = bbox;
+	const center: [number, number] = [(x0 + x1) / 2, (y0 + y1) / 2];
+	if (pointInGeometry(center, geometry)) return center;
+	const N = 12;
+	for (let i = 1; i < N; i++) {
+		for (let j = 1; j < N; j++) {
+			const p: [number, number] = [x0 + ((x1 - x0) * i) / N, y0 + ((y1 - y0) * j) / N];
+			if (pointInGeometry(p, geometry)) return p;
+		}
+	}
+	return center;
+}

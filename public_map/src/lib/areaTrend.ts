@@ -22,6 +22,13 @@
 
 import type { JobFilters } from './filters';
 import type { ResolvedArea } from './areaCard';
+
+/** Any area the trend can be asked about: the Here card's ResolvedArea or an
+ *  Analysis-screen area (ADR-0039). County/metro areas carry a primaryState
+ *  because HistoricJoa has no county or CBSA filter. */
+export type TrendArea =
+	| ResolvedArea
+	| { scope: 'metro' | 'county'; code: string; label: string; primaryState: string | null };
 import { cacheKey, type MonthlyBucket, type PostingHistoryQuery, type WindowKey } from './jobHistory';
 import { localityPrimaryState } from './compensation';
 
@@ -50,7 +57,7 @@ export interface AreaTrendQuery {
  * defaults to the sparkline's 1yr; the What-to-watch note passes 3yr.
  */
 export function buildAreaTrendQuery(
-	area: ResolvedArea,
+	area: TrendArea,
 	filters: JobFilters,
 	window: WindowKey = TREND_WINDOW
 ): AreaTrendQuery {
@@ -70,6 +77,16 @@ export function buildAreaTrendQuery(
 			notes.push(
 				`HistoricJoa has no locality filter and ${area.label} could not be mapped to a state — trend is nationwide.`
 			);
+		}
+	} else if (area.scope === 'metro' || area.scope === 'county') {
+		const kind = area.scope === 'metro' ? 'metro (CBSA)' : 'county';
+		if (area.primaryState) {
+			state = area.primaryState;
+			notes.push(
+				`HistoricJoa has no ${kind} filter — trend uses ${area.label}'s state (${area.primaryState}), so it is approximate.`
+			);
+		} else {
+			notes.push(`HistoricJoa has no ${kind} filter and ${area.label} could not be mapped to a state — trend is nationwide.`);
 		}
 	}
 

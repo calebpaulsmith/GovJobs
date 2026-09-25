@@ -22,11 +22,11 @@
 	import { mapState } from './store.svelte';
 	import { buildAreaTrendQuery } from './areaTrend';
 	import { computeWatchNote, WATCH_WINDOW, type WatchNote } from './areaWatch';
-	import type { ResolvedArea } from './areaCard';
+	import type { TrendArea } from './areaTrend';
 	import type { HistoryPayload } from './jobHistory';
 	import InfoTooltip from './InfoTooltip.svelte';
 
-	let { area }: { area: ResolvedArea } = $props();
+	let { area }: { area: TrendArea } = $props();
 
 	let opened = $state(false);
 	let loading = $state(false);

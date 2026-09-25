@@ -15,7 +15,7 @@
 	import { mapState, type ListView } from './store.svelte';
 	import { loadJobDetailsIndex, type Feature, type JobDetails } from './data';
 	import { filterJobs, filterJobDetails, ungeocodedFilteredDetails } from './filters';
-	import { coordsByJobId, haversineMiles } from './geo';
+	import { coordsByJobId, haversineMiles, pointInGeometry } from './geo';
 	import { LAYER_IDS } from './layers';
 	import { gradeRange, propString, salaryRange, urgencyBadge } from './format';
 	import { jobProfile } from './jobProfile.svelte';
@@ -31,7 +31,8 @@
 		listView,
 		richMode = false,
 		ungeocodedOnly = false,
-		toolbar = false
+		toolbar = false,
+		keepScopeOnPick = false
 	}: {
 		listView?: ListView;
 		richMode?: boolean;
@@ -41,6 +42,8 @@
 		// surface gets the full toolbar while /map's FeaturePanel keeps the
 		// compact sort row. Rich mode always shows the toolbar.
 		toolbar?: boolean;
+		// Browse: picking a row opens its card without dropping the list scope.
+		keepScopeOnPick?: boolean;
 	} = $props();
 
 	// Rich mode always carries the toolbar; scoped mode only when asked.
@@ -191,9 +194,13 @@
 			case 'locality':
 				return String(props.locality_code ?? '').toUpperCase() === listView.code.toUpperCase();
 			case 'county':
-				return String(details[String(props.id ?? '')]?.locations?.[0]?.state ?? '') === listView.code;
-			case 'cbsa':
-				return false;
+			case 'cbsa': {
+				// ADR-0039: jobs carry no county FIPS / CBSA code — match the
+				// duty-station point against the area's polygon instead.
+				const geom = feature.geometry;
+				if (!listView.geometry || !geom || geom.type !== 'Point') return false;
+				return pointInGeometry(geom.coordinates as [number, number], listView.geometry);
+			}
 			case 'ids':
 				return !!listView.ids && listView.ids.has(String(props.id ?? ''));
 			case 'viewport': {
@@ -426,7 +433,10 @@
 			label: 'Job card',
 			properties: row.props
 		};
-		mapState.listView = null;
+		// /map's FeaturePanel shows the list *instead of* the card while
+		// listView is set, so it must clear. Browse keeps the scope so "Back
+		// to postings" returns to the same list (ADR-0039).
+		if (!keepScopeOnPick) mapState.listView = null;
 	}
 
 	function backToRoundup() {

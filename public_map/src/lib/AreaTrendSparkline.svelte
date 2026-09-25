@@ -24,11 +24,11 @@
 <script lang="ts">
 	import { mapState } from './store.svelte';
 	import { buildAreaTrendQuery, fillMonths, TREND_WINDOW } from './areaTrend';
-	import type { ResolvedArea } from './areaCard';
+	import type { TrendArea } from './areaTrend';
 	import type { HistoryPayload } from './jobHistory';
 	import InfoTooltip from './InfoTooltip.svelte';
 
-	let { area }: { area: ResolvedArea } = $props();
+	let { area }: { area: TrendArea } = $props();
 
 	let opened = $state(false);
 	let loading = $state(false);

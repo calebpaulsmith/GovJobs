@@ -82,11 +82,9 @@ try {
 	const baseline = await filteredCount();
 	check(baseline > 0, `corpus is non-empty before filtering (${baseline} postings)`);
 
-	// Open the Postings panel, then Edit → FilterSheet.
+	// Open the sheet (Postings-only since ADR-0039), then Edit → FilterSheet.
 	await page.locator('.grabber').click();
 	await page.waitForTimeout(900);
-	await page.locator('.seg button', { hasText: 'Postings' }).click();
-	await page.waitForTimeout(400);
 	await page.locator('.filters-row .head-btn', { hasText: 'Edit' }).click();
 	await page.waitForTimeout(400);
 

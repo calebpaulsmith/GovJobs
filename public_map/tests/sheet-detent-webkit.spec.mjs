@@ -131,7 +131,8 @@ check(r.height > r.parentH * 0.8 && r.height > 0, `full detent ≥80% of parent 
 
 // 3) The panel must actually be scrollable at full height (the whole point).
 const scrollable = await page.evaluate(() => {
-	const panels = [...document.querySelectorAll('.sheet .panel')];
+	// The Postings list owns its scroll box (.postings) inside the sheet panel.
+	const panels = [...document.querySelectorAll('.sheet .panel, .sheet .postings')];
 	return panels.some((p) => p.scrollHeight > p.clientHeight + 4);
 });
 check(scrollable, 'at full height a panel overflows and can be scrolled');
@@ -180,15 +181,13 @@ if (!marker) {
 	s = await readState();
 	out('after marker tap:', JSON.stringify(s));
 	// Two legitimate outcomes prove the reactive chain is alive:
-	//   • single marker → jobStack/selectedFeature set, sheet opens to Here;
-	//   • "+N" stack    → exact-IDs listView, sheet opens to Postings
+	//   • single marker → jobStack/selectedFeature set, sheet shows the job
+	//     detail view (ADR-0039: no Here page any more);
+	//   • "+N" stack    → exact-IDs listView on the Postings list
 	//     (Map.svelte's applyMarkerStackIdsListView path — selectedFeature
 	//     intentionally stays null there).
 	// A frozen graph shows expanded with none of those state changes.
-	const drove =
-		s.expanded &&
-		((s.page === 'here' && (s.selSource !== null || s.stackSet)) ||
-			(s.page === 'list' && s.listScope === 'ids'));
+	const drove = s.expanded && (s.selSource !== null || s.stackSet || s.listScope === 'ids');
 	check(drove, 'marker tap still drives the sheet after detent cycle (no freeze)');
 }
 

@@ -1,5 +1,6 @@
-// WebKit (real iOS Safari engine) test for the D.5.27 Localities screen
-// (ADR-0032). From /browse: the Localities pill navigates to /localities; the
+// WebKit (real iOS Safari engine) test for the D.5.27 locality comparison
+// (ADR-0032), now a section of the Analysis screen (ADR-0039). From /browse:
+// the Analysis pill navigates to /analysis; the
 // rollup renders, defaults to posting-count desc, sorting preserves the
 // multi-selection, and drill-in routes to /browse with locality: chips set and
 // non-geographic filters preserved. The Remote-only preset toggles the filter.
@@ -60,13 +61,14 @@ try {
 			return { geographies: m.filters.geographies.slice(), remote: m.filters.remote };
 		});
 
-	// 1) Localities pill on /browse navigates to /localities.
+	// 1) The Analysis pill on /browse navigates to /analysis (the Localities
+	//    screen was renamed Analysis in ADR-0039; the rollup lives there).
 	await page.goto(`${BASE}/browse`, { waitUntil: 'networkidle', timeout: 60000 });
 	await page.waitForSelector('canvas.mapboxgl-canvas, canvas.maplibregl-canvas', { timeout: 30000 });
 	await page.waitForTimeout(400);
-	await page.locator('.modes .mode', { hasText: 'Localities' }).click();
-	await page.waitForURL((u) => new URL(u).pathname === '/localities', { timeout: 10000 });
-	check(true, 'Localities pill navigates to /localities');
+	await page.locator('.modes .mode', { hasText: 'Analysis' }).click();
+	await page.waitForURL((u) => new URL(u).pathname === '/analysis', { timeout: 10000 });
+	check(true, 'Analysis pill navigates to /analysis');
 
 	// 2) The rollup renders rows.
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
@@ -74,6 +76,8 @@ try {
 	check(rowCount > 0, `rollup renders rows (${rowCount} localities)`);
 
 	// 2b) D.5.27 V1.1: the State tax column renders from the fixture, with values.
+	// state_tax.json loads asynchronously after the rows render — wait for it.
+	await page.waitForSelector('.rollup th:has-text("State tax")', { timeout: 10000 }).catch(() => {});
 	check(
 		(await page.locator('.rollup th', { hasText: 'State tax' }).count()) === 1,
 		'State tax column renders when state_tax.json is present'
@@ -111,7 +115,7 @@ try {
 	);
 
 	// 6) Single-row click (locality name) is a one-locality drill-in shortcut.
-	await page.goto(`${BASE}/localities`, { waitUntil: 'networkidle', timeout: 30000 });
+	await page.goto(`${BASE}/analysis`, { waitUntil: 'networkidle', timeout: 30000 });
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
 	await page.locator('.rollup tbody tr .loc').nth(0).click();
 	await page.waitForURL((u) => new URL(u).pathname === '/browse', { timeout: 10000 });
@@ -123,7 +127,7 @@ try {
 	);
 
 	// 7) Paired map renders; GS purchasing-power column toggles; map→row select.
-	await page.goto(`${BASE}/localities`, { waitUntil: 'networkidle', timeout: 30000 });
+	await page.goto(`${BASE}/analysis`, { waitUntil: 'networkidle', timeout: 30000 });
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
 	await page.waitForSelector('.mini .canvas canvas', { timeout: 20000 });
 	check(true, 'paired LocalityMiniMap renders a canvas');
@@ -142,7 +146,7 @@ try {
 	// which has no polygon, so an arbitrary-pixel click is environment-fragile.)
 
 	// 8) Remote-only preset toggles the remote filter and re-tallies.
-	await page.goto(`${BASE}/localities`, { waitUntil: 'networkidle', timeout: 30000 });
+	await page.goto(`${BASE}/analysis`, { waitUntil: 'networkidle', timeout: 30000 });
 	await page.waitForSelector('.rollup tbody tr', { timeout: 20000 });
 	await page.locator('.preset', { hasText: 'Remote-only' }).click();
 	await page.waitForTimeout(200);
